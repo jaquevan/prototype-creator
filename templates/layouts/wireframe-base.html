@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{TITLE}} — Wireframe Prototype</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Comic Sans MS', 'Marker Felt', cursive;
+    background: #fafafa;
+    color: #333;
+    line-height: 1.5;
+  }
+
+  /* Wireframe aesthetic: hand-drawn borders, sketch feel */
+  .wf-header {
+    border-bottom: 2px solid #999;
+    padding: 16px 24px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    background: #f0f0f0;
+  }
+  .wf-header h1 { font-size: 18px; font-weight: 600; }
+  .wf-nav {
+    display: flex;
+    gap: 12px;
+    margin-left: auto;
+  }
+  .wf-nav a {
+    color: #666;
+    text-decoration: none;
+    padding: 4px 8px;
+    border: 1px dashed #ccc;
+    border-radius: 2px;
+    font-size: 13px;
+  }
+
+  .wf-container {
+    max-width: 1200px;
+    margin: 24px auto;
+    padding: 0 24px;
+  }
+
+  /* Placeholder boxes */
+  .wf-placeholder {
+    border: 2px dashed #bbb;
+    border-radius: 4px;
+    padding: 24px;
+    margin: 12px 0;
+    text-align: center;
+    color: #999;
+    font-size: 14px;
+    min-height: 80px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #f8f8f8;
+  }
+
+  .wf-placeholder--tall { min-height: 200px; }
+
+  /* Simple grid */
+  .wf-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 16px;
+    margin: 16px 0;
+  }
+
+  /* Sidebar + main layout */
+  .wf-layout {
+    display: grid;
+    grid-template-columns: 240px 1fr;
+    gap: 24px;
+    margin: 16px 0;
+  }
+  .wf-sidebar {
+    border-right: 1px solid #ddd;
+    padding-right: 16px;
+  }
+  .wf-sidebar-item {
+    padding: 8px 12px;
+    border: 1px dashed #ccc;
+    margin: 4px 0;
+    border-radius: 2px;
+    font-size: 13px;
+    cursor: pointer;
+  }
+  .wf-sidebar-item:hover { background: #eee; }
+  .wf-sidebar-item--active {
+    background: #e0e0e0;
+    border-style: solid;
+  }
+
+  /* Buttons */
+  .wf-btn {
+    border: 2px solid #999;
+    border-radius: 4px;
+    padding: 8px 16px;
+    background: white;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 13px;
+  }
+  .wf-btn--primary {
+    background: #ddd;
+    font-weight: 600;
+  }
+
+  /* Table */
+  .wf-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 12px 0;
+  }
+  .wf-table th, .wf-table td {
+    border: 1px solid #ccc;
+    padding: 8px 12px;
+    text-align: left;
+    font-size: 13px;
+  }
+  .wf-table th { background: #eee; }
+
+  .wf-label {
+    font-size: 12px;
+    color: #999;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 4px;
+  }
+
+  .wf-section {
+    margin: 24px 0;
+  }
+  .wf-section h2 {
+    font-size: 16px;
+    margin-bottom: 12px;
+    padding-bottom: 4px;
+    border-bottom: 1px solid #ddd;
+  }
+</style>
+</head>
+<body>
+
+<div class="wf-header">
+  <h1>{{TITLE}}</h1>
+  <div class="wf-nav">
+    {{NAV_ITEMS}}
+  </div>
+</div>
+
+<div class="wf-container">
+  {{CONTENT}}
+</div>
+
+</body>
+</html>

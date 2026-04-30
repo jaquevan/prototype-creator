@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{TITLE}} — Prototype</title>
+<link rel="stylesheet" href="https://unpkg.com/@patternfly/patternfly@6/patternfly.min.css">
+<style>
+  :root {
+    --pf-t--global--background--color--primary--default: #151515;
+    --pf-t--global--text--color--regular: #e0e0e0;
+  }
+  body { margin: 0; }
+</style>
+</head>
+<body class="pf-v6-m-dark">
+
+<div class="pf-v6-c-page">
+  <!-- Masthead -->
+  <header class="pf-v6-c-masthead">
+    <span class="pf-v6-c-masthead__brand">
+      <span class="pf-v6-c-masthead__brand-text">{{TITLE}}</span>
+    </span>
+    <div class="pf-v6-c-masthead__main">
+      {{MASTHEAD_CONTENT}}
+    </div>
+  </header>
+
+  <!-- Sidebar -->
+  <div class="pf-v6-c-page__sidebar">
+    <div class="pf-v6-c-page__sidebar-body">
+      <nav class="pf-v6-c-nav" aria-label="Local">
+        <ul class="pf-v6-c-nav__list" role="list">
+          {{NAV_ITEMS}}
+        </ul>
+      </nav>
+    </div>
+  </div>
+
+  <!-- Main content -->
+  <main class="pf-v6-c-page__main" tabindex="-1">
+    <section class="pf-v6-c-page__main-section">
+      <div class="pf-v6-l-gallery pf-m-gutter">
+        {{CONTENT}}
+      </div>
+    </section>
+  </main>
+</div>
+
+</body>
+</html>

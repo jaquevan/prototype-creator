@@ -1,0 +1,64 @@
+# Fidelity Profiles
+# Defines what each fidelity level produces.
+
+profiles:
+  low:
+    name: Low Fidelity (Wireframe)
+    description: >
+      Quick sketch-level prototypes. Placeholder boxes, simple labels,
+      hand-drawn aesthetic. Focus on layout and flow, not polish.
+    style: wireframe
+    components: placeholder
+    interactions: static
+    design_system: none
+    estimated_time: "2-3 minutes per prototype"
+    guidelines:
+      - Use boxes and labels instead of real UI components
+      - Grayscale or minimal color (blue for links, red for errors)
+      - No icons — use text labels
+      - No animations or transitions
+      - Focus on content hierarchy and spatial relationships
+      - OK to use Comic Sans or hand-drawn fonts for wireframe feel
+    template: templates/layouts/wireframe-base.html
+
+  medium:
+    name: Medium Fidelity (Realistic)
+    description: >
+      Realistic prototypes using actual design system components.
+      Key flows are interactive. Looks like a real application but
+      may skip edge cases and secondary flows.
+    style: realistic
+    components: design-system
+    interactions: key-flows
+    design_system: PatternFly 6
+    estimated_time: "5-10 minutes per prototype"
+    guidelines:
+      - Use real PatternFly components (buttons, tables, cards, forms)
+      - Apply PatternFly design tokens for colors, spacing, typography
+      - Wire up primary user flows (happy path)
+      - Include navigation structure
+      - Show realistic data (not lorem ipsum)
+      - Include loading states for primary flows
+      - Skip: secondary flows, edge cases, error states, empty states
+    template: templates/layouts/patternfly-base.html
+
+  high:
+    name: High Fidelity (Production-Ready)
+    description: >
+      Pixel-perfect prototypes indistinguishable from production code.
+      All flows including edge cases, error states, empty states,
+      loading states, and responsive breakpoints.
+    style: production
+    components: full-design-system
+    interactions: all-flows
+    design_system: PatternFly 6 (full compliance)
+    estimated_time: "15-30 minutes per prototype"
+    guidelines:
+      - Full PatternFly 6 component usage with correct props and variants
+      - All user flows — happy path, error, empty, loading, edge cases
+      - Responsive layout (desktop + tablet breakpoints minimum)
+      - Proper ARIA labels and keyboard navigation
+      - Realistic data with appropriate volume
+      - Toast notifications, inline validation, confirmation dialogs
+      - Consistent with platform conventions
+    template: templates/layouts/production-base.html

@@ -1,0 +1,61 @@
+# Pipeline Settings
+# Controls RFE discovery, filtering, and batch processing.
+
+# --- Jira JQL Filters ---
+jql:
+  project: PROJ
+  required_labels:
+    - prototype-creator-candidate
+  quality_labels:
+    - rfe-creator-autofix-rubric-pass
+    - tech-reviewed
+  excluded_statuses:
+    - Closed
+    - Resolved
+    - Draft
+  order_by: key ASC
+
+# --- Batch Processing ---
+batch:
+  batch_size: 5
+  batch_offset: 0
+
+# --- Pipeline Labels (applied to Jira issues) ---
+labels:
+  auto_created: prototype-creator-auto-created
+  rubric_pass: prototype-creator-rubric-pass
+  needs_attention: prototype-creator-needs-attention
+  submitted: prototype-creator-submitted
+
+# --- Scoring Thresholds ---
+scoring:
+  pass_threshold: 6
+  min_per_dimension: 1
+  dimensions:
+    - completeness
+    - usability
+    - feasibility
+    - fidelity_match
+
+# --- Defaults ---
+defaults:
+  fidelity: low
+  mode: auto
+  target: local
+  max_refinement_cycles: 3
+
+# --- Design System ---
+design_system:
+  name: PatternFly
+  version: "6"
+  docs_url: https://www.patternfly.org/
+  context_path: .context/design-system/
+
+# --- Decision Kit Integration ---
+decision_kit:
+  repo: https://github.com/jnemargut/decision-kit
+  decisions_dir: artifacts/decisions
+  thinking_skills:
+    - strategize
+    - shape
+    - product-design

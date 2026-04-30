@@ -1,0 +1,27 @@
+{
+  "permissions": {
+    "allow": [
+      "Read",
+      "Write",
+      "Edit",
+      "Glob",
+      "Grep",
+      "Bash(python3 *)",
+      "Bash(bash scripts/*)",
+      "Bash(uv run *)",
+      "Bash(make *)",
+      "Bash(cat *)",
+      "Bash(head *)",
+      "Bash(wc *)",
+      "Bash(ls *)",
+      "Bash(mkdir *)",
+      "Bash(cp *)",
+      "Bash(mv *)",
+      "Bash(open *)",
+      "mcp__atlassian__searchJiraIssuesUsingJql",
+      "mcp__atlassian__getJiraIssue",
+      "mcp__atlassian__getJiraIssueComments"
+    ],
+    "deny": []
+  }
+}

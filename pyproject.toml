@@ -1,0 +1,21 @@
+[project]
+name = "prototype-creator"
+version = "0.1.0"
+description = "Takes RFE user stories and produces rapid prototypes with human-in-the-loop design decisions."
+readme = "README.md"
+license = { text = "Apache-2.0" }
+requires-python = ">=3.11"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["scripts"]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov>=5.0",
+]
