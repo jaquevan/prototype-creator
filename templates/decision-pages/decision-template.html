@@ -5,73 +5,86 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Decision: {{DECISION_NAME}} — {{PROTOTYPE_ID}}</title>
 <style>
-  * { box-sizing: border-box; margin: 0; padding: 0; }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
   body {
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    background: #0f172a;
-    color: #e2e8f0;
+    background: #0a0a0f;
+    color: #e0e0e8;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
     line-height: 1.6;
-    padding: 40px;
+    padding: 40px 24px;
+    min-height: 100vh;
   }
+  .container { max-width: 1100px; margin: 0 auto; }
 
-  .decision-header {
-    text-align: center;
-    margin-bottom: 48px;
+  .header { text-align: center; margin-bottom: 48px; }
+  .decision-badge {
+    display: inline-block;
+    background: rgba(224, 124, 62, 0.15);
+    border: 1px solid rgba(224, 124, 62, 0.3);
+    color: #e07c3e;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    padding: 6px 16px;
+    border-radius: 20px;
+    margin-bottom: 20px;
   }
-  .decision-header h1 { font-size: 28px; color: #f8fafc; margin-bottom: 8px; }
-  .decision-header .question {
-    font-size: 18px;
-    color: #94a3b8;
+  .header h1 {
+    font-size: 36px;
+    font-weight: 700;
+    background: linear-gradient(135deg, #e0e0e8, #8888a0);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    margin-bottom: 12px;
+  }
+  .header .question {
+    color: #8888a0;
+    font-size: 16px;
     max-width: 600px;
     margin: 0 auto;
   }
-  .decision-header .context {
-    font-size: 14px;
-    color: #64748b;
+  .header .context {
+    font-size: 13px;
+    color: #55556a;
     margin-top: 12px;
   }
 
   .options-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    grid-template-columns: 1fr 1fr;
     gap: 24px;
-    max-width: 1200px;
-    margin: 0 auto 48px;
+    margin-bottom: 48px;
   }
+  @media (max-width: 768px) { .options-grid { grid-template-columns: 1fr; } }
 
   .option-card {
-    background: #1e293b;
-    border: 2px solid #334155;
-    border-radius: 12px;
-    padding: 24px;
-    cursor: pointer;
-    transition: all 0.2s ease;
+    background: #12121a;
+    border: 1px solid #2a2a3a;
+    border-radius: 16px;
+    padding: 28px;
+    position: relative;
+    transition: all 0.2s;
   }
-  .option-card:hover {
-    border-color: #3b82f6;
-    transform: translateY(-2px);
-    box-shadow: 0 8px 24px rgba(59, 130, 246, 0.15);
-  }
-  .option-card--selected {
-    border-color: #22c55e;
-    background: #1a2e1a;
-  }
-  .option-card--recommended {
-    border-color: #f59e0b;
-  }
+  .option-card:hover { border-color: #8888a0; transform: translateY(-2px); }
+  .option-card.recommended { border-color: #e07c3e; box-shadow: 0 0 24px rgba(224, 124, 62, 0.1); }
+  .option-card.chosen { border-color: #4ade80; box-shadow: 0 0 24px rgba(74, 222, 128, 0.1); }
+  .option-card.not-chosen { opacity: 0.55; }
   .option-card h3 {
     font-size: 18px;
-    color: #f8fafc;
+    font-weight: 700;
+    color: #fff;
     margin-bottom: 8px;
   }
   .option-card .description {
     font-size: 14px;
-    color: #94a3b8;
+    color: #8888a0;
     margin-bottom: 16px;
   }
   .option-card .preview {
-    background: #0f172a;
-    border-radius: 8px;
+    background: #1a1a25;
+    border-radius: 12px;
     padding: 16px;
     margin-bottom: 16px;
     min-height: 120px;
@@ -79,99 +92,154 @@
     align-items: center;
     justify-content: center;
     font-size: 13px;
-    color: #64748b;
+    color: #8888a0;
   }
   .option-card .when-to-use {
     font-size: 12px;
-    color: #64748b;
-    border-top: 1px solid #334155;
+    color: #55556a;
+    border-top: 1px solid #2a2a3a;
     padding-top: 12px;
   }
 
   .badge {
-    display: inline-block;
-    padding: 2px 8px;
-    border-radius: 4px;
-    font-size: 11px;
-    font-weight: 600;
+    position: absolute;
+    top: -1px;
+    right: 20px;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 1.5px;
     text-transform: uppercase;
-    letter-spacing: 0.05em;
+    padding: 6px 14px;
+    border-radius: 0 0 10px 10px;
+    color: #fff;
   }
-  .badge--recommended { background: rgba(245, 158, 11, 0.2); color: #f59e0b; }
-  .badge--selected { background: rgba(34, 197, 94, 0.2); color: #22c55e; }
+  .badge--recommended { background: #e07c3e; }
+  .badge--selected { background: #4ade80; color: #0a0a0f; }
 
-  .comparison-table {
-    max-width: 1200px;
-    margin: 0 auto 48px;
+  .option-label {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    margin-bottom: 8px;
   }
-  .comparison-table h2 {
+  .option-label.a { color: #60a5fa; }
+  .option-label.b { color: #e07c3e; }
+  .option-label.c { color: #fbbf24; }
+  .option-label.d { color: #a78bfa; }
+
+  .pros-cons { display: flex; flex-direction: column; gap: 8px; margin-top: 16px; }
+  .pro, .con {
+    font-size: 13px;
+    line-height: 1.5;
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+  }
+  .pro .icon { color: #4ade80; flex-shrink: 0; font-weight: 700; }
+  .con .icon { color: #f87171; flex-shrink: 0; font-weight: 700; }
+
+  .comparison-section { margin-bottom: 48px; }
+  .comparison-section h2 {
     font-size: 20px;
-    margin-bottom: 16px;
-    color: #f8fafc;
+    font-weight: 700;
+    color: #e0e0e8;
+    margin-bottom: 20px;
+    text-align: center;
   }
-  .comparison-table table {
+  .comparison-table {
     width: 100%;
     border-collapse: collapse;
+    background: #12121a;
+    border-radius: 12px;
+    overflow: hidden;
+    border: 1px solid #2a2a3a;
   }
   .comparison-table th, .comparison-table td {
-    padding: 12px 16px;
+    padding: 14px 16px;
     text-align: left;
-    border-bottom: 1px solid #1e293b;
-    font-size: 14px;
+    font-size: 13px;
+    border-bottom: 1px solid #1a1a25;
   }
   .comparison-table th {
-    color: #94a3b8;
-    font-size: 12px;
+    background: #1a1a25;
+    color: #8888a0;
+    font-weight: 600;
+    font-size: 11px;
     text-transform: uppercase;
-    letter-spacing: 0.05em;
+    letter-spacing: 1px;
   }
+  .comparison-table td { color: #e0e0e8; }
+  .comparison-table .highlight {
+    background: rgba(224, 124, 62, 0.08);
+    border-left: 2px solid #e07c3e;
+  }
+  .comparison-table .chosen-col {
+    background: rgba(74, 222, 128, 0.06);
+    border-left: 2px solid #4ade80;
+  }
+  .comparison-table tr:last-child td { border-bottom: none; }
 
-  .tradeoffs {
-    max-width: 1200px;
-    margin: 0 auto 48px;
+  .tradeoffs { margin-bottom: 48px; }
+  .tradeoffs h2 {
+    font-size: 20px;
+    font-weight: 700;
+    color: #e0e0e8;
+    margin-bottom: 20px;
+    text-align: center;
   }
-  .tradeoffs h2 { font-size: 20px; margin-bottom: 16px; color: #f8fafc; }
   .tradeoff-item {
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 16px;
     margin-bottom: 16px;
-    padding: 16px;
-    background: #1e293b;
-    border-radius: 8px;
+    padding: 20px;
+    background: #12121a;
+    border: 1px solid #2a2a3a;
+    border-radius: 12px;
   }
-  .tradeoff-item h4 { font-size: 14px; color: #f8fafc; margin-bottom: 8px; }
-  .pro { color: #22c55e; }
-  .con { color: #ef4444; }
-  .pro::before { content: '+ '; }
-  .con::before { content: '− '; }
+  .tradeoff-item h4 { font-size: 14px; color: #fff; margin-bottom: 8px; }
 
   .choice-section {
     max-width: 800px;
-    margin: 0 auto;
+    margin: 0 auto 48px;
     text-align: center;
     padding: 32px;
-    background: #1e293b;
-    border-radius: 12px;
+    background: #12121a;
+    border: 1px solid #2a2a3a;
+    border-radius: 16px;
   }
-  .choice-section h2 { margin-bottom: 16px; }
+  .choice-section h2 { margin-bottom: 16px; color: #e0e0e8; }
   .choice-section .chosen {
     font-size: 24px;
     font-weight: 700;
-    color: #22c55e;
+    color: #4ade80;
     margin-bottom: 8px;
   }
   .choice-section .reasoning {
     font-size: 14px;
-    color: #94a3b8;
+    color: #8888a0;
     font-style: italic;
   }
+
+  .footer {
+    text-align: center;
+    padding: 32px 0;
+    border-top: 1px solid #2a2a3a;
+    color: #8888a0;
+    font-size: 13px;
+  }
+  .footer a { color: #60a5fa; text-decoration: none; }
+  .footer a:hover { text-decoration: underline; }
+  .footer strong { color: #e0e0e8; }
 </style>
 </head>
 <body>
 
-<div class="decision-header">
-  <div class="context">{{PROTOTYPE_ID}} — Decision {{DECISION_NUMBER}} of {{TOTAL_DECISIONS}}</div>
+<div class="container">
+
+<div class="header">
+  <div class="decision-badge">{{PROTOTYPE_ID}} — Decision {{DECISION_NUMBER}} of {{TOTAL_DECISIONS}}</div>
   <h1>{{DECISION_NAME}}</h1>
   <p class="question">{{DECISION_QUESTION}}</p>
 </div>
@@ -180,7 +248,7 @@
   {{OPTIONS}}
 </div>
 
-<div class="comparison-table">
+<div class="comparison-section">
   <h2>Side-by-Side Comparison</h2>
   {{COMPARISON_TABLE}}
 </div>
@@ -194,6 +262,12 @@
   <h2>Your Choice</h2>
   <div class="chosen">{{CHOSEN_OPTION}}</div>
   <div class="reasoning">{{REASONING}}</div>
+</div>
+
+<div class="footer">
+  Generated by <strong>prototype-creator</strong> using the <a href="https://github.com/jnemargut/decision-kit">decision-kit</a> spec
+</div>
+
 </div>
 
 </body>
