@@ -68,7 +68,7 @@ cp -r local/prototypes/{ID}/ artifacts/prototypes/{ID}/
 cp local/prototype-reviews/{ID}* artifacts/prototype-reviews/ 2>/dev/null || true
 
 # Copy updated decision artifacts
-cp local/decisions/{ID}* artifacts/decisions/ 2>/dev/null || true
+cp -r local/decisions/ .decisions/ 2>/dev/null || true
 ```
 
 ### Step 6: Generate a diff summary
@@ -95,7 +95,7 @@ Pushed {ID} back to artifacts/.
 
   Prototype:  artifacts/prototypes/{ID}/
   Reviews:    artifacts/prototype-reviews/
-  Decisions:  artifacts/decisions/
+  Decisions:  .decisions/
   Status:     pending-review (reset for re-scoring)
 
 Changes from original:
@@ -115,7 +115,7 @@ Next steps:
 |---|---|---|
 | `local/prototypes/{ID}/` | `artifacts/prototypes/{ID}/` | Full prototype directory |
 | `local/prototype-reviews/{ID}*` | `artifacts/prototype-reviews/` | Review score files |
-| `local/decisions/{ID}*` | `artifacts/decisions/` | Decision artifacts |
+| `local/decisions/` | `.decisions/` | Decision artifacts (decision-kit format) |
 
 Files in `local/prototype-originals/` are **never** pushed back — they're the baseline snapshot for diffing.
 

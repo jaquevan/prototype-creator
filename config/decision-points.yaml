@@ -1,9 +1,17 @@
-# Decision Points
-# Defines the design decisions surfaced during --mode=decide.
-# Each decision follows the decision-kit pattern: options, visual previews,
-# tradeoffs, comparison, recommendation. Human picks before proceeding.
+# Decision Points — Reference Examples
+#
+# Decisions are now planned DYNAMICALLY by the AI based on the RFE and target
+# codebase context. This file serves as a reference catalog of common decision
+# categories the AI may draw from — it is NOT a fixed checklist.
+#
+# The AI identifies 4–7 decisions (configurable via --depth) that have genuine
+# tradeoffs for the specific RFE. Some RFEs may surface entirely different
+# decisions than those listed here.
+#
+# See .claude/skills/prototype-create/SKILL.md Step 8 for the dynamic planning process.
+# See decision-kit SPEC.md for the decision artifact format.
 
-decisions:
+reference_decisions:
   - id: layout-pattern
     order: 1
     name: Layout Pattern

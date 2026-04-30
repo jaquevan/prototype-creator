@@ -1,19 +1,21 @@
 # prototype-creator
 
-Takes RFE user stories and produces rapid prototypes that make the proposed experience tangible before engineering commits. Integrates with decision-kit to surface design decisions at every meaningful junction and keep humans in the loop.
+Takes RFE user stories and produces rapid prototypes that make the proposed experience tangible before engineering commits. Can modify an existing prototype codebase or generate standalone HTML. Integrates with decision-kit to surface design decisions dynamically at every meaningful junction and keep humans in the loop.
 
 ## What This Does
 
 Given an RFE (from the `rfe-creator` pipeline or Jira directly), this pipeline:
 
-1. Creates a prototype from RFE user stories (`prototype-create`)
-2. Reviews the prototype against a UX quality rubric (`prototype-review`)
-3. Optionally refines based on review feedback (`prototype-refine`)
-4. Runs simulated usability testing (`prototype-test-usability`)
-5. Runs simulated desirability testing (`prototype-test-desirability`)
-6. Publishes the prototype to a target system (`prototype-submit`)
+1. Analyzes the RFE and target codebase (`prototype-create`)
+2. Surfaces dynamic design decisions for human judgment (`prototype-create --mode=decide`)
+3. Generates prototype code — either as changes to an existing codebase (`--workspace`) or standalone HTML
+4. Reviews the prototype against a UX quality rubric (`prototype-review`)
+5. Optionally refines based on review feedback (`prototype-refine`)
+6. Runs simulated usability testing (`prototype-test-usability`)
+7. Runs simulated desirability testing (`prototype-test-desirability`)
+8. Publishes the prototype to a target system (`prototype-submit`)
 
-Steps 1–2 can run in CI. Steps 3–5 are iterative and benefit from human involvement. Step 6 is a push action.
+Steps 1–4 can run in CI. Steps 5–7 are iterative and benefit from human involvement. Step 8 is a push action.
 
 ## Two Modes
 
@@ -25,12 +27,12 @@ AI makes all design decisions autonomously. Good for generating quick low-fideli
 
 At each significant design decision point, the pipeline stops and produces a decision-kit artifact — a browsable HTML page with options, visual previews, tradeoffs, and a side-by-side comparison. The human picks. The prototype builds on their choices. Nothing advances without human judgment.
 
-Decision points in `decide` mode:
-- Layout pattern (list view, card grid, dashboard, wizard, etc.)
-- Interaction model (inline editing, modals, drawers, etc.)
-- Information density (progressive disclosure, tabs, expandable sections)
-- Visual tone (utilitarian, friendly, data-dense, conversational)
-- Key component choices (which design system components for critical UI elements)
+Decision points are **dynamic, not a fixed set.** The AI analyzes the RFE and target codebase to identify 4–7 decisions that have genuine tradeoffs. Decisions the AI is confident about are auto-resolved with a note. Decision count is configurable via `--depth`:
+- `--depth=under` — 2–3 highest-stakes decisions only
+- `--depth=normal` — 4–7 context-dependent decisions (default)
+- `--depth=over` — 8–12 decisions for thorough exploration
+
+All decisions are stored in `.decisions/` following the [decision-kit spec](https://github.com/jnemargut/decision-kit).
 
 ## Fidelity Levels
 
@@ -40,7 +42,7 @@ Decision points in `decide` mode:
 
 ## Workflows
 
-### CI Pipeline (automated)
+### CI Pipeline (automated, standalone HTML)
 
 ```
 RFE (Jira) → prototype.create --fidelity=low --mode=auto
@@ -50,20 +52,22 @@ RFE (Jira) → prototype.create --fidelity=low --mode=auto
 
 Prototypes scoring 6+ total (no zeros) get `prototype-creator-rubric-pass`. Everything else gets `prototype-creator-needs-attention`.
 
-### Human-in-the-loop Pipeline
+### Human-in-the-loop Pipeline (targeting an existing codebase)
 
 ```
-RFE (Jira) → prototype.create --fidelity=medium --mode=decide
-               ├── Decision 1: Layout pattern      [human picks]
-               ├── Decision 2: Core interaction     [human picks]
-               ├── Decision 3: Information density   [human picks]
-               ├── Decision 4: Visual tone          [human picks]
-               └── Decision 5: Key components       [human picks]
+RFE (Jira) → prototype.create --fidelity=medium --mode=decide --workspace=/path/to/repo
+               ├── Analyze target codebase
+               ├── Plan decisions dynamically (4–7 based on RFE + codebase)
+               ├── Decision 1: [context-specific]   [human picks]
+               ├── Decision 2: [context-specific]   [human picks]
+               ├── ...
+               └── Decision N: [context-specific]   [human picks or auto-resolved]
+           → Generate code changes in the target codebase
            → prototype.review
            → prototype.refine
            → prototype.test-usability
            → prototype.test-desirability
-           → prototype.submit
+           → prototype.submit --target=repo
 ```
 
 ### Local Human Review
@@ -72,8 +76,8 @@ After CI finishes, humans use the `local/` workspace to iterate:
 
 ```
 /prototype.pull PROJ-298       # Pull post-CI prototype into local/
-/prototype.refine                  # Iterate locally
-/prototype.review                  # Re-score locally
+/prototype.refine              # Iterate locally
+/prototype.review              # Re-score locally
 /prototype.push PROJ-298       # Resubmit to CI
 ```
 
@@ -95,6 +99,12 @@ prototype-creator/
 │   │   └── prototype-common/          # Shared utilities (symlinked)
 │   └── agents/
 │       └── prototype-scorer.md        # Restricted scoring agent
+├── .decisions/                        # Decision artifacts (decision-kit format)
+│   ├── decisions.json                 # Machine-readable decision state
+│   ├── decision-NNN-slug.html         # Per-decision visual pages
+│   ├── index.html                     # Decision landing page
+│   ├── auto-review.html               # Batch review page (auto mode)
+│   └── strategy-brief.md              # Summary of all decisions
 ├── scripts/                           # Python scripts
 ├── config/                            # Pipeline and rubric configuration
 ├── templates/                         # HTML layout and component templates
@@ -107,6 +117,10 @@ prototype-creator/
 │   └── decision-kit/                  # Vendored decision-kit thinking skills
 ├── local/                             # Human review workspace (gitignored)
 ├── artifacts/                         # Pipeline output (gitignored)
+│   ├── prototypes/                    # Standalone HTML prototypes
+│   ├── changesets/                    # Workspace mode changeset manifests
+│   ├── workspace-analysis/            # Target codebase analysis
+│   └── prototype-reviews/             # Review scores
 ├── docs/                              # Documentation
 ├── tests/                             # Test suite
 ├── pyproject.toml

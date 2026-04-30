@@ -36,7 +36,8 @@ Look for the prototype in these locations:
 ```
 artifacts/prototypes/{ID}/
 artifacts/prototype-reviews/{ID}*
-artifacts/decisions/{ID}*
+artifacts/changesets/{ID}*
+.decisions/
 ```
 
 Use Glob to find matching files:
@@ -44,7 +45,8 @@ Use Glob to find matching files:
 ```
 artifacts/prototypes/{ID}/**
 artifacts/prototype-reviews/{ID}*
-artifacts/decisions/{ID}*
+artifacts/changesets/{ID}*
+.decisions/**
 ```
 
 ### Step 3a: If prototype exists in artifacts — copy to local
@@ -67,8 +69,11 @@ cp -r artifacts/prototypes/{ID}/ local/prototypes/{ID}/
 # Copy review files
 cp artifacts/prototype-reviews/{ID}* local/prototype-reviews/ 2>/dev/null || true
 
-# Copy decision artifacts
-cp artifacts/decisions/{ID}* local/decisions/ 2>/dev/null || true
+# Copy decision artifacts (new .decisions/ format)
+cp -r .decisions/ local/decisions/ 2>/dev/null || true
+
+# Copy changeset manifest (workspace mode)
+cp artifacts/changesets/{ID}* local/ 2>/dev/null || true
 ```
 
 Snapshot the original (pre-review) state so the user can diff later:

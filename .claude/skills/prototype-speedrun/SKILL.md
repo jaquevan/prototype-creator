@@ -21,8 +21,8 @@ End-to-end orchestrator that runs the full prototype pipeline — create, review
 # Full pipeline for a single RFE with defaults (low fidelity, auto, local submit)
 /prototype.speedrun PROJ-298
 
-# Medium fidelity with human-in-the-loop decisions
-/prototype.speedrun PROJ-298 --fidelity=medium --mode=decide
+# Medium fidelity with human-in-the-loop decisions, targeting an existing repo
+/prototype.speedrun PROJ-298 --fidelity=medium --mode=decide --workspace=/path/to/rhoai
 
 # CI batch run: process multiple RFEs from a YAML file
 /prototype.speedrun --input batch.yaml --headless --announce-complete
@@ -30,8 +30,11 @@ End-to-end orchestrator that runs the full prototype pipeline — create, review
 # Full pipeline, publish to Apollo, dry-run first
 /prototype.speedrun PROJ-298 --target=apollo --dry-run
 
-# High fidelity with all testing, publish to git repo
-/prototype.speedrun PROJ-298 --fidelity=high --target=repo --remote=git@gitlab.example.com:team/prototypes.git
+# High fidelity with thorough decisions, publish to git repo
+/prototype.speedrun PROJ-298 --fidelity=high --depth=over --target=repo --remote=git@gitlab.example.com:team/prototypes.git
+
+# Quick pass: only surface the 2-3 biggest decisions
+/prototype.speedrun PROJ-298 --depth=under --mode=decide --workspace=/path/to/prototype
 ```
 
 ## Defaults
@@ -40,8 +43,10 @@ When no flags are provided, the speedrun uses these defaults:
 
 | Flag | Default | Rationale |
 |------|---------|-----------|
+| `--workspace` | none | No target codebase; generates standalone HTML |
 | `--fidelity` | `low` | Fast iteration; wireframe-level output |
 | `--mode` | `auto` | AI makes all design decisions |
+| `--depth` | `normal` | 4–7 context-dependent decisions |
 | `--target` | `local` | No external publishing; safe default |
 | `--dry-run` | Off | Actually write outputs |
 | `--headless` | Off | Allow interactive prompts |
@@ -50,7 +55,7 @@ When no flags are provided, the speedrun uses these defaults:
 ## Pipeline Sequence
 
 ```
-1. CREATE   → prototype-create --fidelity={fidelity} --mode={mode}
+1. CREATE   → prototype-create --fidelity={fidelity} --mode={mode} --depth={depth} [--workspace={workspace}]
 2. REVIEW   → prototype-review
 3. REFINE?  → prototype-refine (only if review scores need attention)
 4. SUBMIT   → prototype-submit --target={target}
@@ -91,8 +96,10 @@ input:
   ids: [PROJ-298]
   batch-file: null
 flags:
+  workspace: null
   fidelity: low
   mode: auto
+  depth: normal
   target: local
   dry-run: false
   headless: false
@@ -134,12 +141,14 @@ For each prototype ID:
 Invoke the `prototype-create` skill:
 
 ```
-/prototype.create {ID} --fidelity={fidelity} --mode={mode}
+/prototype.create {ID} --fidelity={fidelity} --mode={mode} --depth={depth} [--workspace={workspace}]
 ```
 
 If creation fails, log the error and skip to the next ID (in batch mode) or stop (in single mode).
 
-Verify output exists at `artifacts/prototypes/{ID}/index.html`.
+Verify output exists:
+- **Workspace mode**: Check `artifacts/changesets/{ID}.md` and that workspace files were written
+- **Standalone mode**: Check `artifacts/prototypes/{ID}/index.html`
 
 #### 2b. REVIEW
 
@@ -247,8 +256,10 @@ This file can be polled by CI systems to detect pipeline completion.
 
 | Flag | Values | Default | Source Skill |
 |------|--------|---------|-------------|
+| `--workspace` | Local path or git URL | None | prototype-create |
 | `--fidelity` | `low`, `medium`, `high` | `low` | prototype-create |
 | `--mode` | `auto`, `decide` | `auto` | prototype-create, prototype-refine |
+| `--depth` | `under`, `normal`, `over` | `normal` | prototype-create |
 | `--target` | `apollo`, `repo`, `local` | `local` | prototype-submit |
 | `--remote` | Git URL | None | prototype-submit |
 | `--dry-run` | (flag) | Off | prototype-submit |
@@ -269,10 +280,13 @@ This file can be polled by CI systems to detect pipeline completion.
 defaults:
   fidelity: low
   mode: auto
+  depth: normal
   target: local
+  workspace: null
 
 prototypes:
   - id: PROJ-298
+    workspace: /path/to/rhoai
   - id: PROJ-301
     fidelity: medium
   - id: PROJ-305
@@ -334,7 +348,11 @@ If the agent resumes after compression, it reads progress and skips completed st
 
 | Output | Location |
 |--------|----------|
-| Prototypes | `artifacts/prototypes/{ID}/` |
+| Prototypes (standalone) | `artifacts/prototypes/{ID}/` |
+| Workspace changes | Target workspace directory (when `--workspace` is set) |
+| Changesets | `artifacts/changesets/{ID}.md` (workspace mode) |
+| Workspace analysis | `artifacts/workspace-analysis/{ID}.json` (workspace mode) |
+| Decisions | `.decisions/` |
 | Reviews | `artifacts/prototype-reviews/{ID}-summary.md` |
 | Usability reports (if tested) | `artifacts/usability-reports/{ID}-usability.md` |
 | Desirability reports (if tested) | `artifacts/desirability-reports/{ID}-desirability.md` |

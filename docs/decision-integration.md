@@ -1,21 +1,34 @@
 # Decision Kit Integration
 
-prototype-creator integrates with [decision-kit](https://github.com/jnemargut/decision-kit) to keep humans in the loop during prototype generation. When you use `--mode=decide`, every significant design decision becomes a structured artifact.
+prototype-creator integrates with [decision-kit](https://github.com/jnemargut/decision-kit) to keep humans in the loop during prototype generation. When you use `--mode=decide`, the AI dynamically identifies design decisions that matter for your specific RFE and surfaces them as structured artifacts.
 
 ## How It Works
 
 ### The Separation
 
-- **AI explores**: Generates options, renders visual previews, analyzes tradeoffs, provides a recommendation
+- **AI explores**: Analyzes the RFE and target codebase, identifies decisions with genuine tradeoffs, generates options, renders visual previews, analyzes tradeoffs, provides a recommendation
 - **You judge**: Pick the option that fits your context. Override the recommendation. Bring your own answer.
 - **Prototype builds**: Each choice compounds into the final prototype
 
-### Decision Flow
+### Dynamic Decision Discovery
+
+Decisions are **not a fixed checklist**. The AI analyzes the RFE, target codebase (if `--workspace` is set), and any upstream decisions to plan which decisions actually need human judgment. Decisions the AI is confident about are auto-resolved with a note.
 
 ```
-/prototype.create PROJ-298 --mode=decide --fidelity=medium
+/prototype.create PROJ-298 --mode=decide --fidelity=medium --workspace=/path/to/rhoai
 
-  Decision 1: Layout Pattern
+  Decision Plan (6 decisions):
+  ─────────────────────────────
+  1. Page layout pattern          → Surface (3 viable approaches)
+  2. Pipeline list vs. card       → Surface (tradeoff: density vs. scannability)
+  3. Creation flow style          → Surface (wizard vs. form)
+  4. Status visualization         → Surface (multiple valid patterns)
+  5. Navigation integration       → Auto-resolve (existing sidebar is clear)
+  6. Error state handling         → Auto-resolve (PatternFly conventions)
+
+  Surfacing 4 decisions for human input. 2 auto-resolved.
+
+  Decision 1/4: Page Layout Pattern
   ┌─────────────────────────────────────────────────┐
   │ "What overall page structure best serves these   │
   │  user stories?"                                  │
@@ -25,97 +38,91 @@ prototype-creator integrates with [decision-kit](https://github.com/jnemargut/de
   │  C) Dashboard                                    │
   │  D) Wizard / Stepper                             │
   │                                                  │
-  │  → AI recommends: B (Card Grid)                  │
-  │  → You pick: A (List + Detail)                   │
+  │  → AI recommends: A (List + Detail)              │
+  │  → You pick: A                                   │
   │  → Reasoning: "Users need to compare items       │
-  │     side by side, list+detail is better for       │
-  │     that workflow"                                │
+  │     side by side"                                 │
   └─────────────────────────────────────────────────┘
 
-  Decision 2: Interaction Model
-  (builds on your layout choice)
+  Decision 2/4: Pipeline Display
+  (builds on your layout choice, informed by target codebase patterns)
   ...
 
-  Decision 5: Key Components
-  (informed by all prior decisions)
-  ...
-
-  → Prototype generated with all your choices applied
+  → Code changes generated in the target codebase
 ```
+
+### Decision Depth
+
+Control how many decisions are surfaced with `--depth`:
+
+- `--depth=under` — 2–3 highest-stakes decisions only
+- `--depth=normal` — 4–7 context-dependent decisions (default)
+- `--depth=over` — 8–12 decisions for thorough exploration
 
 ### Decision Artifacts
 
-Each decision produces a file in `artifacts/decisions/`:
+All decisions are stored in `.decisions/` following the decision-kit spec:
 
 ```
-artifacts/decisions/
-├── PROJ-298-01-layout-pattern.md      # Decision record
-├── PROJ-298-01-layout-pattern.html    # Browsable visual comparison page
-├── PROJ-298-02-interaction-model.md
-├── PROJ-298-02-interaction-model.html
-├── PROJ-298-03-info-density.md
-├── PROJ-298-03-info-density.html
-├── PROJ-298-04-visual-tone.md
-├── PROJ-298-04-visual-tone.html
-└── PROJ-298-05-key-components.md
+.decisions/
+├── decisions.json                     # Machine-readable state
+├── decision-001-page-layout.html      # Browsable visual comparison page
+├── decision-002-pipeline-display.html
+├── decision-003-creation-flow.html
+├── decision-004-status-viz.html
+├── index.html                         # Landing page showing all decisions
+├── auto-review.html                   # Batch review page (auto mode)
+└── strategy-brief.md                  # Summary of all choices
 ```
 
-The `.md` files have YAML frontmatter with structured decision data:
+Each `.html` file is a self-contained page you can open in a browser — it shows all options with visual previews, tradeoffs, the side-by-side comparison, and your choice.
 
-```yaml
----
-decision_id: PROJ-298-01
-prototype_id: PROJ-298
-decision_point: layout-pattern
-chosen_option: list-detail
-reasoning: Users need to compare items side by side
-decided_at: 2026-04-30T12:00:00Z
----
-```
-
-The `.html` files are self-contained pages you can open in a browser — they show all options with visual previews, tradeoffs, the side-by-side comparison, and your choice.
+`decisions.json` tracks each decision with its status, chosen option, reasoning, and history.
 
 ## Decisions Compound
 
-Each decision reads all prior decisions. The interaction model options are filtered by what makes sense for your chosen layout. The component choices are informed by your visual tone. Nothing resets. Context builds.
+Each decision reads all prior decisions. Options are informed by earlier choices and by the target codebase's existing patterns. Nothing resets. Context builds.
 
-This means the prototype isn't just "AI generated an HTML page." It's "a human made 5 deliberate design decisions, each building on the last, and the prototype reflects exactly those choices."
+This means the prototype isn't just "AI generated some code." It's "a human made deliberate design decisions, each building on the last, and the prototype reflects exactly those choices."
 
 ## Decisions Feed Downstream
 
 When strat-creator runs on the same RFE, it can read the decision artifacts:
 
 ```
-artifacts/decisions/PROJ-298-01-layout-pattern.md
+.decisions/strategy-brief.md
 → strat-creator reads this as architectural context
 → "The team prototyped PROJ-298 and chose List+Detail layout
     because users need side-by-side comparison"
 → Strategy includes this as a design constraint
 ```
 
-The decisions become part of the permanent record. Six months later, someone asks "why does this feature use a list+detail layout?" The answer is in `artifacts/decisions/`, with the visual comparison page showing what was considered and why.
+The decisions become part of the permanent record. Six months later, someone asks "why does this feature use a list+detail layout?" The answer is in `.decisions/`, with the visual comparison page showing what was considered and why.
 
 ## Auto Mode
 
-`--mode=auto` skips the per-decision pause. AI picks the recommended option for every decision. This is useful for:
+`--mode=auto` generates every decision with the same rigor (research, options, recommendation) but auto-picks the recommended option. After all decisions are made, a single batch-review page (`.decisions/auto-review.html`) is generated so the human can confirm or override before code generation proceeds.
+
+This is useful for:
 
 - CI batch runs where you want quick prototypes at scale
 - Low-fidelity wireframes where individual decisions matter less
 - Generating a starting point to iterate on later
 
-Auto mode still writes decision artifacts, but with `auto_picked: true` in the frontmatter. You can review all auto-picked decisions after the fact.
+## Workspace Mode
 
-## Configuration
+When `--workspace` is set, the pipeline modifies an existing codebase instead of generating standalone HTML:
 
-Decision points are defined in `config/decision-points.yaml`. You can:
-- Add new decision points
-- Reorder existing ones
-- Customize the options for each decision
-- Mark decisions as `dynamic: true` to generate options based on context
+1. Analyzes the target codebase's tech stack, conventions, and relevant areas
+2. Surfaces decisions informed by what already exists in the codebase
+3. Generates code in the target's tech stack (React, Angular, static HTML, etc.)
+4. Writes a changeset manifest tracking what was created and modified
+
+Without `--workspace`, the pipeline generates standalone self-contained HTML prototypes to `artifacts/prototypes/`.
 
 ## Without Decision Kit
 
-If decision-kit is not bootstrapped (`.context/decision-kit/` is empty), decide mode uses built-in decision prompts. The experience is similar but without the full decision-kit artifact format. To get the full experience:
+If decision-kit is not bootstrapped (`.context/decision-kit/` is empty), decide mode uses built-in decision prompts following the same artifact format. To get the full experience:
 
 ```bash
 bash scripts/bootstrap-decision-kit.sh

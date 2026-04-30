@@ -41,7 +41,9 @@ scoring:
 defaults:
   fidelity: low
   mode: auto
+  depth: normal
   target: local
+  workspace: null
   max_refinement_cycles: 3
 
 # --- Design System ---
@@ -54,8 +56,16 @@ design_system:
 # --- Decision Kit Integration ---
 decision_kit:
   repo: https://github.com/jnemargut/decision-kit
-  decisions_dir: artifacts/decisions
+  decisions_dir: .decisions
   thinking_skills:
     - strategize
     - shape
     - product-design
+
+# --- Decision Depth ---
+# Controls how many decisions are surfaced in --mode=decide.
+# Decisions are dynamically planned based on the RFE and codebase context.
+decision_depth:
+  under: { min: 2, max: 3 }
+  normal: { min: 4, max: 7 }
+  over: { min: 8, max: 12 }

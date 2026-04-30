@@ -35,7 +35,9 @@ Publishes a completed prototype to a target system (Apollo, a git repo, or local
 
 | Input | Location | Required |
 |-------|----------|----------|
-| Prototype files | `artifacts/prototypes/{ID}/` or `local/prototypes/{ID}/` | Yes |
+| Prototype files | Target workspace, `artifacts/prototypes/{ID}/`, or `local/prototypes/{ID}/` | Yes |
+| Workspace analysis | `artifacts/workspace-analysis/{ID}.json` | Yes (workspace mode) |
+| Changeset manifest | `artifacts/changesets/{ID}.md` | Yes (workspace mode) |
 | Review scores | `artifacts/prototype-reviews/{ID}-summary.md` | Recommended |
 | Usability report | `artifacts/usability-reports/{ID}-usability.md` | Optional |
 | Desirability report | `artifacts/desirability-reports/{ID}-desirability.md` | Optional |
@@ -45,11 +47,19 @@ Publishes a completed prototype to a target system (Apollo, a git repo, or local
 
 ### Step 1: Locate and Validate the Prototype
 
-Find the prototype in `artifacts/prototypes/{ID}/` or `local/prototypes/{ID}/`.
+Determine whether this prototype was created in workspace mode or standalone mode:
 
-Validate minimum requirements:
+1. Check `artifacts/workspace-analysis/{ID}.json` — if it exists, this is a workspace-mode prototype. Read the workspace path and changeset from `artifacts/changesets/{ID}.md`.
+2. Otherwise, find the prototype in `artifacts/prototypes/{ID}/` or `local/prototypes/{ID}/`.
+
+**Workspace mode validation:**
+- Workspace path exists and is accessible
+- Changeset manifest lists at least one file
+- `artifacts/prototypes/{ID}/metadata.json` exists
+
+**Standalone mode validation:**
 - `index.html` exists (or at least one HTML file)
-- `metadata.json` exists and has required fields (`id`, `name`, `description`)
+- `metadata.json` exists and has required fields (`rfe_key`, `title`, `description`)
 
 If validation fails, stop:
 
@@ -127,9 +137,30 @@ In `--dry-run` mode: print the payload and target URL but don't POST.
 
 #### Target: `repo`
 
-Initialize and push the prototype as a standalone git repo.
+Commit and push prototype changes to a git repo.
 
-1. Initialize a git repo in the prototype directory:
+**Workspace mode** (prototype was created in an existing codebase):
+
+The workspace is already a git repo. Commit the prototype changes on a feature branch:
+
+```bash
+cd {workspace-path}
+git checkout -b prototype/{ID}
+git add {files from changeset manifest}
+git commit -m "feat: prototype for {ID} — {title}"
+```
+
+If `--remote` is provided (or the workspace already has a remote), push the branch:
+
+```bash
+git push -u origin prototype/{ID}
+```
+
+Print a suggestion to open a merge request for the branch.
+
+**Standalone mode** (self-contained HTML prototype):
+
+Initialize and push the prototype as a standalone git repo:
 
 ```bash
 cd artifacts/prototypes/{ID}
@@ -138,14 +169,12 @@ git add .
 git commit -m "feat: initial prototype for {ID}"
 ```
 
-2. If `--remote` is provided, add and push:
+If `--remote` is provided, add and push:
 
 ```bash
 git remote add origin {remote-url}
 git push -u origin main
 ```
-
-3. Record the repo URL in submission metadata
 
 In `--dry-run` mode: show what commands would run but don't execute them.
 

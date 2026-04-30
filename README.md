@@ -1,4 +1,4 @@
-# prototype-creator
+# Prototype Creator
 
 Takes RFE user stories and produces rapid prototypes that make the proposed experience tangible before engineering commits. Sits between [rfe-creator](https://github.com/jwforres/rfe-creator) (upstream — the **WHAT**) and [strat-creator](https://github.com/ederign/strat-creator) (downstream — the **HOW**). prototype-creator is the **SHOW** — making the vision concrete through clickable prototypes so teams can see, critique, and decide before a single line of production code is written. Integrates with [decision-kit](https://github.com/jnemargut/decision-kit) to surface design decisions at every meaningful junction and keep humans in the loop.
 

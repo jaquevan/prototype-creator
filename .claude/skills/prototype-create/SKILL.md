@@ -1,11 +1,11 @@
 ---
 name: prototype-create
-description: Create HTML prototypes from RFE user stories, with configurable fidelity and human-in-the-loop design decisions.
+description: Create or update prototypes from RFE user stories, targeting an existing codebase or generating standalone HTML, with dynamic design decisions and human-in-the-loop judgment.
 user-invocable: true
 allowed-tools: Read, Write, Edit, Glob, Grep, Bash, AskUserQuestion, mcp__atlassian__searchJiraIssuesUsingJql, mcp__atlassian__getJiraIssue
 ---
 
-You are a prototype creation assistant. Your job is to take RFE (Feature Request) user stories and generate interactive HTML prototypes that make the proposed experience tangible before engineering commits. You produce prototypes at three fidelity levels — wireframe, realistic, or production-ready — and can operate autonomously or pause at each design decision for human judgment.
+You are a prototype creation assistant. Your job is to take RFE (Feature Request) user stories and produce prototype implementations that make the proposed experience tangible before engineering commits. You can either modify an existing prototype codebase (React, Angular, static HTML — whatever the target uses) or generate standalone HTML prototypes. You operate at three fidelity levels and can run autonomously or pause at each design decision for human judgment.
 
 ## Flags
 
@@ -13,8 +13,10 @@ Parse the following flags from `$ARGUMENTS`:
 
 | Flag | Values | Default | Meaning |
 |------|--------|---------|---------|
-| `--fidelity` | `low`, `medium`, `high` | `medium` | Wireframe → realistic PatternFly → production-ready |
+| `--workspace` | Local path or git URL | none | Target codebase to modify. When set, output is code changes in the target's tech stack. When omitted, generates standalone HTML to `artifacts/prototypes/`. |
+| `--fidelity` | `low`, `medium`, `high` | `medium` | Wireframe → realistic design system components → production-ready |
 | `--mode` | `auto`, `decide` | `auto` | AI decides everything vs. stops at each design decision |
+| `--depth` | `under`, `normal`, `over` | `normal` | How many decisions to surface: `under` = 2–3 highest-stakes only, `normal` = 4–7 context-dependent, `over` = 8–12 thorough |
 | `--dry-run` | (flag) | off | Skip all external writes (Jira label updates); still produce local artifacts |
 
 Explicit RFE IDs (e.g., `PROJ-298`) may also appear in `$ARGUMENTS`. Treat them as the selection — skip interactive selection in Step 2.
@@ -30,33 +32,36 @@ If `--dry-run` is in `$ARGUMENTS`, skip ALL external writes:
 
 ## Fidelity Levels
 
+Fidelity describes the level of polish and completeness. When a `--workspace` is set, adapt fidelity to the target codebase's conventions (e.g., React components instead of raw HTML).
+
 ### `--fidelity=low` — Wireframe
 
-- Grayscale placeholder boxes and labels
-- No real images or icons — use gray rectangles with descriptive text
-- Static click-throughs between key screens (anchor links or simple JS)
-- Monospace or system font only
+- Placeholder content, minimal styling
+- Static click-throughs between key screens
 - Focus: information architecture, layout relationships, content hierarchy
-- No PatternFly CSS — minimal inline styles only
+- **Standalone mode**: Grayscale boxes, system font, no design system CSS
+- **Workspace mode**: Stub components with placeholder text, minimal wiring
 
-### `--fidelity=medium` — Realistic PatternFly
+### `--fidelity=medium` — Realistic
 
-- PatternFly 6 CSS and component classes (`<link>` to CDN or vendored CSS)
-- Real component structure: `pf-v6-c-page`, `pf-v6-c-card`, `pf-v6-c-table`, etc.
+- Design system components used correctly
 - Representative (not production) data in tables, lists, forms
-- Key interactions wired up with vanilla JS (tab switching, drawer toggle, modal open/close)
-- Responsive layout using PatternFly grid
+- Key interactions wired up (tab switching, drawer toggle, modal open/close)
+- Responsive layout
 - Focus: realistic look and feel, component choices validated
+- **Standalone mode**: PatternFly 6 CDN CSS, vanilla JS interactions
+- **Workspace mode**: Real components matching the codebase's patterns, hooked into existing routing/state
 
 ### `--fidelity=high` — Production-Ready
 
-- Full PatternFly 6 component markup with correct ARIA attributes
+- Full design system component markup with correct ARIA attributes
 - All user flows including happy path, empty states, error states, loading states
 - Realistic data volumes (pagination, truncation, overflow handling)
 - Keyboard navigation for interactive elements
-- Responsive breakpoints tested (desktop, tablet, mobile)
-- Inline JS for all interactions; no external framework dependencies
+- Responsive breakpoints tested
 - Focus: could be handed to engineering as a reference implementation
+- **Standalone mode**: Inline JS, no framework dependencies, self-contained HTML
+- **Workspace mode**: Production-quality components matching the codebase's test and accessibility standards
 
 ## Step 1: Find RFE Source Data
 
@@ -137,205 +142,386 @@ Parse the RFE content to identify:
 
 If the RFE is thin or ambiguous, log what's missing and proceed with reasonable assumptions. Document assumptions in the prototype's `metadata.json`.
 
-## Step 5: Determine Fidelity Level and Mode
+## Step 5: Resolve Workspace
 
-Read `--fidelity` and `--mode` from `$ARGUMENTS`.
+Read `--workspace` from `$ARGUMENTS`.
 
-**If `--fidelity` was not specified**: Default to `medium`. Print `[DEFAULT] Using --fidelity=medium (PatternFly components, key interactions wired)`.
+**If `--workspace` is not set**: Skip this step. The pipeline will generate standalone HTML to `artifacts/prototypes/<RFE-KEY>/`.
+
+**If `--workspace` is a local path**: Verify the path exists and contains a codebase. Print `[WORKSPACE] Using local workspace: <path>`.
+
+**If `--workspace` is a git URL**: Clone the repo into `local/workspaces/<RFE-KEY>/`. Print `[WORKSPACE] Cloning <url> into local/workspaces/<RFE-KEY>/`.
+
+```bash
+mkdir -p local/workspaces
+git clone --depth 1 <url> local/workspaces/<RFE-KEY>
+```
+
+Set the resolved workspace path for subsequent steps.
+
+## Step 6: Analyze Target Codebase
+
+**Skip this step if no workspace is set.**
+
+Analyze the target codebase to understand its tech stack, conventions, and existing patterns. This informs both the design decisions and the code generation.
+
+### What to Detect
+
+1. **Tech stack** — Framework (React, Angular, Vue, static HTML), language (TypeScript, JavaScript), bundler (Webpack, Vite), design system (PatternFly, Material, custom)
+
+2. **File structure** — Where do pages/views/components live? What's the routing pattern? Where do tests go?
+
+3. **Existing patterns** — How are pages structured? How are components composed? What state management is used? How are API calls made?
+
+4. **Relevant areas** — Based on the RFE user stories, which parts of the codebase does this feature likely touch? Are there existing pages that serve as good reference implementations?
+
+5. **Agent instructions** — Check for `AGENTS.md`, `.cursor/rules/`, `.claude/` instructions, or similar files that describe how agents should work in this codebase. Follow any conventions they specify.
+
+### How to Analyze
+
+```bash
+# Tech stack detection
+ls package.json pyproject.toml Cargo.toml go.mod 2>/dev/null
+cat package.json | head -50  # frameworks, dependencies
+
+# File structure
+find src/ -type f -name "*.tsx" -o -name "*.ts" -o -name "*.jsx" -o -name "*.js" | head -30
+
+# Agent instructions
+cat AGENTS.md 2>/dev/null
+ls .cursor/rules/ .claude/ 2>/dev/null
+```
+
+Read 2–3 existing page/component files to understand the codebase's conventions (imports, component structure, styling approach).
+
+### Output
+
+Store the analysis in `artifacts/workspace-analysis/<RFE-KEY>.json`:
+
+```json
+{
+  "rfe_key": "PROJ-298",
+  "workspace_path": "/path/to/repo",
+  "tech_stack": {
+    "framework": "react",
+    "language": "typescript",
+    "design_system": "patternfly-6",
+    "bundler": "webpack",
+    "test_framework": "jest"
+  },
+  "conventions": {
+    "component_pattern": "functional components with hooks",
+    "file_structure": "src/pages/ for routes, src/components/ for shared",
+    "routing": "react-router v6",
+    "state_management": "react context + hooks"
+  },
+  "relevant_areas": [
+    "src/pages/pipelines/",
+    "src/components/shared/DataTable.tsx"
+  ],
+  "agent_instructions": "Found AGENTS.md — follow PatternFly conventions, designers are primary users"
+}
+```
+
+## Step 7: Determine Fidelity Level and Mode
+
+Read `--fidelity`, `--mode`, and `--depth` from `$ARGUMENTS`.
+
+**If `--fidelity` was not specified**: Default to `medium`. Print `[DEFAULT] Using --fidelity=medium`.
 
 **If `--mode` was not specified**: Default to `auto`. Print `[DEFAULT] Using --mode=auto (AI makes all design decisions)`.
+
+**If `--depth` was not specified**: Default to `normal`. Print `[DEFAULT] Using --depth=normal (4–7 context-dependent decisions)`.
 
 Print a summary before proceeding:
 
 ```
 Prototype Plan:
-  RFE:      PROJ-298 — New onboarding wizard
-  Fidelity: medium (realistic PatternFly)
-  Mode:     decide (human-in-the-loop)
-  Screens:  ~4 estimated (welcome, configure, review, complete)
+  RFE:       PROJ-298 — New onboarding wizard
+  Workspace: /path/to/rhoai (React + TypeScript + PatternFly 6)
+  Fidelity:  medium (realistic)
+  Mode:      decide (human-in-the-loop)
+  Depth:     normal (4–7 decisions)
+  Screens:   ~4 estimated (welcome, configure, review, complete)
 ```
 
-## Step 6: Design Decisions (decide mode only)
+If no workspace is set, omit the Workspace line and show `(standalone HTML)` after Fidelity.
 
-**If `--mode=auto`**: Skip this step entirely. Make all design decisions autonomously based on the RFE content, PatternFly best practices, and common UX patterns. Document the decisions made in the prototype's `metadata.json` under a `decisions` array.
+## Step 8: Design Decisions
 
-**If `--mode=decide`**: Surface each design decision one at a time. For each decision, produce an HTML decision artifact in `artifacts/decisions/` and wait for the human to choose before proceeding.
+Design decisions are **dynamic, not a fixed set**. The AI analyzes the RFE, the target codebase (if any), and any upstream decisions to identify which decisions actually need to be made for this specific feature. Different RFEs surface different decisions.
 
-### Decision Points
+### Step 8a: Plan Decisions
 
-Process these five decisions in order. Each decision builds on the previous ones.
+Before presenting any decisions, plan the full set. Analyze:
 
-#### Decision 1: Layout Pattern
+- The RFE's user stories and acceptance criteria (from Step 4)
+- The target codebase's existing patterns (from Step 6, if workspace is set)
+- Any upstream decisions already made (check `.decisions/decisions.json` if it exists)
+- The fidelity level and its implications
 
-**Question**: What overall page layout should the prototype use?
+Identify the decisions hiding in this RFE. Consider dimensions like:
 
-Options to consider (tailor to the RFE — not all apply to every feature):
-- **List/table view** — data-dense, sortable, filterable (e.g., resource list)
-- **Card grid** — visual, scannable, good for heterogeneous items
-- **Dashboard** — metrics + widgets + activity feed
-- **Wizard/stepper** — sequential multi-step flow
-- **Detail page** — single-object deep view with tabs/sections
-- **Split pane** — list on left, detail on right (e.g., email client pattern)
+- **Layout and structure** — page layout, navigation pattern, information hierarchy
+- **Interaction patterns** — how users perform key actions, feedback mechanisms
+- **Data presentation** — how entities are displayed, density, progressive disclosure
+- **Component choices** — which design system components for critical UI elements
+- **Flow and sequencing** — how screens connect, what the user journey looks like
+- **State handling** — empty states, loading, errors, edge cases
+- **Integration points** — how this feature fits into the existing UI (workspace mode)
+- **Scope boundaries** — what's in v1 vs. deferred
 
-#### Decision 2: Interaction Model
+These are examples, not a checklist. The right decisions depend entirely on what the RFE describes. A wizard flow surfaces different decisions than a dashboard redesign.
 
-**Question**: How does the user perform key actions?
+**Determine decision count based on `--depth`:**
+- `under` — Surface only the 2–3 highest-stakes decisions. Auto-resolve everything else with a brief note.
+- `normal` — Surface 4–7 decisions that have genuine tradeoffs or ambiguity.
+- `over` — Surface 8–12 decisions for thorough exploration.
 
-Options to consider:
-- **Inline editing** — click to edit in place, no modal
-- **Modal dialogs** — focused overlays for create/edit/confirm
-- **Drawer/side panel** — slide-out detail without losing list context
-- **Full-page forms** — dedicated page for complex input
-- **Contextual menus** — right-click or kebab actions
+**Filter by confidence:** If the AI is highly confident about a decision (clear best practice, only one reasonable option given the context), auto-resolve it with a note explaining why. Only surface decisions where there are genuine tradeoffs that benefit from human judgment.
 
-#### Decision 3: Information Density
+Print the decision plan:
 
-**Question**: How much information is visible at once vs. progressively disclosed?
+```
+Decision Plan for PROJ-298 (6 decisions):
 
-Options to consider:
-- **Progressive disclosure** — expandable rows, "show more" toggles
-- **Tabs** — parallel sections, one visible at a time
-- **Expandable sections** — accordion pattern, multiple can be open
-- **Dense table** — all columns visible, horizontal scroll if needed
-- **Summary + drill-down** — overview cards that link to detail pages
+  #  Decision                         Confidence  Action
+  ─  ────────                         ──────────  ──────
+  1  Page layout pattern              Low         → Surface (3 viable approaches)
+  2  Pipeline list vs. card display   Low         → Surface (tradeoff: density vs. scannability)
+  3  Creation flow: wizard vs. form   Medium      → Surface (user stories suggest either could work)
+  4  Status visualization approach    Low         → Surface (multiple valid patterns)
+  5  Navigation integration           High        → Auto-resolve (existing sidebar pattern is clear)
+  6  Error state handling             High        → Auto-resolve (PatternFly conventions apply)
 
-#### Decision 4: Visual Tone
+Surfacing 4 decisions for human input. 2 auto-resolved.
+```
 
-**Question**: What is the visual personality of the prototype?
+### Step 8b: Initialize Decision Storage
 
-Options to consider:
-- **Utilitarian** — minimal decoration, maximum information, dense
-- **Friendly/approachable** — illustrations, generous whitespace, onboarding-style
-- **Data-dense** — dashboards, metrics, charts, monitoring feel
-- **Conversational** — chat-like, assistant-driven, progressive
-- **Enterprise-formal** — structured, professional, compliance-oriented
-
-#### Decision 5: Key Component Choices
-
-**Question**: Which PatternFly components should be used for the critical UI elements?
-
-Present 2–4 options for the primary content display pattern and the primary action pattern. For example:
-- Primary content: DataList vs. Table vs. CardView vs. DescriptionList
-- Primary action: Button + Modal vs. Toolbar dropdown vs. Wizard vs. Inline form
-- Navigation: Tabs vs. Vertical nav vs. Breadcrumb trail
-- Feedback: Alerts vs. Toasts vs. Inline validation vs. Banner
-
-### Decision Artifact Format
-
-For each decision, write an HTML file to `artifacts/decisions/<RFE-KEY>-decision-<N>.html` where N is 1–5.
-
-The HTML file must contain:
-- A title and context section explaining the decision
-- 2–4 options, each with:
-  - A name and one-sentence description
-  - A visual preview (inline HTML/CSS mockup of how this option would look)
-  - Pros and cons (2–3 each)
-  - A "best when" note (when this option is the right choice)
-- A side-by-side comparison table summarizing all options
-- A recommendation with reasoning (the AI's suggestion)
+Create the `.decisions/` directory in the prototype-creator workspace (not in the target codebase):
 
 ```bash
-python3 ${CLAUDE_SKILL_DIR}/scripts/frontmatter.py set artifacts/decisions/<RFE-KEY>-decision-<N>.html \
-    rfe_key=<RFE-KEY> \
-    decision_number=<N> \
-    decision_type="<layout_pattern|interaction_model|information_density|visual_tone|key_components>" \
-    created="$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-    status=pending
+mkdir -p .decisions
 ```
 
-After writing the decision artifact, ask the user:
+If `.decisions/decisions.json` already exists (from upstream thinking skills), read it and do not re-ask questions already answered. Build on prior decisions.
+
+Initialize or update `decisions.json`:
+
+```json
+{
+  "projectName": "PROJ-298 — New Onboarding Wizard",
+  "projectDescription": "Prototype decisions for the onboarding wizard RFE",
+  "createdAt": "2026-04-30T12:00:00Z",
+  "workspace": "/path/to/rhoai",
+  "rfeKey": "PROJ-298",
+  "fidelity": "medium",
+  "decisions": []
+}
+```
+
+### Step 8c: Walk Through Decisions
+
+**If `--mode=auto`**: For each planned decision, generate the full decision page (research, options, recommendation, comparison), save it, and auto-pick the recommended option. Set status to `"auto-picked"`. After all decisions, generate `.decisions/auto-review.html` — a single batch-review page listing every auto-pick. Open it and pause once for confirmation or overrides. Transition all `auto-picked` to `chosen` only after confirmation.
+
+**If `--mode=decide`**: Surface each decision one at a time. For each decision:
+
+1. **Gather context** for this specific decision — consider the RFE, prior decisions, and target codebase patterns
+
+2. **Write the decision page** to `.decisions/decision-NNN-slug.html`. Each page must contain:
+   - A clear description of what's being decided and why it matters
+   - 4 options (recommended count), each with:
+     - A name and one-sentence description
+     - A visual preview (inline HTML/CSS mockup showing how this option would look)
+     - Pros and cons (2–3 each)
+     - A "best when" note
+   - A side-by-side comparison table across 5–8 relevant dimensions
+   - A recommendation with reasoning
+
+3. **Ask the user to choose:**
 
 ```
-Decision <N>/5: <Decision Type>
+Decision <N>/<total>: <Decision Title>
 
-I've created a decision artifact with <X> options:
-  → artifacts/decisions/<RFE-KEY>-decision-<N>.html
+I've created a decision page with <X> options:
+  → .decisions/decision-<NNN>-<slug>.html
 
 Open it in a browser to see visual previews and tradeoffs.
 
 My recommendation: <Option Name> — <one sentence why>
 
-Which option do you prefer? (enter option number or name, or "recommended")
+Which option do you prefer? (enter option number, name, "recommended", or bring your own answer)
 ```
 
-Wait for the user's response. Record their choice. Update the decision artifact's frontmatter:
+4. **Record the choice** in `decisions.json`:
 
-```bash
-python3 ${CLAUDE_SKILL_DIR}/scripts/frontmatter.py set artifacts/decisions/<RFE-KEY>-decision-<N>.html \
-    status=decided \
-    chosen="<option name>" \
-    decided="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+```json
+{
+  "id": "decision-001",
+  "slug": "page-layout",
+  "title": "Page Layout Pattern",
+  "status": "chosen",
+  "chosenOption": "B",
+  "chosenTitle": "List + Detail",
+  "reasoning": null,
+  "options": ["A", "B", "C", "D"],
+  "recommended": "B",
+  "htmlFile": "decision-001-page-layout.html",
+  "decidedAt": "2026-04-30T12:05:00Z",
+  "summary": "Master list on left, detail panel on right for item comparison"
+}
 ```
+
+If the user volunteers reasoning ("Option B because users need to compare items"), capture it in the `reasoning` field. Do not ask for reasoning if they don't offer it.
+
+If the user brings their own answer ("Actually I want to do X"), generate a full visual card for their answer with the same treatment as any AI option and record it with `chosenOption: "custom"`.
 
 **Do NOT proceed to the next decision until the current one is resolved.**
 
-## Step 7: Generate the Prototype HTML
+### Step 8d: Auto-Resolved Decisions
 
-With all design decisions resolved (either by AI in auto mode or by human in decide mode), generate the prototype.
+For decisions the AI auto-resolved (high confidence), record them in `decisions.json` with a note:
 
-### Template Discovery
-
-Check for available templates:
-
-```bash
-ls templates/layouts/
-ls templates/components/
+```json
+{
+  "id": "decision-005",
+  "slug": "nav-integration",
+  "title": "Navigation Integration",
+  "status": "auto-resolved",
+  "chosenTitle": "Existing sidebar pattern",
+  "reasoning": "Auto-resolved: target codebase uses consistent sidebar navigation; adding a new nav item follows the established pattern",
+  "summary": "Use existing sidebar nav — no decision needed"
+}
 ```
 
-If templates exist, use them as starting points. If not, generate from scratch based on PatternFly conventions.
+### Step 8e: Generate Decision Index and Brief
 
-**Layout templates** (`templates/layouts/`): Base page structures (e.g., `page-with-sidebar.html`, `wizard-layout.html`, `dashboard-layout.html`). These provide the outer shell — masthead, sidebar, main content area.
+After all decisions are resolved:
 
-**Component templates** (`templates/components/`): Reusable UI fragments (e.g., `data-table.html`, `card-grid.html`, `empty-state.html`, `modal-dialog.html`). Drop these into the layout as building blocks.
+1. Write `.decisions/index.html` — a landing page showing all decisions and their status
+2. Write `.decisions/strategy-brief.md` — a summary of all choices made:
 
-### Generation Process
+```markdown
+# Prototype Brief: PROJ-298 — New Onboarding Wizard
 
-1. **Start with the layout template** that matches Decision 1 (layout pattern). If no matching template exists, generate the layout from scratch using PatternFly page structure.
+## Decisions Made
+| # | Decision | Choice | Mode |
+|---|----------|--------|------|
+| 1 | Page Layout | List + Detail | human |
+| 2 | Pipeline Display | Data table with status column | human |
+| 3 | Creation Flow | Wizard (3 steps) | human |
+| 4 | Status Visualization | Inline status badges | human |
+| 5 | Navigation | Sidebar nav item | auto-resolved |
+| 6 | Error Handling | PatternFly Alert component | auto-resolved |
 
-2. **Populate the content area** with components matching Decisions 2–5. Wire up interactions with vanilla JS.
+## Key Findings
+- [Findings from decision research]
 
-3. **Generate realistic data** based on the entities extracted in Step 4. Use the RFE's domain language — if the RFE is about "pipelines," the prototype should show pipeline names, statuses, and metrics, not generic "Item 1, Item 2."
+## Assumptions
+- [Any assumptions made]
 
-4. **Create multiple screens** if the RFE describes a multi-step flow:
+## Next Steps
+Generate prototype implementation based on these decisions.
+```
+
+## Step 9: Generate the Prototype
+
+With all design decisions resolved, generate the prototype. The generation approach differs based on whether a workspace is set.
+
+### Workspace Mode (--workspace is set)
+
+When modifying an existing codebase:
+
+1. **Read the strategy brief** from `.decisions/strategy-brief.md` to understand all decisions made.
+
+2. **Read the workspace analysis** from `artifacts/workspace-analysis/<RFE-KEY>.json` to understand the codebase's conventions.
+
+3. **Follow the target codebase's conventions.** If the codebase has `AGENTS.md`, `.cursor/rules/`, or similar agent instructions, follow them. Match the existing:
+   - File naming and directory structure
+   - Component patterns (functional components, hooks, etc.)
+   - Import conventions
+   - Styling approach (CSS modules, styled-components, design system classes)
+   - Test patterns (if `--fidelity=high`)
+
+4. **Generate code in the target's tech stack.** For a React + TypeScript codebase, produce `.tsx` components. For Angular, produce Angular components. For static HTML, produce HTML files. Never generate standalone HTML when the target uses a framework.
+
+5. **Generate realistic data** based on the entities extracted in Step 4. Use the RFE's domain language — if the RFE is about "pipelines," show pipeline names, statuses, and metrics.
+
+6. **Create multiple files** as needed for the feature — pages, components, utilities, routes, tests. Follow the codebase's existing structure for where each type of file goes.
+
+7. **Integrate with existing navigation and routing.** The new feature should be reachable from the existing UI, not orphaned.
+
+### Standalone Mode (no --workspace)
+
+When generating self-contained HTML prototypes:
+
+1. **Check for templates** in `templates/layouts/` and `templates/components/`. Use them as starting points if they exist.
+
+2. **Generate self-contained HTML files** using the decisions from the strategy brief. All CSS should be inlined or loaded from CDN. All JS should be inline `<script>` tags. No build step required.
+
+3. **Create multiple screens** if the RFE describes a multi-step flow:
    - `index.html` — primary view / entry point
-   - Additional HTML files for each major screen (e.g., `create.html`, `detail.html`, `settings.html`)
+   - Additional HTML files for each major screen
    - Link screens together with navigation
 
-5. **Apply fidelity level**:
+4. **Apply fidelity level**:
+   - **Low**: Minimal inline styles, gray boxes, system font
+   - **Medium**: PatternFly 6 CDN CSS, vanilla JS interactions
+   - **High**: Full PatternFly 6 markup with ARIA attributes, all states
 
-   - **Low**: Strip all PatternFly classes. Use minimal inline styles: borders, padding, gray backgrounds. Replace images with labeled gray boxes. Use system font stack.
-
-   - **Medium**: Use PatternFly 6 CDN CSS. Apply component classes correctly. Include representative data. Wire up tab switching, drawer toggles, modal open/close with vanilla JS.
-
-   - **High**: Full PatternFly 6 markup with ARIA attributes. All states (empty, loading, error, populated, overflow). Keyboard navigation. Responsive breakpoints. Loading skeletons. Form validation feedback.
-
-6. **Ensure the prototype is self-contained**: All CSS should be inlined or loaded from CDN. All JS should be inline `<script>` tags. No build step required — open `index.html` in a browser and it works.
-
-### PatternFly CDN Reference (for medium and high fidelity)
-
+5. **PatternFly CDN reference** (medium and high fidelity):
 ```html
 <link rel="stylesheet" href="https://unpkg.com/@patternfly/patternfly@6/patternfly.min.css" />
 <link rel="stylesheet" href="https://unpkg.com/@patternfly/patternfly@6/patternfly-addons.min.css" />
 ```
 
-## Step 8: Write Prototype Artifacts
+## Step 10: Write Prototype Artifacts
 
-Write the generated prototype to `artifacts/prototypes/<RFE-KEY>/`.
+### Workspace Mode
 
-### Directory Structure
+Write generated files directly to the target workspace. Track what was created or modified:
+
+Write a changeset manifest to `artifacts/changesets/<RFE-KEY>.md`:
+
+```markdown
+---
+rfe_key: PROJ-298
+workspace: /path/to/rhoai
+created: 2026-04-30T12:00:00Z
+---
+
+# Changeset: PROJ-298 — New Onboarding Wizard
+
+## Files Created
+- `src/pages/onboarding/OnboardingWizard.tsx` — Main wizard component
+- `src/pages/onboarding/steps/WelcomeStep.tsx` — Welcome step
+- `src/pages/onboarding/steps/ConfigureStep.tsx` — Configuration step
+- `src/components/shared/StepProgress.tsx` — Reusable step indicator
+
+## Files Modified
+- `src/routes.tsx` — Added route for /onboarding
+- `src/components/Navigation/Sidebar.tsx` — Added nav item
+
+## Decisions Applied
+See `.decisions/strategy-brief.md` for the full decision record.
+```
+
+Also write `artifacts/prototypes/<RFE-KEY>/metadata.json` as a record (same format as standalone mode but with `workspace` field).
+
+### Standalone Mode
+
+Write the generated prototype to `artifacts/prototypes/<RFE-KEY>/`:
 
 ```
 artifacts/prototypes/<RFE-KEY>/
 ├── index.html              # Primary view / entry point
 ├── create.html             # (if applicable) Creation flow
 ├── detail.html             # (if applicable) Detail/edit view
-├── settings.html           # (if applicable) Configuration view
 └── metadata.json           # Prototype metadata
 ```
 
-### metadata.json
-
-Write a metadata file documenting the prototype:
+### metadata.json (both modes)
 
 ```json
 {
@@ -345,32 +531,13 @@ Write a metadata file documenting the prototype:
   "fidelity": "medium",
   "mode": "decide",
   "created": "2026-04-30T12:00:00Z",
-  "screens": [
-    {
-      "file": "index.html",
-      "title": "Welcome",
-      "description": "Landing page with getting-started options"
-    },
-    {
-      "file": "create.html",
-      "title": "Configure",
-      "description": "Step-by-step configuration wizard"
-    }
-  ],
-  "decisions": [
-    {
-      "number": 1,
-      "type": "layout_pattern",
-      "chosen": "Wizard/stepper",
-      "mode": "decide",
-      "artifact": "artifacts/decisions/PROJ-298-decision-1.html"
-    }
-  ],
+  "workspace": "/path/to/rhoai",
+  "decisions_dir": ".decisions/",
+  "changeset": "artifacts/changesets/PROJ-298.md",
   "user_stories_count": 5,
   "acceptance_criteria_count": 12,
   "assumptions": [
-    "Assumed admin role has full access to all wizard steps",
-    "Assumed maximum of 6 configuration steps based on acceptance criteria"
+    "Assumed admin role has full access to all wizard steps"
   ],
   "source": {
     "type": "jira",
@@ -380,19 +547,9 @@ Write a metadata file documenting the prototype:
 }
 ```
 
-### Set Frontmatter on index.html
+The `workspace` and `changeset` fields are only present in workspace mode. In standalone mode, include a `screens` array listing the HTML files.
 
-```bash
-python3 ${CLAUDE_SKILL_DIR}/scripts/frontmatter.py set artifacts/prototypes/<RFE-KEY>/index.html \
-    rfe_key=<RFE-KEY> \
-    title="<title>" \
-    fidelity=<low|medium|high> \
-    mode=<auto|decide> \
-    created="$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-    status=draft
-```
-
-## Step 9: Apply Labels in Jira
+## Step 11: Apply Labels in Jira
 
 **Skip entirely if `--dry-run` is in `$ARGUMENTS`.** Print `[DRY RUN] Skipping Jira label update for <RFE-KEY>`.
 
@@ -411,17 +568,40 @@ Print `[LABEL] prototype-creator-draft added to <RFE-KEY>`.
 
 If Jira credentials are unavailable and MCP is unavailable, skip this step silently — the label is provenance tracking, not blocking.
 
-## Step 10: Summary and Next Steps
+## Step 12: Summary and Next Steps
 
 Print a summary of what was created:
+
+**Workspace mode:**
+
+```
+Prototype created:
+
+  RFE:        PROJ-298 — New Onboarding Wizard
+  Workspace:  /path/to/rhoai (React + TypeScript + PatternFly 6)
+  Fidelity:   medium (realistic)
+  Mode:       decide (4 decisions surfaced, 2 auto-resolved)
+  Files:      6 created, 2 modified
+  Decisions:  .decisions/
+  Changeset:  artifacts/changesets/PROJ-298.md
+  Snapshot:   artifacts/prototype-originals/PROJ-298.md
+
+Next steps:
+  • Review the changes in the workspace
+  • Run /prototype.review to score against the UX quality rubric
+  • Run /prototype.refine to iterate based on review feedback
+```
+
+**Standalone mode:**
 
 ```
 Prototype created:
 
   RFE:       PROJ-298 — New Onboarding Wizard
   Fidelity:  medium (realistic PatternFly)
-  Mode:      decide (5 decisions resolved)
+  Mode:      decide (4 decisions surfaced, 2 auto-resolved)
   Screens:   4 files in artifacts/prototypes/PROJ-298/
+  Decisions: .decisions/
   Snapshot:  artifacts/prototype-originals/PROJ-298.md
 
   Open in browser:
@@ -436,11 +616,10 @@ Next steps:
 If multiple RFEs were processed, print a summary table:
 
 ```
-| RFE | Title | Fidelity | Screens | Status |
-|-----|-------|----------|---------|--------|
-| PROJ-298 | Onboarding Wizard | medium | 4 | ✓ created |
-| PROJ-301 | Dashboard Redesign | medium | 3 | ✓ created |
-| PROJ-305 | Settings Migration | medium | 2 | ✗ skipped (no user stories found) |
+| RFE | Title | Workspace | Fidelity | Files | Status |
+|-----|-------|-----------|----------|-------|--------|
+| PROJ-298 | Onboarding Wizard | /path/to/rhoai | medium | 8 | ✓ created |
+| PROJ-301 | Dashboard Redesign | (standalone) | medium | 3 | ✓ created |
 ```
 
 ## Edge Cases
@@ -468,9 +647,31 @@ If the user provides multiple RFEs that clearly describe parts of the same featu
 1. Prototype each RFE independently (separate `artifacts/prototypes/<KEY>/` folders)
 2. Combine into a single cohesive prototype (one folder, linked screens)
 
-### Template not found
+### Template not found (standalone mode only)
 
 If `templates/layouts/` or `templates/components/` directories do not exist or contain no matching templates, generate all HTML from scratch using PatternFly documentation and conventions. Print `[INFO] No matching template found — generating from PatternFly conventions`.
+
+### Workspace path does not exist
+
+If `--workspace` points to a local path that doesn't exist, stop:
+
+> Workspace path `<path>` does not exist. Provide a valid local path or a git URL to clone.
+
+### Workspace is an unrecognized tech stack
+
+If the workspace doesn't contain a recognizable project structure (no `package.json`, `pyproject.toml`, etc.), warn but proceed:
+
+> `[WARN] Could not detect tech stack in <path>. Generating standalone HTML files in the workspace directory.`
+
+### Workspace has uncommitted changes
+
+Before writing to a workspace, check for uncommitted changes. If found, warn:
+
+> `[WARN] Workspace has uncommitted changes. Proceeding — your existing changes will not be affected, but consider committing first.`
+
+### Upstream decisions exist
+
+If `.decisions/decisions.json` already exists (from a prior run or upstream thinking skill), read it. Do not re-ask questions already answered. Reference prior decisions in new decision options and recommendations.
 
 ### Jira MCP unavailable
 
