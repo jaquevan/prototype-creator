@@ -44,6 +44,7 @@ When no flags are provided, the speedrun uses these defaults:
 | Flag | Default | Rationale |
 |------|---------|-----------|
 | `--workspace` | none | No target codebase; generates standalone HTML |
+| `--branch` | none | Uses default branch or branch detected from workspace URL |
 | `--fidelity` | `low` | Fast iteration; wireframe-level output |
 | `--mode` | `auto` | AI makes all design decisions |
 | `--depth` | `normal` | 4–7 context-dependent decisions |
@@ -97,6 +98,7 @@ input:
   batch-file: null
 flags:
   workspace: null
+  branch: null
   fidelity: low
   mode: auto
   depth: normal
@@ -257,6 +259,7 @@ This file can be polled by CI systems to detect pipeline completion.
 | Flag | Values | Default | Source Skill |
 |------|--------|---------|-------------|
 | `--workspace` | Local path or git URL | None | prototype-create |
+| `--branch` | Branch name | None | prototype-create |
 | `--fidelity` | `low`, `medium`, `high` | `low` | prototype-create |
 | `--mode` | `auto`, `decide` | `auto` | prototype-create, prototype-refine |
 | `--depth` | `under`, `normal`, `over` | `normal` | prototype-create |

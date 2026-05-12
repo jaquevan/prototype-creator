@@ -17,6 +17,7 @@ Parse the following flags from `$ARGUMENTS`:
 | `--fidelity` | `low`, `medium`, `high` | `medium` | Wireframe → realistic design system components → production-ready |
 | `--mode` | `auto`, `decide` | `auto` | AI decides everything vs. stops at each design decision |
 | `--depth` | `under`, `normal`, `over` | `normal` | How many decisions to surface: `under` = 2–3 highest-stakes only, `normal` = 4–7 context-dependent, `over` = 8–12 thorough |
+| `--branch` | Branch name | none | Git branch to clone when `--workspace` is a git URL. Overrides branch detected from URL. Ignored for local paths. |
 | `--dry-run` | (flag) | off | Skip all external writes (Jira label updates); still produce local artifacts |
 
 Explicit RFE IDs (e.g., `PROJ-298`) may also appear in `$ARGUMENTS`. Treat them as the selection — skip interactive selection in Step 2.
@@ -144,20 +145,42 @@ If the RFE is thin or ambiguous, log what's missing and proceed with reasonable 
 
 ## Step 5: Resolve Workspace
 
-Read `--workspace` from `$ARGUMENTS`.
+Read `--workspace` and `--branch` from `$ARGUMENTS`.
 
 **If `--workspace` is not set**: Skip this step. The pipeline will generate standalone HTML to `artifacts/prototypes/<RFE-KEY>/`.
 
-**If `--workspace` is a local path**: Verify the path exists and contains a codebase. Print `[WORKSPACE] Using local workspace: <path>`.
-
-**If `--workspace` is a git URL**: Clone the repo into `local/workspaces/<RFE-KEY>/`. Print `[WORKSPACE] Cloning <url> into local/workspaces/<RFE-KEY>/`.
+**Otherwise**, use the `resolve_workspace.py` script to parse the URL, detect any embedded branch, and clone:
 
 ```bash
-mkdir -p local/workspaces
-git clone --depth 1 <url> local/workspaces/<RFE-KEY>
+python3 scripts/resolve_workspace.py <workspace> --rfe-key <RFE-KEY> [--branch <branch>]
 ```
 
-Set the resolved workspace path for subsequent steps.
+The script handles all workspace resolution deterministically:
+
+- **Local paths**: Validates the path exists. Ignores `--branch` if set (prints a warning).
+- **Git URLs**: Parses the URL for an embedded branch (GitLab `/-/tree/<branch>`, GitHub `/tree/<branch>`, fragment `#<branch>`), strips query params like `?ref_type=heads`, cleans the URL to a cloneable form, and clones with `git clone --depth 1`. The `--branch` flag overrides any branch detected from the URL.
+
+The script outputs JSON to stdout with the resolved metadata:
+
+```json
+{
+  "type": "git",
+  "original_url": "https://gitlab.example.com/org/repo/-/tree/3.5?ref_type=heads",
+  "clone_url": "https://gitlab.example.com/org/repo.git",
+  "branch": "3.5",
+  "branch_source": "url",
+  "clone_path": "local/workspaces/PROJ-298",
+  "status": "cloned"
+}
+```
+
+Use `--resolve-only` to parse without cloning (useful for dry-run or debugging):
+
+```bash
+python3 scripts/resolve_workspace.py <workspace> --resolve-only [--branch <branch>]
+```
+
+Set the resolved workspace path (from `clone_path` or `path` in the JSON output) for subsequent steps.
 
 ## Step 6: Analyze Target Codebase
 
