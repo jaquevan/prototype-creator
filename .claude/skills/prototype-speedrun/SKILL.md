@@ -17,15 +17,22 @@ For the most common case (single ID, workspace, auto mode, local submit):
 1. Write config → artifacts/prototypes/<RFE-KEY>/pipeline-config.yaml
 2. Fetch RFE from Jira (parallel with clone)
 3. Clone workspace (parallel with Jira fetch)
-4. Analyze codebase INLINE (blocks — everything downstream depends on this)
+4. Analyze codebase INLINE — READ AGENTS.md and extract verification commands
 5. Auto-resolve decisions → .decisions/<RFE-KEY>/decisions.json (skip HTML pages if low fidelity)
 6. Generate code changes in workspace
-7. Review → if score >= 6 with no zeros → skip refine
-8. Submit (--target=local is just record-keeping)
-9. Print summary
+7. Lint + build verification (from target repo's AGENTS.md — mandatory, do not skip)
+8. Review → if score >= 6 with no zeros → skip refine
+9. Submit (--target=local is just record-keeping)
+10. Print summary
 ```
 
 For `--target=repo` with a workspace: the submit step automatically creates a GitLab merge request targeting the original workspace branch. No extra setup needed — uses GitLab push options with the user's existing git authentication.
+
+### Sandbox and Git Permissions
+
+Git operations (clone in Step 3, push in Step 8) write to `.git/` internals and contact remote servers. **These commands require elevated permissions** — specifically `required_permissions: ["all"]` in Cursor's Shell tool. The default sandbox blocks `.git/hooks/` writes and may block network access to internal git hosts. Always run `resolve_workspace.py` and `submit_to_repo.py` with `required_permissions: ["all"]`.
+
+The `submit_to_repo.py` script automatically detects shallow clones (created by `resolve_workspace.py`'s `--depth 1`) and runs `git fetch --unshallow` before pushing, since GitLab rejects pushes from shallow repositories.
 
 For the full spec including batch mode, edge cases, and extended testing, read on.
 
@@ -77,6 +84,7 @@ When no flags are provided, the speedrun uses these defaults:
 
 ```
 1. CREATE   → prototype-create --fidelity={fidelity} --mode={mode} --depth={depth} [--workspace={workspace}]
+               (includes lint + build verification from target repo's AGENTS.md — Step 11 in create skill)
 2. REVIEW   → prototype-review
 3. REFINE?  → prototype-refine (only if review scores need attention)
 4. SUBMIT   → prototype-submit --target={target}
@@ -171,6 +179,17 @@ If creation fails, log the error and skip to the next ID (in batch mode) or stop
 Verify output exists:
 - **Workspace mode**: Check `artifacts/changesets/{ID}.md` and that workspace files were written
 - **Standalone mode**: Check `artifacts/prototypes/{ID}/index.html`
+
+**Important — workspace mode verification:** The `prototype-create` skill includes a mandatory Step 11 (post-change verification) that runs lint and build commands from the target repo's `AGENTS.md`. This step must complete successfully before proceeding to review. If it was skipped during create (e.g., due to context compression), run it now:
+
+```bash
+cd <workspace-path>
+npm install    # if node_modules/ missing
+npx eslint <changed-files> --no-warn
+npm run build
+```
+
+Fix any errors before proceeding — the target repo's CI pipeline will reject the MR otherwise.
 
 #### 2b. REVIEW
 

@@ -159,7 +159,9 @@ Read `--workspace` and `--branch` from `$ARGUMENTS`.
 
 **If `--workspace` is not set**: Skip this step. The pipeline will generate standalone HTML to `artifacts/prototypes/<RFE-KEY>/`.
 
-**Otherwise**, use the `resolve_workspace.py` script to parse the URL, detect any embedded branch, and clone:
+**Otherwise**, use the `resolve_workspace.py` script to parse the URL, detect any embedded branch, and clone.
+
+**Sandbox note:** This script runs `git clone` which writes to `.git/hooks/` and contacts remote servers. In Cursor, run it with `required_permissions: ["all"]` to avoid sandbox restrictions.
 
 ```bash
 python3 scripts/resolve_workspace.py <workspace> --rfe-key <RFE-KEY> [--branch <branch>] [--no-ssl-verify]
@@ -191,7 +193,7 @@ Use `--resolve-only` to parse without cloning (useful for dry-run or debugging):
 python3 scripts/resolve_workspace.py <workspace> --resolve-only [--branch <branch>]
 ```
 
-Set the resolved workspace path (from `clone_path` or `path` in the JSON output) for subsequent steps.
+Set the resolved workspace path (from `clone_path` or `path` in the JSON output) for subsequent steps. **Preserve `branch` and `clone_url` from this output** — they must be included in the workspace analysis JSON (Step 6) because `submit_to_repo.py` reads them to determine the MR target branch and push remote.
 
 ## Step 6: Analyze Target Codebase
 
@@ -211,7 +213,15 @@ Analyze the target codebase to understand its tech stack, conventions, and exist
 
 4. **Relevant areas** — Based on the RFE user stories, which parts of the codebase does this feature likely touch? Are there existing pages that serve as good reference implementations?
 
-5. **Agent instructions** — Check for `AGENTS.md`, `.cursor/rules/`, `.claude/` instructions, or similar files that describe how agents should work in this codebase. Follow any conventions they specify.
+5. **Agent instructions and post-change verification** — READ `AGENTS.md`, `.cursor/rules/`, `.claude/` instructions, or similar files that describe how agents should work in this codebase. This is critical — many prototype repos mandate lint and build steps that will break CI if skipped.
+
+   Specifically look for:
+   - **Post-change verification commands** (lint, build, test) — e.g., `npx eslint ... --no-warn`, `npm run build`, `npm run ci-checks`
+   - **Code style rules** — import ordering, unused variable policies, naming conventions
+   - **Mandatory cleanup** — unused imports, dead code removal, `_`-prefixed unused params
+   - **Design system requirements** — which components to use, what not to customize
+
+   Extract these into the workspace analysis JSON (see Output below) so they survive context compression and are available in Step 10 (post-change verification).
 
 ### How to Analyze
 
@@ -223,21 +233,28 @@ cat package.json | head -50  # frameworks, dependencies
 # File structure
 find src/ -type f -name "*.tsx" -o -name "*.ts" -o -name "*.jsx" -o -name "*.js" | head -30
 
-# Agent instructions
+# Agent instructions — READ these files, don't just check if they exist
 cat AGENTS.md 2>/dev/null
-ls .cursor/rules/ .claude/ 2>/dev/null
+ls .cursor/rules/ .claude/ .agents/ 2>/dev/null
+# Read any post-change verification or lint rules
+cat .cursor/rules/post-change-verification.mdc 2>/dev/null
+cat .cursor/rules/lint-hygiene.mdc 2>/dev/null
 ```
 
 Read 2–3 existing page/component files to understand the codebase's conventions (imports, component structure, styling approach).
 
 ### Output
 
-Store the analysis in `artifacts/workspace-analysis/<RFE-KEY>.json`:
+Store the analysis in `artifacts/workspace-analysis/<RFE-KEY>.json`.
+
+**Important:** Include `branch` and `clone_url` from the resolve_workspace.py output (Step 5). The `submit_to_repo.py` script reads these fields to determine the MR target branch and remote URL. Omitting them will cause the submit step to fail or target the wrong branch.
 
 ```json
 {
   "rfe_key": "PROJ-298",
-  "workspace_path": "/path/to/repo",
+  "workspace_path": "local/workspaces/PROJ-298",
+  "branch": "3.5",
+  "clone_url": "https://gitlab.example.com/org/repo.git",
   "tech_stack": {
     "framework": "react",
     "language": "typescript",
@@ -255,7 +272,19 @@ Store the analysis in `artifacts/workspace-analysis/<RFE-KEY>.json`:
     "src/pages/pipelines/",
     "src/components/shared/DataTable.tsx"
   ],
-  "agent_instructions": "Found AGENTS.md — follow PatternFly conventions, designers are primary users"
+  "agent_instructions": "Found AGENTS.md — follow PatternFly conventions, designers are primary users",
+  "post_change_verification": {
+    "lint_command": "npx eslint {files} --no-warn",
+    "lint_fix_command": "npx eslint {files} --fix",
+    "build_command": "npm run build",
+    "rules": [
+      "Remove unused imports",
+      "Remove unused variables",
+      "Prefix unused params with _",
+      "0 ESLint errors required",
+      "Build must pass"
+    ]
+  }
 }
 ```
 
@@ -365,13 +394,15 @@ All decision HTML pages for this RFE go into `.decisions/<RFE-KEY>/` as well (e.
 
 **If `--mode=auto` AND `--fidelity=low` (fast path)**: Skip HTML decision page generation entirely. For each planned decision, auto-resolve it and record directly in `decisions.json` with `status: "auto-resolved"` and a one-sentence summary. Do NOT generate individual decision HTML pages, the `auto-review.html` batch page, or the `index.html` landing page. Do NOT pause for confirmation. Proceed directly to the strategy brief (Step 8e) and then code generation. This fast path saves significant context budget for the most common CI/batch case.
 
-**If `--mode=auto` (medium or high fidelity)**: For each planned decision, generate the full decision page (research, options, recommendation, comparison), save it, and auto-pick the recommended option. Set status to `"auto-picked"`. After all decisions, generate `.decisions/<RFE-KEY>/auto-review.html` — a single batch-review page listing every auto-pick. Open it and pause once for confirmation or overrides. Transition all `auto-picked` to `chosen` only after confirmation.
+**If `--mode=auto` (medium or high fidelity)**: For each planned decision, generate the full decision page (research, options, recommendation, comparison), save it, and auto-pick the recommended option. Set status to `"auto-picked"`. After all decisions, generate `.decisions/<RFE-KEY>/auto-review.html` — a single batch-review page listing every auto-pick. Present a clickable `file://` link to the auto-review page and pause once for confirmation or overrides. Transition all `auto-picked` to `chosen` only after confirmation.
 
-**If `--mode=decide`**: Surface each decision one at a time. For each decision:
+**If `--mode=decide`**: Generate all decision pages upfront, then ask the user for choices.
 
-1. **Gather context** for this specific decision — consider the RFE, prior decisions, and target codebase patterns
+#### Phase 1: Generate ALL decision pages (no pausing)
 
-2. **Write the decision page** to `.decisions/decision-NNN-slug.html`. Each page must contain:
+For each planned decision that will be surfaced to the user, generate its HTML page **before asking any questions**. Write all pages in one batch:
+
+For each decision, write the page to `.decisions/<RFE-KEY>/decision-NNN-slug.html`. Each page must contain:
    - A clear description of what's being decided and why it matters
    - 4 options (recommended count), each with:
      - A name and one-sentence description
@@ -381,22 +412,41 @@ All decision HTML pages for this RFE go into `.decisions/<RFE-KEY>/` as well (e.
    - A side-by-side comparison table across 5–8 relevant dimensions
    - A recommendation with reasoning
 
-3. **Ask the user to choose:**
+After all pages are generated, print a summary with all the `file://` URLs so the user can browse them:
+
+```
+All <N> decision pages generated. Review them at your own pace:
+
+  1. <Decision Title>
+     file://<absolute-workspace-root>/.decisions/<RFE-KEY>/decision-001-<slug>.html
+
+  2. <Decision Title>
+     file://<absolute-workspace-root>/.decisions/<RFE-KEY>/decision-002-<slug>.html
+
+  ...
+```
+
+The `file://` URLs must use the absolute workspace path so the user can copy-paste them directly into their browser address bar.
+
+#### Phase 2: Ask the user for choices (one at a time)
+
+After all pages are generated, walk through each decision sequentially:
 
 ```
 Decision <N>/<total>: <Decision Title>
 
-I've created a decision page with <X> options:
-  → .decisions/decision-<NNN>-<slug>.html
-
-Open it in a browser to see visual previews and tradeoffs.
+  file://<absolute-workspace-root>/.decisions/<RFE-KEY>/decision-<NNN>-<slug>.html
 
 My recommendation: <Option Name> — <one sentence why>
 
 Which option do you prefer? (enter option number, name, "recommended", or bring your own answer)
 ```
 
-4. **Record the choice** in `decisions.json`:
+**Do NOT proceed to the next decision until the current one is resolved.**
+
+#### Phase 3: Record choices
+
+For each decision, record the choice in `decisions.json`:
 
 ```json
 {
@@ -419,8 +469,6 @@ If the user volunteers reasoning ("Option B because users need to compare items"
 
 If the user brings their own answer ("Actually I want to do X"), generate a full visual card for their answer with the same treatment as any AI option and record it with `chosenOption: "custom"`.
 
-**Do NOT proceed to the next decision until the current one is resolved.**
-
 ### Step 8d: Auto-Resolved Decisions
 
 For decisions the AI auto-resolved (high confidence), record them in `decisions.json` with a note:
@@ -441,8 +489,8 @@ For decisions the AI auto-resolved (high confidence), record them in `decisions.
 
 After all decisions are resolved:
 
-1. Write `.decisions/index.html` — a landing page showing all decisions and their status
-2. Write `.decisions/strategy-brief.md` — a summary of all choices made:
+1. Write `.decisions/<RFE-KEY>/index.html` — a landing page showing all decisions and their status. Present a clickable `file://` link to the index page.
+2. Write `.decisions/<RFE-KEY>/strategy-brief.md` — a summary of all choices made:
 
 ```markdown
 # Prototype Brief: PROJ-298 — New Onboarding Wizard
@@ -591,7 +639,66 @@ artifacts/prototypes/<RFE-KEY>/
 
 The `workspace` and `changeset` fields are only present in workspace mode. In standalone mode, include a `screens` array listing the HTML files.
 
-## Step 11: Apply Labels in Jira
+## Step 11: Post-Change Verification (Workspace Mode)
+
+**Skip this step if no workspace is set (standalone mode).**
+
+After writing code to the target workspace, run the verification commands specified by the target repo's agent instructions. This step is **mandatory** — skipping it will cause CI pipeline failures and broken previews.
+
+### 11a: Read verification commands
+
+Read the `post_change_verification` section from `artifacts/workspace-analysis/<RFE-KEY>.json`. If it wasn't captured during Step 6, read the target repo's `AGENTS.md` now and extract the commands.
+
+### 11b: Install dependencies (if needed)
+
+If the workspace has a `package.json` and `node_modules/` doesn't exist, install dependencies first:
+
+```bash
+cd <workspace-path>
+npm install
+```
+
+### 11c: Lint all changed files
+
+Run the lint command from the workspace analysis on every file you created or modified. The changeset manifest (`artifacts/changesets/<RFE-KEY>.md`) lists these files.
+
+```bash
+cd <workspace-path>
+npx eslint <files-you-changed> --no-warn
+```
+
+**If lint errors are found:**
+1. Fix them immediately — common issues are unused imports (from code you replaced), unused variables (from dead code left behind), and import sort order
+2. Run `npx eslint <files> --fix` for auto-fixable issues like import sorting
+3. Re-run lint to confirm 0 errors
+
+**Common lint issues after prototype code generation:**
+- **Unused imports** — when you extract code from a large file into a new component, the original file often retains imports that are no longer needed
+- **Unused variables** — state variables, handler functions, or constants that the old code used but your new component replaced
+- **Unused function parameters** — prefix with `_` (e.g., `_event`)
+
+### 11d: Build verification
+
+After lint passes, run the build:
+
+```bash
+cd <workspace-path>
+npm run build
+```
+
+**If the build fails:**
+1. Read the error output carefully — TypeScript errors, missing imports, and prop type mismatches are common
+2. Fix the issues in the workspace files
+3. Re-run lint on any files you touched during the fix
+4. Re-run the build to confirm it passes
+
+### 11e: Update changeset if files changed
+
+If you modified additional files during lint/build fixing, update the changeset manifest at `artifacts/changesets/<RFE-KEY>.md` to include them.
+
+**Both lint and build must pass before proceeding.** This is non-negotiable — the target repo's CI will reject the changes otherwise, and prototype preview links won't work.
+
+## Step 12: Apply Labels in Jira
 
 **Skip entirely if `--dry-run` is in `$ARGUMENTS`.** Print `[DRY RUN] Skipping Jira label update for <RFE-KEY>`.
 
@@ -610,7 +717,7 @@ Print `[LABEL] prototype-creator-draft added to <RFE-KEY>`.
 
 If Jira credentials are unavailable and MCP is unavailable, skip this step silently — the label is provenance tracking, not blocking.
 
-## Step 12: Summary and Next Steps
+## Step 13: Summary and Next Steps
 
 Print a summary of what was created:
 
@@ -647,7 +754,7 @@ Prototype created:
   Snapshot:  artifacts/prototype-originals/PROJ-298.md
 
   Open in browser:
-    open artifacts/prototypes/PROJ-298/index.html
+    [artifacts/prototypes/PROJ-298/index.html](file://<absolute-workspace-root>/artifacts/prototypes/PROJ-298/index.html)
 
 Next steps:
   • Run /prototype.review to score the prototype against the UX quality rubric

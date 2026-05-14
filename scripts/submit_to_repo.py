@@ -235,7 +235,15 @@ def main():
         commit_hash = run_git(['rev-parse', '--short', 'HEAD'],
                               cwd=workspace_path, env=env)
 
-    # 5. Set up remote if overridden
+    # 5. Unshallow if needed — GitLab rejects pushes from shallow clones
+    if not dry_run:
+        shallow_file = os.path.join(workspace_path, '.git', 'shallow')
+        if os.path.isfile(shallow_file):
+            print('Shallow clone detected, unshallowing before push...',
+                  file=sys.stderr)
+            run_git(['fetch', '--unshallow'], cwd=workspace_path, env=env)
+
+    # 6. Set up remote if overridden
     push_remote = 'origin'
     if remote_override:
         existing_remotes = run_git(['remote'], cwd=workspace_path, env=env,
@@ -247,12 +255,12 @@ def main():
                 cwd=workspace_path, env=env, dry_run=dry_run)
         push_remote = 'submit-target'
 
-    # 6. Build MR description
+    # 7. Build MR description
     mr_description = build_mr_description(
         rfe_key, title, score, verdict, changeset_files,
     )
 
-    # 7. Push with GitLab MR push options
+    # 8. Push with GitLab MR push options
     push_args = ['push', '-u', push_remote, branch_name]
     if target_branch:
         push_args += ['-o', f'merge_request.create',
@@ -267,7 +275,7 @@ def main():
     push_output = run_git(push_args, cwd=workspace_path, env=env,
                           dry_run=dry_run)
 
-    # 8. Extract MR URL from push output
+    # 9. Extract MR URL from push output
     mr_url = None
     if not dry_run:
         mr_url = extract_mr_url(push_output)

@@ -153,13 +153,18 @@ python3 scripts/submit_to_repo.py \
 ```
 
 The script:
-1. Reads `artifacts/workspace-analysis/{ID}.json` for the clone URL and original branch
+1. Reads `artifacts/workspace-analysis/{ID}.json` for the clone URL, original branch, and workspace path
 2. Reads `artifacts/changesets/{ID}.md` for the list of changed files
 3. Creates branch `prototype/{ID}` in the workspace
 4. Stages only the changeset files (not the entire workspace)
 5. Commits with message: `prototype: {ID} — {title}`
-6. Pushes to the remote with GitLab push options that automatically create a merge request targeting the original branch (e.g., `3.5`)
-7. Outputs JSON with the MR URL, branch name, commit hash, and remote
+6. Auto-detects shallow clones and runs `git fetch --unshallow` before pushing (GitLab rejects pushes from shallow repos)
+7. Pushes to the remote with GitLab push options that automatically create a merge request targeting the original branch (e.g., `3.5`)
+8. Outputs JSON with the MR URL, branch name, commit hash, and remote
+
+**Sandbox note:** This script runs `git` commands that contact remote servers and write to `.git/` internals. In Cursor, run it with `required_permissions: ["all"]` to avoid sandbox restrictions on hooks directories and network access.
+
+**Workspace analysis requirements:** The script expects `branch` and `clone_url` fields in `artifacts/workspace-analysis/{ID}.json`. These come from the `resolve_workspace.py` output during the create step. If they're missing, the MR will target the wrong branch or the push will fail.
 
 If `--remote` is provided, the script pushes to that URL instead of the workspace's origin. This supports fork workflows where the user wants to push to their own repo. If `--remote` is not provided, it pushes to origin (the repo the workspace was cloned from).
 
