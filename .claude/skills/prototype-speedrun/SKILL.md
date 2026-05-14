@@ -1,6 +1,6 @@
 ---
 name: prototype-speedrun
-description: End-to-end orchestrator that runs the full prototype pipeline with reasonable defaults.
+description: End-to-end prototype pipeline — create, review, refine, and submit in one go. Guides the user conversationally through all options. Best starting point for designers who want a complete prototype from a Jira ticket.
 user-invocable: true
 allowed-tools: Read, Write, Edit, Glob, Grep, Bash, AskUserQuestion
 ---
@@ -8,6 +8,105 @@ allowed-tools: Read, Write, Edit, Glob, Grep, Bash, AskUserQuestion
 # prototype-speedrun
 
 End-to-end orchestrator that runs the full prototype pipeline — create, review, optionally refine, and submit — in a single invocation. Designed for both CI batch runs and interactive single-prototype workflows.
+
+## Conversational Onboarding
+
+**When to use this section:** If `$ARGUMENTS` is empty, contains only an RFE ID with no flags, or the user's message is conversational (e.g., "run the full pipeline," "make me a prototype end to end," "let's prototype this"), guide them through the questions below before proceeding. This is the most common entry point for designers who want a prototype built from start to finish.
+
+**Do NOT ask all questions at once.** Ask one at a time. Wait for the answer before asking the next. Skip questions whose answers are already clear from the user's message or `$ARGUMENTS`.
+
+**Tone guidance:** Use plain, designer-friendly language. Avoid CLI terminology. Frame choices in terms of outcomes and tradeoffs.
+
+### Start with context
+
+Before jumping into questions, briefly explain what the speedrun does:
+
+> The speedrun runs the full prototype pipeline for you: I'll create the prototype, score it against a UX quality rubric, refine it if the score is low, and then save the results. Think of it as a one-stop-shop — you give me the feature, and I'll handle the rest.
+>
+> Let me ask a few questions so I can set this up right for you.
+
+### Question 1: What are we prototyping?
+
+If no RFE ID or Jira URL is provided:
+
+> What feature would you like to prototype? Share a Jira ticket URL, a ticket ID (like `PROJ-298`), or just describe the feature.
+
+### Question 2: Building on an existing codebase?
+
+If no `--workspace` is provided:
+
+> Do you have an existing codebase or prototype repo I should build on top of?
+>
+> - **Yes** — Share the folder path or a git URL (like a GitLab branch link). I'll add the feature directly into your existing code.
+> - **No** — I'll generate a standalone HTML prototype you can open in any browser.
+
+### Question 3: How polished should it be?
+
+If no `--fidelity` is provided:
+
+> How polished should this prototype be?
+>
+> 1. **Quick sketch** — Wireframe-style, gray boxes, fast to generate. Good for early exploration. *(low fidelity)*
+> 2. **Realistic mockup** *(recommended)* — Real design system components, sample data, interactive elements. Looks close to the real product. *(medium fidelity)*
+> 3. **Fully detailed** — Every state covered (loading, errors, empty), production-ready polish. Takes the longest. *(high fidelity)*
+
+### Question 4: Do you want to guide design decisions?
+
+If no `--mode` is provided:
+
+> As I build, I'll encounter design decisions (layout choices, component picks, flow structure). Want to weigh in?
+>
+> - **Yes, I want to decide** — I'll show you options with visual previews at each decision point. You pick the direction.
+> - **No, handle it for me** — I'll make smart defaults based on best practices. You'll review the final result.
+
+If they choose "decide," also ask about depth (same as prototype-create onboarding Question 5).
+
+### Question 5: Where should the final result go?
+
+If no `--target` is provided:
+
+> Once the prototype is built and reviewed, where would you like it to end up?
+>
+> - **Just keep it local** *(default)* — Save everything here on your machine. You can share files manually or come back to refine later.
+> - **Create a merge request** — I'll push the changes to the source repo as a merge request. Great when you want teammates to review.
+>
+> You can always change this later — we won't publish anything without your say-so.
+
+Map "merge request" → `--target=repo`. Map "local" → `--target=local`.
+
+### Question 6: Want me to run usability or desirability testing too?
+
+Only ask if `--fidelity` is `medium` or `high` (testing isn't very useful on wireframes):
+
+> After building and reviewing the prototype, I can also run simulated testing:
+>
+> - **Usability test** — I'll walk through the prototype as different types of users and identify friction points, confusing flows, and missing interactions.
+> - **Desirability study** — I'll evaluate the emotional and aesthetic impact — does it feel professional? Modern? Trustworthy?
+> - **Both**
+> - **Skip testing** *(default)* — Just build, review, and optionally refine.
+>
+> These are simulated (not real users), but they catch issues that are easy to miss.
+
+Map answers to `--test-usability`, `--test-desirability`, `--test-all`, or neither.
+
+### After Onboarding: Confirm the plan
+
+Print a plain-language summary:
+
+> Here's the plan:
+>
+> - **Feature:** [RFE title]
+> - **Building on:** [workspace or "standalone HTML"]
+> - **Polish level:** [quick sketch / realistic mockup / fully detailed]
+> - **Design decisions:** [you'll decide / auto-pilot]
+> - **Output:** [local only / merge request to repo]
+> - **Testing:** [usability / desirability / both / none]
+>
+> The full pipeline will: **create** the prototype → **review** it against a UX rubric → **refine** if needed → **save/publish** the result.
+>
+> Ready to go?
+
+Wait for confirmation, then map all answers to flags internally and proceed to Step 0.
 
 ## Quick Reference — Happy Path
 

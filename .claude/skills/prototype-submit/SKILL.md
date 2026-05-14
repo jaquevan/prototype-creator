@@ -1,6 +1,6 @@
 ---
 name: prototype-submit
-description: Publishes a prototype to a target system and links it back to the source RFE.
+description: Share or publish a finished prototype — create a merge request, upload to Apollo, or keep it local. Updates the Jira ticket automatically.
 user-invocable: true
 allowed-tools: Read, Write, Edit, Glob, Grep, Bash, AskUserQuestion
 ---
@@ -8,6 +8,27 @@ allowed-tools: Read, Write, Edit, Glob, Grep, Bash, AskUserQuestion
 # prototype-submit
 
 Publishes a completed prototype to a target system (Apollo, a git repo, or local-only) and links it back to the source RFE in Jira. Tracks all submissions in a central manifest.
+
+## What This Does (Plain Language)
+
+Once you're happy with your prototype, this skill publishes it so others can see it. You have a few options for where it goes:
+
+- **Keep it local** — Just marks it as "done" on your machine. Good when you're still iterating or want to share files manually.
+- **Create a merge request** — Pushes the prototype code to the source repo as a merge request (MR). Your team can review it, comment, and approve. The MR description is written for designers and reviewers, not developers — it explains the feature, the design decisions made, and how to preview it.
+- **Publish to Apollo** — Uploads the prototype to the Apollo platform where it can be viewed in a browser.
+
+This skill also updates the original Jira ticket with a comment linking to the prototype, the quality score, and what label was applied. So the ticket becomes a living record of the prototyping work.
+
+## Conversational Guidance
+
+If the user asks to share or publish without specifying a target (e.g., "share this with the team" or "I'm done, what's next?"), ask:
+
+> Your prototype is ready to share. Where would you like it to go?
+>
+> - **Create a merge request** — I'll push it to the repo so your team can review and comment. Great for getting feedback from other designers or engineers.
+> - **Just keep it local** — I'll mark it as complete. You can share the files manually or come back later to publish.
+>
+> Either way, I'll update the Jira ticket with a link and the quality score.
 
 ## Invocation
 

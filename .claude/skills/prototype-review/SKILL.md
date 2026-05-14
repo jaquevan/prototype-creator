@@ -1,6 +1,6 @@
 ---
 name: prototype-review
-description: Review and score prototypes against the UX quality rubric. Runs 4 independent reviewers and a scoring agent.
+description: Score a prototype against a UX quality rubric (completeness, usability, feasibility, fidelity). Just point it at a prototype — no special options needed.
 user-invocable: true
 allowed-tools: Read, Write, Edit, Glob, Grep, Bash, AskUserQuestion
 ---
@@ -8,6 +8,25 @@ allowed-tools: Read, Write, Edit, Glob, Grep, Bash, AskUserQuestion
 # prototype-review
 
 Review and score a prototype against the UX quality rubric. Runs four independent review dimensions, each scored 0–2, then produces a summary with a pass/needs-attention verdict.
+
+## What This Does (Plain Language)
+
+This skill scores your prototype like a design review. It checks four things:
+
+1. **Completeness** — Does the prototype cover everything the feature request describes? Missing screens or flows get flagged.
+2. **Usability** — Is it easy to use? Clear navigation, good labels, helpful feedback when things go wrong?
+3. **Feasibility** — Can this actually be built with the design system? Or does it rely on components that don't exist yet?
+4. **Fidelity match** — Does the level of polish match what was requested? (A quick sketch shouldn't look production-ready, and vice versa.)
+
+Each dimension gets a score of 0–2. You need at least 6 out of 8 total (with no zeros) to pass. If the score is lower, the review tells you exactly what to fix.
+
+**You don't need to provide any special options** — just point it at a prototype ID and it does the rest. If you've just finished building a prototype, I'll suggest running this automatically.
+
+## Conversational Guidance
+
+If the user asks to review a prototype without providing an ID (e.g., "how did the prototype turn out?" or "review what we just built"), check `.artifacts/` for the most recently created prototype and offer to review it:
+
+> I found a prototype for [RFE title] in your artifacts. Want me to run a quality review on it? I'll check completeness, usability, feasibility, and whether the polish level matches what you asked for.
 
 ## When to Use
 

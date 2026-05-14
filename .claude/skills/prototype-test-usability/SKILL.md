@@ -1,6 +1,6 @@
 ---
 name: prototype-test-usability
-description: Generates a simulated usability test for a prototype using persona-based task walkthroughs.
+description: Simulate a usability test — walks through the prototype as different user personas and identifies friction points, confusion, and missing interactions.
 user-invocable: true
 allowed-tools: Read, Write, Edit, Glob, Grep, Bash, AskUserQuestion
 ---
@@ -8,6 +8,29 @@ allowed-tools: Read, Write, Edit, Glob, Grep, Bash, AskUserQuestion
 # prototype-test-usability
 
 Runs a simulated usability test on a prototype by walking through task scenarios as if specific personas were using it. Identifies friction points, confusion, missing affordances, and error recovery gaps. Produces a structured usability report.
+
+## What This Does (Plain Language)
+
+This skill pretends to be different types of users and walks through your prototype step by step, just like a real usability test session. It checks whether people can actually accomplish the tasks the feature is designed for.
+
+It creates personas like:
+- A **primary user** who uses this feature regularly
+- A **power user** who wants efficiency and shortcuts
+- An **infrequent user** who rarely touches this and needs clear guidance
+
+Then it walks each persona through realistic tasks (e.g., "create a new item," "find and edit an existing entry") and notes where they'd get stuck, confused, or frustrated.
+
+The output is a structured report with severity-ranked issues — from critical blockers ("the user literally can't complete the task") down to minor polish items.
+
+**Good to know:** This is a simulated test, not real users. It catches design issues that are easy to miss, but it's not a replacement for actual user research. Think of it as a thorough self-review from multiple perspectives.
+
+**When to use this:** After your prototype has been built and reviewed. It's most useful at medium or high fidelity — wireframes don't have enough detail for meaningful usability testing.
+
+## Conversational Guidance
+
+If the user asks about usability without an ID (e.g., "test whether this is easy to use" or "would a user be able to figure this out?"), check for the most recent prototype and offer:
+
+> Want me to run a simulated usability test on your [RFE title] prototype? I'll walk through it as different types of users and flag anywhere they'd likely get stuck or confused.
 
 ## Invocation
 

@@ -1,6 +1,6 @@
 ---
 name: prototype-push
-description: Reset a prototype from local mode back to CI mode for re-review.
+description: Done editing locally? Push the prototype back to the pipeline for a fresh quality review.
 user-invocable: true
 allowed-tools: Read, Write, Edit, Glob, Grep, Bash, AskUserQuestion
 ---
@@ -8,6 +8,20 @@ allowed-tools: Read, Write, Edit, Glob, Grep, Bash, AskUserQuestion
 # prototype-push
 
 Reset a locally refined prototype back to CI mode for re-review.
+
+## What This Does (Plain Language)
+
+When you're done reviewing and refining a prototype locally (after using `prototype.pull`), this skill sends it back into the formal pipeline. It resets the review status so the prototype gets a fresh quality score.
+
+Think of it as saying "I'm done with my local edits — please re-evaluate this."
+
+**This doesn't push code to a remote repo.** It only resets the prototype's internal status from "local" to "CI." To actually publish or create a merge request, use `prototype.submit` after pushing.
+
+## Conversational Guidance
+
+If the user says something like "I'm done editing" or "send this back for review," offer:
+
+> Ready to push this back to the pipeline? I'll reset the review status so it gets re-scored with your changes. After that, you can run a new review or submit it.
 
 ## Usage
 

@@ -1,6 +1,6 @@
 ---
 name: prototype-test-desirability
-description: Runs a simulated desirability study on a prototype using word association, emotional response, and preference analysis.
+description: Evaluate how the prototype feels — word associations, emotional response mapping, and preference comparison. Answers "does this look and feel right?"
 user-invocable: true
 allowed-tools: Read, Write, Edit, Glob, Grep, Bash, AskUserQuestion
 ---
@@ -8,6 +8,25 @@ allowed-tools: Read, Write, Edit, Glob, Grep, Bash, AskUserQuestion
 # prototype-test-desirability
 
 Runs a simulated desirability study on a prototype to evaluate its aesthetic and emotional impact. Produces structured output covering word association, emotional response mapping, preference comparison, and an overall desirability score.
+
+## What This Does (Plain Language)
+
+This skill evaluates how your prototype *feels* — not just whether it works, but whether it creates the right emotional impression. It's based on real UX research methods like Microsoft's Desirability Toolkit.
+
+It answers questions like:
+- **What words would users associate with this?** Professional? Modern? Cluttered? Confusing?
+- **How does the emotional journey feel?** Does confidence stay high throughout, or does it dip at certain steps?
+- **How does it compare to alternatives?** Would users prefer a different design direction?
+
+The output is a desirability score (1–10) with a detailed breakdown of word associations, emotional mapping across the flow, and comparison with alternative approaches.
+
+**When to use this:** When you care about the overall impression and want to validate that the design direction feels right — not just functional. Most useful at medium or high fidelity. At wireframe level, it can only evaluate structural desirability (layout, flow logic), not visual polish.
+
+## Conversational Guidance
+
+If the user asks about how the prototype feels or its visual impression (e.g., "does this look good?" or "what impression does this give?" or "would stakeholders like this?"), offer:
+
+> I can run a desirability study on your prototype — it evaluates the emotional and aesthetic impact. I'll tell you what words users would likely associate with it, where the experience feels confident vs. uncertain, and how it stacks up against alternative approaches. Want me to run it?
 
 ## Invocation
 

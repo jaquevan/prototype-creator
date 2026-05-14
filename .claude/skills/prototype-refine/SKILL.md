@@ -1,6 +1,6 @@
 ---
 name: prototype-refine
-description: Iterates on an existing prototype based on review feedback, user input, or decision-kit outcomes.
+description: Improve a prototype based on review feedback or your own direction. Fixes usability issues, fills gaps, and adjusts polish level.
 user-invocable: true
 allowed-tools: Read, Write, Edit, Glob, Grep, Bash, AskUserQuestion
 ---
@@ -8,6 +8,32 @@ allowed-tools: Read, Write, Edit, Glob, Grep, Bash, AskUserQuestion
 # prototype-refine
 
 Refines an existing prototype by addressing review feedback, user-provided direction, or decision-kit outcomes. Each refinement cycle targets specific issues flagged in the review and tracks what changed.
+
+## What This Does (Plain Language)
+
+After a prototype has been reviewed (or after you've looked at it yourself), this skill makes targeted improvements. Think of it as a revision pass — it reads the review feedback, figures out what needs fixing, and updates the prototype.
+
+Common things it fixes:
+- Missing screens or flows that the review flagged
+- Usability issues like confusing labels or dead-end navigation
+- Swapping in correct design system components
+- Adjusting the level of polish up or down
+
+**You can also give it your own direction** — if you looked at the prototype and want specific changes (e.g., "make the table less dense" or "add an empty state"), just say so. It doesn't have to work from a review score.
+
+## Conversational Guidance
+
+If the user asks to refine without specifying details (e.g., "can you improve this?" or "it needs some work"), ask:
+
+> I can refine the prototype based on review feedback, or based on your own direction. Which would you prefer?
+>
+> - **Use the review feedback** — I'll read the quality review and fix the issues it flagged, starting with the most critical ones.
+> - **I'll tell you what to change** — Just describe what you'd like different and I'll make those specific changes.
+> - **Both** — I'll address review issues and incorporate your feedback too.
+
+If no review exists and the user hasn't provided direction, explain:
+
+> I don't have a review on file for this prototype yet. I can either run a quick review first to identify what needs work, or you can tell me directly what to change. What works best?
 
 ## Invocation
 

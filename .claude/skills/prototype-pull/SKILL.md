@@ -1,6 +1,6 @@
 ---
 name: prototype-pull
-description: Switch a prototype to local mode for human review and iteration.
+description: Pull a prototype into local mode for personal review and iteration. Jira updates are paused until you push it back.
 user-invocable: true
 allowed-tools: Read, Write, Edit, Glob, Grep, Bash, AskUserQuestion, mcp__atlassian__getJiraIssue
 ---
@@ -8,6 +8,27 @@ allowed-tools: Read, Write, Edit, Glob, Grep, Bash, AskUserQuestion, mcp__atlass
 # prototype-pull
 
 Switch a prototype to local mode for human review. In local mode, skills skip Jira writes and pipeline label gates.
+
+## What This Does (Plain Language)
+
+If a prototype was created by the automated CI pipeline, this skill "pulls" it into your local workspace so you can review and iterate on it without affecting Jira labels or CI status. Think of it as checking out a prototype for personal review.
+
+Once in local mode:
+- Reviewing and refining won't update Jira
+- You can iterate freely without triggering CI pipelines
+- When you're done, use `prototype.push` to send it back for formal re-review
+
+**You can also use this to start from a Jira ticket.** If no prototype exists yet for a ticket, this skill will fetch the ticket details and set up the folder structure so you're ready to start building.
+
+## Conversational Guidance
+
+If the user wants to work on an existing prototype locally (e.g., "let me look at what the pipeline built" or "I want to tweak the prototype for PROJ-298"), offer:
+
+> I'll pull that prototype into local mode so you can review and iterate on it freely. Changes won't affect Jira or CI until you're ready to push it back.
+
+If the user mentions a Jira ticket that doesn't have a prototype yet:
+
+> There's no prototype for that ticket yet, but I can set things up by pulling the ticket details. Then you can run `prototype.create` to build one from scratch.
 
 ## Usage
 
