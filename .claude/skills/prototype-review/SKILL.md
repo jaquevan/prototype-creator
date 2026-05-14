@@ -20,26 +20,15 @@ Review and score a prototype against the UX quality rubric. Runs four independen
 
 | Input | Source | Required |
 |-------|--------|----------|
-| Prototype ID | `$ARGUMENTS` or auto-detected from `artifacts/prototypes/` | Yes (or scan all) |
-| Prototype files | `artifacts/prototypes/{ID}/` or `local/prototypes/{ID}/` | Yes |
-| Original RFE snapshot | `artifacts/prototype-originals/{ID}.md` or `local/prototype-originals/{ID}.md` | Yes |
+| Prototype ID | `$ARGUMENTS` or auto-detected from `.artifacts/` | Yes (or scan all) |
+| Prototype files | `.artifacts/{ID}/prototype/` or target workspace (workspace mode) | Yes |
+| Original RFE snapshot | `.artifacts/{ID}/rfe-snapshot.md` | Yes |
 
 ## Step 0: Detect Mode and Resolve Paths
 
-Determine whether you are running in **CI mode** or **local mode**, and resolve all paths accordingly.
+All artifacts live in `.artifacts/{ID}/`. Determine whether the prototype is in **CI mode** or **local mode** by reading `.artifacts/{ID}/metadata.json` and checking the `mode` field (`"ci"` or `"local"`). When in local mode, skip Jira label updates and pipeline label gates.
 
-```
-if local/prototypes/ exists and contains prototypes:
-    BASE = "local"
-else:
-    BASE = "artifacts"
-
-PROTO_DIR   = "{BASE}/prototypes"
-ORIG_DIR    = "{BASE}/prototype-originals"
-REVIEW_DIR  = "{BASE}/prototype-reviews"
-```
-
-If `$ARGUMENTS` contains a prototype ID, review only that prototype. Otherwise, scan `{PROTO_DIR}/` for all prototype folders that do not yet have a corresponding `{REVIEW_DIR}/{ID}-summary.md` and review each.
+If `$ARGUMENTS` contains a prototype ID, review only that prototype. Otherwise, scan `.artifacts/` for all RFE directories that do not yet have a `reviews/summary.md` and review each.
 
 ## Step 1: Load the Prototype and RFE
 
@@ -47,36 +36,35 @@ For each prototype ID to review:
 
 **Determine if this is a workspace-mode or standalone-mode prototype:**
 
-- If `artifacts/workspace-analysis/{ID}.json` exists → **workspace mode**
+- If `.artifacts/{ID}/workspace-analysis.json` exists → **workspace mode**
 - Otherwise → **standalone mode**
 
 ### Standalone Mode
 
-1. **Read the prototype directory** at `{PROTO_DIR}/{ID}/`:
+1. **Read the prototype directory** at `.artifacts/{ID}/prototype/`:
    - `index.html` — the rendered prototype
-   - `manifest.json` — metadata (fidelity level, mode, RFE source, creation date)
    - Any additional pages or assets
 
-2. **Read the original RFE snapshot** at `{ORIG_DIR}/{ID}.md`
+2. **Read the original RFE snapshot** at `.artifacts/{ID}/rfe-snapshot.md`
 
-3. **Read the manifest** to determine the requested fidelity level (`low`, `medium`, or `high`).
+3. **Read the metadata** at `.artifacts/{ID}/metadata.json` to determine the requested fidelity level (`low`, `medium`, or `high`).
 
 ### Workspace Mode
 
-1. **Read the changeset manifest** at `artifacts/changesets/{ID}.md`:
+1. **Read the changeset manifest** at `.artifacts/{ID}/changeset.md`:
    - Lists all files created and modified in the target workspace
    - This is the "prototype" — the set of code changes
 
-2. **Read the workspace analysis** at `artifacts/workspace-analysis/{ID}.json`:
+2. **Read the workspace analysis** at `.artifacts/{ID}/workspace-analysis.json`:
    - Contains the workspace path, tech stack, and relevant areas
 
 3. **Read the modified/created files** listed in the changeset:
    - These are the actual prototype implementation files
    - Read each file to evaluate completeness, usability, feasibility, and fidelity
 
-4. **Read the original RFE snapshot** at `{ORIG_DIR}/{ID}.md`
+4. **Read the original RFE snapshot** at `.artifacts/{ID}/rfe-snapshot.md`
 
-5. **Read the metadata** at `{PROTO_DIR}/{ID}/metadata.json` to determine the requested fidelity level.
+5. **Read the metadata** at `.artifacts/{ID}/metadata.json` to determine the requested fidelity level.
 
 If either the prototype (directory or changeset) or the RFE snapshot is missing, report an error and skip this prototype.
 
@@ -90,7 +78,7 @@ For each dimension, invoke the scorer:
 Agent: prototype-scorer (see .claude/agents/prototype-scorer.md)
 Tools: Read, Write, Glob, Grep
 Input: prototype files + RFE snapshot + dimension-specific rubric (below)
-Output: {REVIEW_DIR}/{ID}-{dimension}.md
+Output: .artifacts/{ID}/reviews/{dimension}.md
 ```
 
 ---
@@ -114,7 +102,7 @@ Output: {REVIEW_DIR}/{ID}-{dimension}.md
 4. Note any prototype content that goes beyond the RFE (scope creep) — this is informational, not penalized
 5. Assign score based on the rubric above
 
-**Output file**: `{REVIEW_DIR}/{ID}-completeness.md`
+**Output file**: `.artifacts/{ID}/reviews/completeness.md`
 
 ---
 
@@ -144,7 +132,7 @@ Output: {REVIEW_DIR}/{ID}-{dimension}.md
 
 For each heuristic, note whether it is satisfied, partially satisfied, or violated, with specific examples from the prototype. Assign the overall dimension score based on the aggregate finding.
 
-**Output file**: `{REVIEW_DIR}/{ID}-usability.md`
+**Output file**: `.artifacts/{ID}/reviews/usability.md`
 
 ---
 
@@ -168,7 +156,7 @@ For each heuristic, note whether it is satisfied, partially satisfied, or violat
 5. Estimate the ratio of standard-component vs. custom-component work
 6. Assign score based on the rubric above
 
-**Output file**: `{REVIEW_DIR}/{ID}-feasibility.md`
+**Output file**: `.artifacts/{ID}/reviews/feasibility.md`
 
 ---
 
@@ -212,7 +200,7 @@ For each heuristic, note whether it is satisfied, partially satisfied, or violat
 5. If the prototype exceeds the requested fidelity scope (e.g., implements all error states when low was requested), note this as a concern — it can slow iteration and set wrong expectations
 6. Assign score based on the rubric above
 
-**Output file**: `{REVIEW_DIR}/{ID}-fidelity-match.md`
+**Output file**: `.artifacts/{ID}/reviews/fidelity-match.md`
 
 ---
 
@@ -250,7 +238,7 @@ Use `python3 ${CLAUDE_SKILL_DIR}/scripts/frontmatter.py` to write frontmatter:
 
 ```bash
 python3 ${CLAUDE_SKILL_DIR}/scripts/frontmatter.py write \
-  --file "{REVIEW_DIR}/{ID}-{dimension}.md" \
+  --file ".artifacts/{ID}/reviews/{dimension}.md" \
   --key prototype_id --value "{ID}" \
   --key dimension --value "{dimension}" \
   --key score --value "{score}" \
@@ -279,15 +267,15 @@ Pass Threshold = 6+ total AND no dimension scored 0
 
 ```bash
 python3 ${CLAUDE_SKILL_DIR}/scripts/score_prototype.py \
-  --review-dir "{REVIEW_DIR}" \
+  --review-dir ".artifacts/{ID}/reviews" \
   --prototype-id "{ID}"
 ```
 
-This reads the four `{ID}-{dimension}.md` files, extracts frontmatter scores, computes the total, and writes the summary.
+This reads the four `{dimension}.md` files, extracts frontmatter scores, computes the total, and writes the summary.
 
 ### Summary File Format
 
-Write the summary to `{REVIEW_DIR}/{ID}-summary.md`:
+Write the summary to `.artifacts/{ID}/reviews/summary.md`:
 
 ```markdown
 ---
@@ -346,12 +334,12 @@ fidelity: "{low|medium|high}"
 
 ## Step 5: Apply Labels (CI Mode Only)
 
-If operating in **CI mode** (i.e., `BASE = "artifacts"`, not `local/`):
+If the prototype's `metadata.json` has `"mode": "ci"`:
 
 - If verdict is `prototype-creator-rubric-pass`, apply the label to the source RFE in Jira
 - If verdict is `prototype-creator-needs-attention`, apply that label instead
 
-**Skip label writes entirely in local mode.** Local mode is for human iteration; labels are only meaningful in the CI pipeline.
+**Skip label writes entirely when `"mode": "local"`.** Local mode is for human iteration; labels are only meaningful in the CI pipeline.
 
 ## Step 6: Report Results
 
@@ -383,11 +371,11 @@ ID              Total  Verdict
 
 ## Error Handling
 
-- **Missing prototype**: Skip and report `"Prototype {ID} not found at {PROTO_DIR}/{ID}/"`
-- **Missing RFE snapshot**: Skip and report `"RFE snapshot not found at {ORIG_DIR}/{ID}.md — cannot review without original requirements"`
+- **Missing prototype**: Skip and report `"Prototype {ID} not found at .artifacts/{ID}/"`
+- **Missing RFE snapshot**: Skip and report `"RFE snapshot not found at .artifacts/{ID}/rfe-snapshot.md — cannot review without original requirements"`
 - **Missing manifest**: Warn `"No manifest.json — assuming medium fidelity for fidelity-match review"` and proceed
 - **Scorer failure**: If a dimension's scorer fails, score that dimension as 0 and note the failure in the summary
-- **Existing review**: If `{REVIEW_DIR}/{ID}-summary.md` already exists, ask the user whether to re-review or skip (in CI mode, always re-review)
+- **Existing review**: If `.artifacts/{ID}/reviews/summary.md` already exists, ask the user whether to re-review or skip (in CI mode, always re-review)
 
 ## Next Steps
 

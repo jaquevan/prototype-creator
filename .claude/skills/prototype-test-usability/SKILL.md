@@ -29,9 +29,9 @@ Runs a simulated usability test on a prototype by walking through task scenarios
 
 | Input | Location | Required |
 |-------|----------|----------|
-| Prototype files | `artifacts/prototypes/{ID}/` or `local/prototypes/{ID}/` | Yes |
+| Prototype files | `.artifacts/{ID}/prototype/` | Yes |
 | Research context | `.context/research-context/` | Optional |
-| RFE source | `artifacts/rfe/{ID}.md` or Jira (via MCP) | Optional |
+| RFE source | `.artifacts/{ID}/rfe-snapshot.md` or Jira (via MCP) | Optional |
 
 ### Research Context
 
@@ -51,7 +51,7 @@ If no research context is available, construct 2–3 generic personas based on t
 
 ### Step 1: Read the Prototype
 
-Locate and read the prototype from `artifacts/prototypes/{ID}/` (or `local/prototypes/{ID}/`).
+Locate and read the prototype from `.artifacts/{ID}/prototype/`.
 
 Read all HTML files to understand:
 - Available screens and views
@@ -66,7 +66,7 @@ If the prototype has a `metadata.json`, read it for context on intended scope an
 
 Pull user stories from the RFE source:
 
-1. Check `artifacts/rfe/{ID}.md` for locally cached RFE content
+1. Check `.artifacts/{ID}/rfe-snapshot.md` for locally cached RFE content
 2. If not found, check the prototype's `metadata.json` for a Jira link
 3. If a Jira issue key is available (e.g., `PROJ-298`), fetch it via MCP: `mcp__atlassian__getJiraIssue`
 
@@ -146,7 +146,7 @@ Note which heuristics are violated and where.
 
 ### Step 7: Generate Usability Report
 
-Write the report to `artifacts/usability-reports/{ID}-usability.md`:
+Write the report to `.artifacts/{ID}/usability-report.md`:
 
 ```markdown
 ---
@@ -258,7 +258,7 @@ Top issues:
   [S1] Navigation dead-end on detail page
   [S2] Delete action has no confirmation
 
-Report: artifacts/usability-reports/{ID}-usability.md
+Report: .artifacts/{ID}/usability-report.md
 
 Next step: Address critical issues with /prototype.refine {ID}
 ```
@@ -275,4 +275,4 @@ Next step: Address critical issues with /prototype.refine {ID}
 
 | Output | Location |
 |--------|----------|
-| Usability report | `artifacts/usability-reports/{ID}-usability.md` |
+| Usability report | `.artifacts/{ID}/usability-report.md` |

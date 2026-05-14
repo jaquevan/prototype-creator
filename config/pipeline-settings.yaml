@@ -56,7 +56,7 @@ design_system:
 # --- Decision Kit Integration ---
 decision_kit:
   repo: https://github.com/jnemargut/decision-kit
-  decisions_dir: .decisions
+  artifacts_dir: .artifacts
   thinking_skills:
     - strategize
     - shape

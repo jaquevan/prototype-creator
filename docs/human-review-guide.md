@@ -1,11 +1,11 @@
 # Human Review Guide
 
-After the CI pipeline generates prototypes, humans review and refine them in a local workspace that doesn't interfere with CI.
+After the CI pipeline generates prototypes, humans review and refine them using local mode — a metadata flag that skips Jira writes while keeping all artifacts in the same `.artifacts/` directory.
 
 ## Quick Start
 
 ```bash
-# Pull a prototype into your local workspace
+# Switch a prototype to local mode
 /prototype.pull PROJ-298
 
 # Review it locally
@@ -14,21 +14,33 @@ After the CI pipeline generates prototypes, humans review and refine them in a l
 # Refine based on review feedback
 /prototype.refine
 
-# Push back to CI when satisfied
+# Reset to CI mode when ready
 /prototype.push PROJ-298
 ```
 
 ## Directory Layout
 
+All artifacts for a prototype live in a single directory:
+
 ```
-local/
-├── prototypes/           # Pulled prototypes
-│   └── PROJ-298/
-│       ├── index.html
-│       └── metadata.json
-├── prototype-reviews/    # Review scores and feedback
-├── prototype-originals/  # Original RFE snapshots (read-only reference)
-└── decisions/            # Design decisions made during creation
+.artifacts/PROJ-298/
+├── prototype/           # Prototype code (HTML files or workspace changes)
+│   ├── index.html
+│   └── ...
+├── reviews/             # Review scores and feedback
+│   ├── completeness.md
+│   ├── usability.md
+│   ├── feasibility.md
+│   ├── fidelity-match.md
+│   └── summary.md
+├── decisions/           # Design decisions made during creation
+│   ├── decisions.json
+│   ├── strategy-brief.md
+│   └── decision-001.html
+├── metadata.json        # Run metadata and mode (ci/local)
+├── rfe-snapshot.md      # Original RFE content (read-only reference)
+├── changeset.md         # Files created/modified (workspace mode)
+└── workspace-analysis.json  # Target codebase analysis (workspace mode)
 ```
 
 ## Two Paths
@@ -45,9 +57,9 @@ After CI runs, each prototype gets one of two verdicts:
 The prototype scored well. You're reviewing for correctness, not fixing issues.
 
 ```bash
-/prototype.pull PROJ-298          # Get it locally
-# Open local/prototypes/PROJ-298/index.html in your browser
-# Read local/prototype-reviews/PROJ-298-summary.md for the review
+/prototype.pull PROJ-298          # Switch to local mode
+# Open .artifacts/PROJ-298/prototype/index.html in your browser
+# Read .artifacts/PROJ-298/reviews/summary.md for the review
 /prototype.submit PROJ-298        # Publish it
 ```
 
@@ -56,27 +68,28 @@ The prototype scored well. You're reviewing for correctness, not fixing issues.
 The prototype has issues flagged by the reviewers. Fix them, then push back.
 
 ```bash
-/prototype.pull PROJ-298          # Get it locally
+/prototype.pull PROJ-298          # Switch to local mode
 # Read the review summary to understand what needs fixing
 /prototype.refine                  # AI helps fix the issues
 /prototype.review                  # Re-score locally
 # If passing now:
-/prototype.push PROJ-298          # Send back to CI
+/prototype.push PROJ-298          # Reset to CI mode
 # Then: /prototype.submit PROJ-298
 ```
 
-## Local Mode Auto-Detection
+## Local Mode
 
-Skills detect when files are in `local/` and adjust behavior:
-- Jira label writes are skipped
-- Pipeline label gates are skipped
-- All reads and writes target `local/` instead of `artifacts/`
+Skills detect local mode by reading `metadata.json` and checking the `mode` field:
+- `"mode": "local"` — Jira label writes are skipped, pipeline label gates are skipped
+- `"mode": "ci"` — Full CI behavior (Jira writes, label gates)
+
+`/prototype.pull` sets mode to local. `/prototype.push` resets it to CI.
 
 ## Editing Prototypes Manually
 
 Prototypes are just HTML files. You can edit them directly:
 
-1. Open `local/prototypes/{ID}/index.html` in your editor
+1. Open `.artifacts/{ID}/prototype/index.html` in your editor
 2. Make changes
 3. View in browser to verify
 4. Run `/prototype.review` to re-score
@@ -89,7 +102,7 @@ If you want to reconsider design decisions:
 /prototype.create PROJ-298 --mode=decide --fidelity=medium
 ```
 
-This re-runs creation in decide mode, surfacing each design decision for your judgment. Previous decisions from `local/decisions/` are shown as defaults.
+This re-runs creation in decide mode, surfacing each design decision for your judgment. Previous decisions from `.artifacts/PROJ-298/decisions/` are shown as defaults.
 
 ## Tips
 

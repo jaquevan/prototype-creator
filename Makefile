@@ -23,7 +23,7 @@ context:
 
 # Clean generated artifacts
 clean:
-	rm -rf artifacts/ local/ .context/
+	rm -rf .artifacts/ .context/
 	find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
 
 # Generate pipeline report

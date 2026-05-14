@@ -101,7 +101,7 @@ class TestIsGitUrl:
         assert is_git_url('gitlab.example.com/repo.git') is True
 
     def test_local_relative(self):
-        assert is_git_url('local/workspaces/foo') is False
+        assert is_git_url('.artifacts/foo/workspace') is False
 
     def test_local_absolute(self):
         assert is_git_url('/Users/someone/code/repo') is False
@@ -119,7 +119,7 @@ class TestResolveWorkspace:
         assert result['clone_url'] == 'https://gitlab.example.com/org/prototypes/myapp.git'
         assert result['branch'] == '3.5'
         assert result['branch_source'] == 'url'
-        assert result['clone_path'] == 'local/workspaces/PROJ-298'
+        assert result['clone_path'] == '.artifacts/PROJ-298/workspace'
 
     def test_git_url_with_flag_override(self):
         result = resolve_workspace(

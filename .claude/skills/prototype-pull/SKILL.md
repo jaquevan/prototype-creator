@@ -1,13 +1,13 @@
 ---
 name: prototype-pull
-description: Pull a post-CI prototype from artifacts/ into local/ for human review and iteration.
+description: Switch a prototype to local mode for human review and iteration.
 user-invocable: true
 allowed-tools: Read, Write, Edit, Glob, Grep, Bash, AskUserQuestion, mcp__atlassian__getJiraIssue
 ---
 
 # prototype-pull
 
-Pull a post-CI prototype into the `local/` workspace for human review.
+Switch a prototype to local mode for human review. In local mode, skills skip Jira writes and pipeline label gates.
 
 ## Usage
 
@@ -19,9 +19,10 @@ Example: `/prototype.pull PROJ-298`
 
 ## What This Does
 
-1. Copies the prototype and all related artifacts from `artifacts/` to `local/`
-2. If the prototype doesn't exist locally or in artifacts, fetches the RFE from Jira and creates a fresh stub
-3. Once files are in `local/`, all skills auto-detect local mode — they skip Jira writes and pipeline label gates
+1. Locates the prototype in `.artifacts/{ID}/`
+2. If the prototype doesn't exist, fetches the RFE from Jira and creates a stub
+3. Sets `"mode": "local"` in `.artifacts/{ID}/metadata.json`
+4. Once in local mode, all skills auto-detect it — they skip Jira writes and pipeline label gates
 
 ## Procedure
 
@@ -29,58 +30,30 @@ Example: `/prototype.pull PROJ-298`
 
 Extract the RFE ID from the user's input. Accept formats like `PROJ-298`, `proj-298`, or just `298` (assume the default project key from `config/pipeline-settings.yaml`).
 
-### Step 2: Check artifacts/ for existing prototype
+### Step 2: Check for existing prototype
 
-Look for the prototype in these locations:
-
-```
-artifacts/prototypes/{ID}/
-artifacts/prototype-reviews/{ID}*
-artifacts/changesets/{ID}*
-.decisions/
-```
-
-Use Glob to find matching files:
+Look for the prototype at `.artifacts/{ID}/`:
 
 ```
-artifacts/prototypes/{ID}/**
-artifacts/prototype-reviews/{ID}*
-artifacts/changesets/{ID}*
-.decisions/**
+.artifacts/{ID}/metadata.json
+.artifacts/{ID}/prototype/
+.artifacts/{ID}/decisions/
+.artifacts/{ID}/reviews/
+.artifacts/{ID}/rfe-snapshot.md
 ```
 
-### Step 3a: If prototype exists in artifacts — copy to local
+### Step 3a: If prototype exists — switch to local mode
 
-Create the local workspace structure:
+Read `.artifacts/{ID}/metadata.json` and set `"mode": "local"`:
 
-```bash
-mkdir -p local/prototypes/{ID}
-mkdir -p local/prototype-reviews
-mkdir -p local/decisions
-mkdir -p local/prototype-originals
+```json
+{
+  "mode": "local",
+  "pulled_at": "2026-04-30T12:00:00Z"
+}
 ```
 
-Copy files:
-
-```bash
-# Copy the prototype
-cp -r artifacts/prototypes/{ID}/ local/prototypes/{ID}/
-
-# Copy review files
-cp artifacts/prototype-reviews/{ID}* local/prototype-reviews/ 2>/dev/null || true
-
-# Copy decision artifacts (new .decisions/ format)
-cp -r .decisions/ local/decisions/ 2>/dev/null || true
-
-# Copy changeset manifest (workspace mode)
-cp artifacts/changesets/{ID}* local/ 2>/dev/null || true
-```
-
-Snapshot the original (pre-review) state so the user can diff later:
-
-```bash
-cp -r local/prototypes/{ID}/ local/prototype-originals/{ID}/
-```
+Preserve all existing fields in metadata.json — only update `mode` and add `pulled_at`.
 
 ### Step 3b: If prototype does NOT exist — fetch from Jira and create stub
 
@@ -97,71 +70,49 @@ From the Jira response, extract:
 - `status` → current status
 - `priority` → priority level
 
-Create the local stub structure:
+Create the artifact directory and stub files:
 
 ```bash
-mkdir -p local/prototypes/{ID}
-mkdir -p local/prototype-reviews
-mkdir -p local/decisions
-mkdir -p local/prototype-originals
+mkdir -p .artifacts/{ID}/prototype
+mkdir -p .artifacts/{ID}/decisions
+mkdir -p .artifacts/{ID}/reviews
 ```
 
-Write a stub prototype metadata file at `local/prototypes/{ID}/prototype.md`:
+Write `.artifacts/{ID}/metadata.json`:
 
-```markdown
----
-id: {ID}
-title: "{summary from Jira}"
-source: jira
-status: stub
-fidelity: medium
-mode: decide
-created: {ISO timestamp}
-pulled_from: jira
----
-
-# {summary}
-
-## Source RFE
-
-**ID**: {ID}
-**Status**: {jira status}
-**Priority**: {jira priority}
-
-## User Stories
-
-{description from Jira, cleaned up}
-
-## Acceptance Criteria
-
-{extracted from description, or empty checklist}
-
-## Notes
-
-This is a stub pulled directly from Jira. No CI prototype exists yet.
-Run `/prototype.create` to generate a prototype from this RFE.
+```json
+{
+  "rfe_key": "{ID}",
+  "title": "{summary from Jira}",
+  "status": "stub",
+  "mode": "local",
+  "fidelity": "medium",
+  "created": "{ISO timestamp}",
+  "pulled_from": "jira"
+}
 ```
 
-Also save the raw RFE data to `local/prototype-originals/{ID}/rfe-snapshot.md` so the user has the original context.
+Write `.artifacts/{ID}/rfe-snapshot.md` with the raw RFE data as a frozen snapshot.
 
 ### Step 4: Confirm to user
 
 Print a summary:
 
 ```
-Pulled {ID} into local workspace.
+Pulled {ID} into local mode.
 
-  Prototype:  local/prototypes/{ID}/
-  Reviews:    local/prototype-reviews/
-  Decisions:  local/decisions/
-  Original:   local/prototype-originals/{ID}/
+  Artifacts:  .artifacts/{ID}/
+  Prototype:  .artifacts/{ID}/prototype/
+  Decisions:  .artifacts/{ID}/decisions/
+  Reviews:    .artifacts/{ID}/reviews/
+  Snapshot:   .artifacts/{ID}/rfe-snapshot.md
 
 Local mode is active — skills will skip Jira writes and pipeline label gates.
 
 Next steps:
   /prototype.review     — Re-score the prototype
   /prototype.refine     — Iterate on the prototype
-  /prototype.push {ID}  — Push back to CI when ready
+  /prototype.push {ID}  — Reset to CI mode when ready
 ```
 
 If this was a Jira stub (no CI prototype existed):
@@ -169,8 +120,8 @@ If this was a Jira stub (no CI prototype existed):
 ```
 No CI prototype found for {ID}. Created a stub from Jira.
 
-  Stub:       local/prototypes/{ID}/prototype.md
-  RFE data:   local/prototype-originals/{ID}/rfe-snapshot.md
+  Stub:       .artifacts/{ID}/metadata.json
+  RFE data:   .artifacts/{ID}/rfe-snapshot.md
 
 Next steps:
   /prototype.create     — Generate a prototype from this RFE
@@ -178,15 +129,14 @@ Next steps:
 
 ## Local Mode Detection
 
-Skills auto-detect local mode by checking whether the prototype path starts with `local/`. When in local mode:
+Skills detect local mode by reading `.artifacts/{ID}/metadata.json` and checking the `mode` field. When `"mode": "local"`:
 
 - **Skip Jira label updates** — don't apply or remove pipeline labels
 - **Skip pipeline status checks** — don't gate on `prototype-creator-candidate` or similar
-- **Write outputs to local/** — reviews, decisions, and refined prototypes stay in the local workspace
 - **Allow interactive iteration** — the user can run review/refine cycles without CI overhead
 
 ## Error Handling
 
 - If the RFE ID is invalid or the Jira fetch fails, tell the user and suggest checking the ID
-- If `artifacts/` has partial data (prototype but no reviews), copy what exists and note the gaps
-- If `local/prototypes/{ID}/` already exists, ask the user whether to overwrite or skip
+- If `.artifacts/{ID}/` has partial data (prototype but no reviews), proceed and note the gaps
+- If `.artifacts/{ID}/metadata.json` already has `"mode": "local"`, print `[ALREADY LOCAL] {ID} is already in local mode` and skip

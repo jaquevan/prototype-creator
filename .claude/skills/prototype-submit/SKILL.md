@@ -35,13 +35,13 @@ Publishes a completed prototype to a target system (Apollo, a git repo, or local
 
 | Input | Location | Required |
 |-------|----------|----------|
-| Prototype files | Target workspace, `artifacts/prototypes/{ID}/`, or `local/prototypes/{ID}/` | Yes |
-| Workspace analysis | `artifacts/workspace-analysis/{ID}.json` | Yes (workspace mode) |
-| Changeset manifest | `artifacts/changesets/{ID}.md` | Yes (workspace mode) |
-| Review scores | `artifacts/prototype-reviews/{ID}-summary.md` | Recommended |
-| Usability report | `artifacts/usability-reports/{ID}-usability.md` | Optional |
-| Desirability report | `artifacts/desirability-reports/{ID}-desirability.md` | Optional |
-| Pipeline config | `artifacts/prototypes/{ID}/pipeline-config.yaml` | Optional |
+| Prototype files | Target workspace or `.artifacts/{ID}/prototype/` | Yes |
+| Workspace analysis | `.artifacts/{ID}/workspace-analysis.json` | Yes (workspace mode) |
+| Changeset manifest | `.artifacts/{ID}/changeset.md` | Yes (workspace mode) |
+| Review scores | `.artifacts/{ID}/reviews/summary.md` | Recommended |
+| Usability report | `.artifacts/{ID}/usability-report.md` | Optional |
+| Desirability report | `.artifacts/{ID}/desirability-report.md` | Optional |
+| Pipeline config | `.artifacts/{ID}/pipeline-config.yaml` | Optional |
 
 ## Step-by-Step Procedure
 
@@ -49,13 +49,13 @@ Publishes a completed prototype to a target system (Apollo, a git repo, or local
 
 Determine whether this prototype was created in workspace mode or standalone mode:
 
-1. Check `artifacts/workspace-analysis/{ID}.json` — if it exists, this is a workspace-mode prototype. Read the workspace path and changeset from `artifacts/changesets/{ID}.md`.
-2. Otherwise, find the prototype in `artifacts/prototypes/{ID}/` or `local/prototypes/{ID}/`.
+1. Check `.artifacts/{ID}/workspace-analysis.json` — if it exists, this is a workspace-mode prototype. Read the workspace path and changeset from `.artifacts/{ID}/changeset.md`.
+2. Otherwise, find the prototype in `.artifacts/{ID}/prototype/`.
 
 **Workspace mode validation:**
 - Workspace path exists and is accessible
 - Changeset manifest lists at least one file
-- `artifacts/prototypes/{ID}/metadata.json` exists
+- `.artifacts/{ID}/metadata.json` exists
 
 **Standalone mode validation:**
 - `index.html` exists (or at least one HTML file)
@@ -67,7 +67,7 @@ If validation fails, stop:
 
 ### Step 2: Read Review Scores
 
-Read the review summary from `artifacts/prototype-reviews/{ID}-summary.md`.
+Read the review summary from `.artifacts/{ID}/reviews/summary.md`.
 
 Extract the rubric scores:
 - Per-dimension scores (completeness, usability, feasibility, fidelity)
@@ -96,9 +96,9 @@ submission:
     pass: true
     label: prototype-creator-rubric-pass
   reports:
-    review: artifacts/prototype-reviews/{ID}-summary.md
-    usability: artifacts/usability-reports/{ID}-usability.md  # if exists
-    desirability: artifacts/desirability-reports/{ID}-desirability.md  # if exists
+    review: .artifacts/{ID}/reviews/summary.md
+    usability: .artifacts/{ID}/usability-report.md  # if exists
+    desirability: .artifacts/{ID}/desirability-report.md  # if exists
   refinement-iterations: 2  # from metadata.json
   dry-run: false
 ```
@@ -153,18 +153,29 @@ python3 scripts/submit_to_repo.py \
 ```
 
 The script:
-1. Reads `artifacts/workspace-analysis/{ID}.json` for the clone URL, original branch, and workspace path
-2. Reads `artifacts/changesets/{ID}.md` for the list of changed files
+1. Reads `.artifacts/{ID}/workspace-analysis.json` for the clone URL, original branch, and workspace path
+2. Reads `.artifacts/{ID}/changeset.md` for the list of changed files
 3. Creates branch `prototype/{ID}` in the workspace
 4. Stages only the changeset files (not the entire workspace)
 5. Commits with message: `prototype: {ID} — {title}`
 6. Auto-detects shallow clones and runs `git fetch --unshallow` before pushing (GitLab rejects pushes from shallow repos)
-7. Pushes to the remote with GitLab push options that automatically create a merge request targeting the original branch (e.g., `3.5`)
-8. Outputs JSON with the MR URL, branch name, commit hash, and remote
+7. Generates a **designer-oriented MR description** (see below)
+8. Pushes to the remote with GitLab push options that automatically create a merge request targeting the original branch (e.g., `3.5`)
+9. Outputs JSON with the MR URL, branch name, commit hash, and remote
+
+**MR description:** The script automatically generates a rich merge request description by reading from `.artifacts/{ID}/`. The description is written for designers and reviewers (not developers) and includes:
+
+- **What this adds** — a short summary of the feature from the RFE snapshot
+- **Pipeline details** — fidelity level, mode (auto vs. human-in-the-loop), rubric score, and whether human review has occurred
+- **Key design decisions** — each decision title, chosen option, and whether it was human-picked or auto-resolved
+- **How to review** — shell commands to pull the branch and run locally
+- **Assumptions** — any scope constraints or assumptions from `metadata.json`
+
+The description explicitly states this was generated by `prototype-creator` and whether a human-in-the-loop review step was included, so reviewers know the provenance.
 
 **Sandbox note:** This script runs `git` commands that contact remote servers and write to `.git/` internals. In Cursor, run it with `required_permissions: ["all"]` to avoid sandbox restrictions on hooks directories and network access.
 
-**Workspace analysis requirements:** The script expects `branch` and `clone_url` fields in `artifacts/workspace-analysis/{ID}.json`. These come from the `resolve_workspace.py` output during the create step. If they're missing, the MR will target the wrong branch or the push will fail.
+**Workspace analysis requirements:** The script expects `branch` and `clone_url` fields in `.artifacts/{ID}/workspace-analysis.json`. These come from the `resolve_workspace.py` output during the create step. If they're missing, the MR will target the wrong branch or the push will fail.
 
 If `--remote` is provided, the script pushes to that URL instead of the workspace's origin. This supports fork workflows where the user wants to push to their own repo. If `--remote` is not provided, it pushes to origin (the repo the workspace was cloned from).
 
@@ -187,7 +198,7 @@ Read the script's JSON output and use it for reporting:
 Initialize and push the prototype as a standalone git repo:
 
 ```bash
-cd artifacts/prototypes/{ID}
+cd .artifacts/{ID}/prototype
 git init
 git add .
 git commit -m "feat: initial prototype for {ID}"
@@ -229,7 +240,7 @@ Prototype created by prototype-creator pipeline.
 
 • Rubric score: 7/10 (pass)
 • Prototype: [link to published location]
-• Review: artifacts/prototype-reviews/PROJ-42-summary.md
+• Review: .artifacts/PROJ-42/reviews/summary.md
 • Refinement iterations: 2
 
 Labels applied: prototype-creator-submitted, prototype-creator-rubric-pass
@@ -244,7 +255,7 @@ In `--dry-run` mode: print the comment and labels that would be applied but don'
 
 ### Step 6: Update Submission Manifest
 
-Append (or create) `artifacts/prototype-submissions.md`:
+Append (or create) `.artifacts/submissions.md`:
 
 ```markdown
 ## Submissions
@@ -270,7 +281,7 @@ Labels: prototype-creator-submitted, prototype-creator-rubric-pass
 Jira: Comment added to PROJ-42
 Location: http://localhost:1225/api/prototypes/{ID}
 
-Submission logged in artifacts/prototype-submissions.md
+Submission logged in .artifacts/submissions.md
 ```
 
 If `--dry-run`:
@@ -306,7 +317,7 @@ No external writes performed. Remove --dry-run to submit.
 - **Apollo server not running (target=apollo)**: Check connectivity first with `GET /api/prototypes`. If unreachable, stop:
   > Apollo server not reachable at localhost:1225. Start the server with `./start.sh` or use `--target=local` instead.
 
-- **Prototype already submitted**: Check `artifacts/prototype-submissions.md` for existing entries with the same ID. If found, ask:
+- **Prototype already submitted**: Check `.artifacts/submissions.md` for existing entries with the same ID. If found, ask:
   > Prototype `{ID}` was already submitted on {date} to {target}. Resubmit? (This will create a new submission entry, not overwrite the previous one.)
   In `--headless` mode, proceed with resubmission and note it in the manifest.
 
@@ -322,6 +333,6 @@ No external writes performed. Remove --dry-run to submit.
 | Output | Location |
 |--------|----------|
 | Published prototype | Target-dependent (Apollo API, git repo, or local only) |
-| Submission manifest | `artifacts/prototype-submissions.md` |
+| Submission manifest | `.artifacts/submissions.md` |
 | Updated Jira issue | Jira comment + labels (unless `--skip-jira` or `--dry-run`) |
 | Updated metadata.json | Prototype's `metadata.json` (submission record) |

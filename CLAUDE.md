@@ -32,7 +32,7 @@ Decision points are **dynamic, not a fixed set.** The AI analyzes the RFE and ta
 - `--depth=normal` — 4–7 context-dependent decisions (default)
 - `--depth=over` — 8–12 decisions for thorough exploration
 
-All decisions are stored in `.decisions/` following the [decision-kit spec](https://github.com/jnemargut/decision-kit).
+All decisions are stored in `.artifacts/{ID}/decisions/` following the [decision-kit spec](https://github.com/jnemargut/decision-kit).
 
 ## Fidelity Levels
 
@@ -72,13 +72,13 @@ RFE (Jira) → prototype.create --fidelity=medium --mode=decide --workspace=/pat
 
 ### Local Human Review
 
-After CI finishes, humans use the `local/` workspace to iterate:
+After CI finishes, humans use `/prototype.pull` to switch a prototype into local mode for iteration:
 
 ```
-/prototype.pull PROJ-298       # Pull post-CI prototype into local/
+/prototype.pull PROJ-298       # Switch prototype to local mode (skips Jira writes)
 /prototype.refine              # Iterate locally
 /prototype.review              # Re-score locally
-/prototype.push PROJ-298       # Resubmit to CI
+/prototype.push PROJ-298       # Reset to CI mode for re-review
 ```
 
 ## Project Structure
@@ -94,17 +94,28 @@ prototype-creator/
 │   │   ├── prototype-test-desirability/ # Simulated desirability testing
 │   │   ├── prototype-submit/          # Publish prototype
 │   │   ├── prototype-speedrun/        # End-to-end orchestrator
-│   │   ├── prototype-pull/            # Pull from CI into local/
-│   │   ├── prototype-push/            # Push local changes back to CI
+│   │   ├── prototype-pull/            # Switch prototype to local mode
+│   │   ├── prototype-push/            # Reset prototype to CI mode
 │   │   └── prototype-common/          # Shared utilities (symlinked)
 │   └── agents/
 │       └── prototype-scorer.md        # Restricted scoring agent
-├── .decisions/                        # Decision artifacts (decision-kit format)
-│   ├── decisions.json                 # Machine-readable decision state
-│   ├── decision-NNN-slug.html         # Per-decision visual pages
-│   ├── index.html                     # Decision landing page
-│   ├── auto-review.html               # Batch review page (auto mode)
-│   └── strategy-brief.md              # Summary of all decisions
+├── .artifacts/                        # All pipeline output, per-RFE (gitignored)
+│   ├── {ID}/                          # e.g., RHAISTRAT-1536/
+│   │   ├── decisions/                 # Decision artifacts (decision-kit format)
+│   │   │   ├── decisions.json         # Machine-readable decision state
+│   │   │   ├── strategy-brief.md      # Summary of all decisions
+│   │   │   ├── decision-001.html      # Per-decision visual pages
+│   │   │   └── index.html             # Decision landing page
+│   │   ├── prototype/                 # Prototype code (HTML or workspace files)
+│   │   ├── reviews/                   # Review scores per dimension
+│   │   ├── metadata.json              # Run metadata and mode (ci/local)
+│   │   ├── rfe-snapshot.md            # Frozen RFE content at creation time
+│   │   ├── changeset.md               # Files created/modified (workspace mode)
+│   │   ├── workspace-analysis.json    # Target codebase analysis (workspace mode)
+│   │   ├── pipeline-config.yaml       # Parsed flags for context survival
+│   │   └── pipeline-progress.yaml     # Step-by-step progress tracking
+│   ├── submissions.md                 # Cross-ID submission manifest
+│   └── pipeline-complete.json         # CI completion signal
 ├── scripts/                           # Python scripts
 ├── config/                            # Pipeline and rubric configuration
 ├── templates/                         # HTML layout and component templates
@@ -115,12 +126,6 @@ prototype-creator/
 │   ├── design-system/                 # PatternFly component docs + tokens
 │   ├── research-context/              # UX research (personas, JTBD, top tasks)
 │   └── decision-kit/                  # Vendored decision-kit thinking skills
-├── local/                             # Human review workspace (gitignored)
-├── artifacts/                         # Pipeline output (gitignored)
-│   ├── prototypes/                    # Standalone HTML prototypes
-│   ├── changesets/                    # Workspace mode changeset manifests
-│   ├── workspace-analysis/            # Target codebase analysis
-│   └── prototype-reviews/             # Review scores
 ├── docs/                              # Documentation
 ├── tests/                             # Test suite
 ├── pyproject.toml

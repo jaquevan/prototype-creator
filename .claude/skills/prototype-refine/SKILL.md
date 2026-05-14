@@ -35,10 +35,10 @@ Refines an existing prototype by addressing review feedback, user-provided direc
 
 | Input | Location | Required |
 |-------|----------|----------|
-| Prototype files | Target workspace, `artifacts/prototypes/{ID}/`, or `local/prototypes/{ID}/` | Yes |
-| Workspace analysis | `artifacts/workspace-analysis/{ID}.json` | Yes (workspace mode) |
-| Decisions | `.decisions/decisions.json` | Recommended |
-| Review summary | `artifacts/prototype-reviews/{ID}-summary.md` | Yes (for auto mode) |
+| Prototype files | Target workspace or `.artifacts/{ID}/prototype/` | Yes |
+| Workspace analysis | `.artifacts/{ID}/workspace-analysis.json` | Yes (workspace mode) |
+| Decisions | `.artifacts/{ID}/decisions/decisions.json` | Recommended |
+| Review summary | `.artifacts/{ID}/reviews/summary.md` | Yes (for auto mode) |
 | User direction | Interactive prompt or `--headless` flags | Optional |
 | Research context | `.context/research-context/` (personas, JTBD) | Optional |
 
@@ -46,23 +46,22 @@ Refines an existing prototype by addressing review feedback, user-provided direc
 
 ### Step 1: Locate the Prototype
 
-Search for the prototype in order of precedence:
+Search for the prototype in `.artifacts/{ID}/`:
 
-1. **Workspace mode** — Check `artifacts/workspace-analysis/{ID}.json` for a workspace path. If found, the prototype lives in the target workspace. Read the changeset at `artifacts/changesets/{ID}.md` to find which files belong to this prototype.
-2. `local/prototypes/{ID}/` — local human-review workspace (preferred for iterative work)
-3. `artifacts/prototypes/{ID}/` — pipeline output directory
+1. **Workspace mode** — Check `.artifacts/{ID}/workspace-analysis.json` for a workspace path. If found, the prototype lives in the target workspace. Read the changeset at `.artifacts/{ID}/changeset.md` to find which files belong to this prototype.
+2. **Standalone mode** — Check `.artifacts/{ID}/prototype/` for HTML files.
 
-If none found, stop and report:
+If `.artifacts/{ID}/` does not exist, stop and report:
 
-> Prototype `{ID}` not found. Run `prototype.create` first or `prototype.pull` to fetch from CI.
+> Prototype `{ID}` not found. Run `prototype.create` first.
 
-**Workspace mode**: Read the files listed in the changeset manifest. Also read `.decisions/decisions.json` and `.decisions/strategy-brief.md` to understand the design decisions that informed the prototype.
+**Workspace mode**: Read the files listed in the changeset manifest. Also read `.artifacts/{ID}/decisions/decisions.json` and `.artifacts/{ID}/decisions/strategy-brief.md` to understand the design decisions that informed the prototype.
 
-**Standalone mode**: Read the prototype's `index.html` and any associated files (`styles.css`, `script.js`, `metadata.json`).
+**Standalone mode**: Read the prototype's `index.html` and any associated files from `.artifacts/{ID}/prototype/`.
 
 ### Step 2: Read Review Feedback
 
-Read the review summary from `artifacts/prototype-reviews/{ID}-summary.md`.
+Read the review summary from `.artifacts/{ID}/reviews/summary.md`.
 
 Extract the structured feedback sections:
 
@@ -74,7 +73,7 @@ Extract the structured feedback sections:
 
 If no review summary exists and `--mode=auto`:
 
-> No review feedback found at `artifacts/prototype-reviews/{ID}-summary.md`. Cannot auto-refine without review input. Run `prototype.review` first or provide direction interactively.
+> No review feedback found at `.artifacts/{ID}/reviews/summary.md`. Cannot auto-refine without review input. Run `prototype.review` first or provide direction interactively.
 
 If no review summary exists and mode is interactive, ask the user what to refine.
 
@@ -122,24 +121,24 @@ For each issue category from the review, create a refinement plan:
 
 If `--mode=decide`:
 
-For each non-trivial refinement (where multiple valid approaches exist), produce a decision-kit artifact following the `.decisions/` format:
+For each non-trivial refinement (where multiple valid approaches exist), produce a decision-kit artifact:
 
-1. Write the decision page to `.decisions/decision-NNN-refine-slug.html`
+1. Write the decision page to `.artifacts/{ID}/decisions/decision-NNN-refine-slug.html`
 2. Include:
    - The current state (code snippet or description)
    - 4 refinement options with visual previews
    - Tradeoffs and comparison table for each option
    - A recommendation with reasoning
-3. Record the decision in `.decisions/decisions.json`
+3. Record the decision in `.artifacts/{ID}/decisions/decisions.json`
 4. Ask the user to pick
 
-If `--mode=auto`, pick the recommended option and proceed. Record auto-picked refinement decisions in `.decisions/decisions.json` with `status: "auto-picked"`.
+If `--mode=auto`, pick the recommended option and proceed. Record auto-picked refinement decisions in `.artifacts/{ID}/decisions/decisions.json` with `status: "auto-picked"`.
 
 ### Step 6: Apply Refinements
 
 Edit the prototype files to address each planned refinement.
 
-**Workspace mode**: Edit files in the target workspace using the codebase's conventions (from `artifacts/workspace-analysis/{ID}.json`). Follow the same patterns used in the original creation — same component style, same file structure, same import conventions.
+**Workspace mode**: Edit files in the target workspace using the codebase's conventions (from `.artifacts/{ID}/workspace-analysis.json`). Follow the same patterns used in the original creation — same component style, same file structure, same import conventions.
 
 **Standalone mode**: Modify `index.html` and screen-specific HTML files. Replace incorrect components with proper design system markup. Add missing states.
 
@@ -163,7 +162,7 @@ Update the prototype's `metadata.json` to track the refinement:
           "Replaced custom modal with PatternFly Modal component",
           "Added breadcrumb navigation to detail view"
         ],
-        "reviewSource": "artifacts/prototype-reviews/RFE-42-summary.md"
+        "reviewSource": ".artifacts/RFE-42/reviews/summary.md"
       }
     ]
   }
@@ -220,7 +219,7 @@ Exit conditions:
 
 | Output | Location |
 |--------|----------|
-| Updated prototype | Same as input (workspace, `artifacts/prototypes/{ID}/`, or `local/prototypes/{ID}/`) |
-| Updated changeset | `artifacts/changesets/{ID}.md` (workspace mode — updated with new/modified files) |
-| Decision artifacts (decide mode) | `.decisions/decision-NNN-refine-slug.html` |
+| Updated prototype | Same as input (workspace or `.artifacts/{ID}/prototype/`) |
+| Updated changeset | `.artifacts/{ID}/changeset.md` (workspace mode — updated with new/modified files) |
+| Decision artifacts (decide mode) | `.artifacts/{ID}/decisions/decision-NNN-refine-slug.html` |
 | Refinement log | Embedded in prototype's `metadata.json` |

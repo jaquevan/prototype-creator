@@ -3,7 +3,7 @@
 Generate an HTML report summarizing a prototype-creator pipeline run.
 
 Usage:
-    python3 scripts/generate-report.py [--output artifacts/pipeline-report.html]
+    python3 scripts/generate-report.py [--output .artifacts/pipeline-report.html]
 
 Reads all prototype and review artifacts, generates a summary table
 with drill-down detail links.
@@ -30,19 +30,18 @@ SCORE_COLORS = {
 }
 
 
-def gather_prototypes(artifacts_dir='artifacts'):
+def gather_prototypes(artifacts_dir='.artifacts'):
     prototypes = []
-    proto_dir = os.path.join(artifacts_dir, 'prototypes')
-    if not os.path.exists(proto_dir):
+    if not os.path.exists(artifacts_dir):
         return prototypes
 
-    for folder in sorted(os.listdir(proto_dir)):
-        folder_path = os.path.join(proto_dir, folder)
+    for folder in sorted(os.listdir(artifacts_dir)):
+        folder_path = os.path.join(artifacts_dir, folder)
         if not os.path.isdir(folder_path):
             continue
 
         metadata_file = os.path.join(folder_path, 'metadata.json')
-        index_file = os.path.join(folder_path, 'index.html')
+        index_file = os.path.join(folder_path, 'prototype', 'index.html')
 
         proto = {
             'id': folder,
@@ -59,7 +58,7 @@ def gather_prototypes(artifacts_dir='artifacts'):
                 proto['fidelity'] = meta.get('fidelity', 'unknown')
                 proto['source_rfe'] = meta.get('source_rfe', '')
 
-        summary_file = os.path.join(artifacts_dir, 'prototype-reviews', f'{folder}-summary.md')
+        summary_file = os.path.join(folder_path, 'reviews', 'summary.md')
         if os.path.exists(summary_file):
             fm = read_frontmatter(summary_file)
             proto['review'] = fm
@@ -157,7 +156,7 @@ def generate_html(prototypes, output_path):
 
 
 def main():
-    output = 'artifacts/pipeline-report.html'
+    output = '.artifacts/pipeline-report.html'
 
     i = 1
     while i < len(sys.argv):

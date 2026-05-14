@@ -13,7 +13,7 @@ Parse the following flags from `$ARGUMENTS`:
 
 | Flag | Values | Default | Meaning |
 |------|--------|---------|---------|
-| `--workspace` | Local path or git URL | none | Target codebase to modify. When set, output is code changes in the target's tech stack. When omitted, generates standalone HTML to `artifacts/prototypes/`. |
+| `--workspace` | Local path or git URL | none | Target codebase to modify. When set, output is code changes in the target's tech stack. When omitted, generates standalone HTML to `.artifacts/{ID}/prototype/`. |
 | `--fidelity` | `low`, `medium`, `high` | `medium` | Wireframe → realistic design system components → production-ready |
 | `--mode` | `auto`, `decide` | `auto` | AI decides everything vs. stops at each design decision |
 | `--depth` | `under`, `normal`, `over` | `normal` | How many decisions to surface: `under` = 2–3 highest-stakes only, `normal` = 4–7 context-dependent, `over` = 8–12 thorough |
@@ -68,10 +68,10 @@ Fidelity describes the level of polish and completeness. When a `--workspace` is
 
 Check for available RFE sources:
 
-1. **Local artifacts** — check for `artifacts/prototype-originals/` or `artifacts/rfe-tasks/` files with valid frontmatter. Read Jira keys from task file frontmatter:
+1. **Local artifacts** — check for `.artifacts/*/rfe-snapshot.md` files with valid frontmatter. Read Jira keys from frontmatter:
 
 ```bash
-python3 ${CLAUDE_SKILL_DIR}/scripts/frontmatter.py read artifacts/rfe-tasks/<file>.md
+python3 ${CLAUDE_SKILL_DIR}/scripts/frontmatter.py read .artifacts/<RFE-KEY>/rfe-snapshot.md
 ```
 
 2. **Jira** — check if Jira MCP is available or if `JIRA_SERVER`/`JIRA_USER`/`JIRA_TOKEN` env vars are set, and if the user has provided RFE keys in `$ARGUMENTS`
@@ -122,12 +122,13 @@ The user can select specific ones or "all."
 
 ## Step 3: Save Original RFE Snapshots
 
-For each selected RFE, save the raw fetched content to `artifacts/prototype-originals/<RFE-KEY>.md`. This is a frozen snapshot of the RFE at prototype creation time — it never gets modified.
+For each selected RFE, save the raw fetched content to `.artifacts/<RFE-KEY>/rfe-snapshot.md`. This is a frozen snapshot of the RFE at prototype creation time — it never gets modified.
 
 Write the full RFE content (summary, description, user stories, acceptance criteria, priority, labels, status) as-is. Set frontmatter:
 
 ```bash
-python3 ${CLAUDE_SKILL_DIR}/scripts/frontmatter.py set artifacts/prototype-originals/<RFE-KEY>.md \
+mkdir -p .artifacts/<RFE-KEY>
+python3 ${CLAUDE_SKILL_DIR}/scripts/frontmatter.py set .artifacts/<RFE-KEY>/rfe-snapshot.md \
     rfe_key=<RFE-KEY> \
     title="<title from RFE>" \
     priority=<priority> \
@@ -135,7 +136,7 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/frontmatter.py set artifacts/prototype-origi
     source=jira
 ```
 
-If the snapshot already exists, skip overwriting — print `[EXISTS] artifacts/prototype-originals/<RFE-KEY>.md already exists, using cached snapshot`.
+If the snapshot already exists, skip overwriting — print `[EXISTS] .artifacts/<RFE-KEY>/rfe-snapshot.md already exists, using cached snapshot`.
 
 ## Step 4: Extract User Stories and Acceptance Criteria
 
@@ -157,7 +158,7 @@ If the RFE is thin or ambiguous, log what's missing and proceed with reasonable 
 
 Read `--workspace` and `--branch` from `$ARGUMENTS`.
 
-**If `--workspace` is not set**: Skip this step. The pipeline will generate standalone HTML to `artifacts/prototypes/<RFE-KEY>/`.
+**If `--workspace` is not set**: Skip this step. The pipeline will generate standalone HTML to `.artifacts/<RFE-KEY>/prototype/`.
 
 **Otherwise**, use the `resolve_workspace.py` script to parse the URL, detect any embedded branch, and clone.
 
@@ -182,7 +183,7 @@ The script outputs JSON to stdout with the resolved metadata:
   "clone_url": "https://gitlab.example.com/org/repo.git",
   "branch": "3.5",
   "branch_source": "url",
-  "clone_path": "local/workspaces/PROJ-298",
+  "clone_path": ".artifacts/PROJ-298/workspace",
   "status": "cloned"
 }
 ```
@@ -245,14 +246,14 @@ Read 2–3 existing page/component files to understand the codebase's convention
 
 ### Output
 
-Store the analysis in `artifacts/workspace-analysis/<RFE-KEY>.json`.
+Store the analysis in `.artifacts/<RFE-KEY>/workspace-analysis.json`.
 
-**Important:** Include `branch` and `clone_url` from the resolve_workspace.py output (Step 5). The `submit_to_repo.py` script reads these fields to determine the MR target branch and remote URL. Omitting them will cause the submit step to fail or target the wrong branch.
+**Important:** Include `branch` and `clone_url` from the resolve_workspace.py output (Step 5). The `submit_to_repo.py` script reads these fields from `.artifacts/<RFE-KEY>/workspace-analysis.json` to determine the MR target branch and remote URL. Omitting them will cause the submit step to fail or target the wrong branch.
 
 ```json
 {
   "rfe_key": "PROJ-298",
-  "workspace_path": "local/workspaces/PROJ-298",
+  "workspace_path": ".artifacts/PROJ-298/workspace",
   "branch": "3.5",
   "clone_url": "https://gitlab.example.com/org/repo.git",
   "tech_stack": {
@@ -322,7 +323,7 @@ Before presenting any decisions, plan the full set. Analyze:
 
 - The RFE's user stories and acceptance criteria (from Step 4)
 - The target codebase's existing patterns (from Step 6, if workspace is set)
-- Any upstream decisions already made (check `.decisions/decisions.json` if it exists)
+- Any upstream decisions already made (check `.artifacts/<RFE-KEY>/decisions/decisions.json` if it exists)
 - The fidelity level and its implications
 
 Identify the decisions hiding in this RFE. Consider dimensions like:
@@ -364,17 +365,15 @@ Surfacing 4 decisions for human input. 2 auto-resolved.
 
 ### Step 8b: Initialize Decision Storage
 
-Decisions are scoped per RFE. Each RFE gets its own decisions directory:
+Decisions are scoped per RFE. Each RFE's decisions live inside its artifact directory:
 
 ```bash
-mkdir -p .decisions/<RFE-KEY>
+mkdir -p .artifacts/<RFE-KEY>/decisions
 ```
 
-If `.decisions/<RFE-KEY>/decisions.json` already exists (from a prior run or upstream thinking skill for the same RFE), read it and do not re-ask questions already answered. Build on prior decisions.
+If `.artifacts/<RFE-KEY>/decisions/decisions.json` already exists (from a prior run or upstream thinking skill for the same RFE), read it and do not re-ask questions already answered. Build on prior decisions.
 
-If `.decisions/<RFE-KEY>/decisions.json` does NOT exist but `.decisions/decisions.json` does (legacy format from a different RFE), ignore it — it belongs to a different prototype run.
-
-Initialize or update `.decisions/<RFE-KEY>/decisions.json`:
+Initialize or update `.artifacts/<RFE-KEY>/decisions/decisions.json`:
 
 ```json
 {
@@ -388,13 +387,13 @@ Initialize or update `.decisions/<RFE-KEY>/decisions.json`:
 }
 ```
 
-All decision HTML pages for this RFE go into `.decisions/<RFE-KEY>/` as well (e.g., `.decisions/PROJ-298/decision-001.html`). Use simple numbered file names — no slug suffix. The strategy brief is written to `.decisions/<RFE-KEY>/strategy-brief.md`.
+All decision HTML pages for this RFE go into `.artifacts/<RFE-KEY>/decisions/` as well (e.g., `.artifacts/PROJ-298/decisions/decision-001.html`). Use simple numbered file names — no slug suffix. The strategy brief is written to `.artifacts/<RFE-KEY>/decisions/strategy-brief.md`.
 
 ### Step 8c: Walk Through Decisions
 
 **If `--mode=auto` AND `--fidelity=low` (fast path)**: Skip HTML decision page generation entirely. For each planned decision, auto-resolve it and record directly in `decisions.json` with `status: "auto-resolved"` and a one-sentence summary. Do NOT generate individual decision HTML pages, the `auto-review.html` batch page, or the `index.html` landing page. Do NOT pause for confirmation. Proceed directly to the strategy brief (Step 8e) and then code generation. This fast path saves significant context budget for the most common CI/batch case.
 
-**If `--mode=auto` (medium or high fidelity)**: For each planned decision, generate the full decision page (research, options, recommendation, comparison), save it, and auto-pick the recommended option. Set status to `"auto-picked"`. After all decisions, generate `.decisions/<RFE-KEY>/auto-review.html` — a single batch-review page listing every auto-pick. Present a clickable `file://` link to the auto-review page and pause once for confirmation or overrides. Transition all `auto-picked` to `chosen` only after confirmation.
+**If `--mode=auto` (medium or high fidelity)**: For each planned decision, generate the full decision page (research, options, recommendation, comparison), save it, and auto-pick the recommended option. Set status to `"auto-picked"`. After all decisions, generate `.artifacts/<RFE-KEY>/decisions/auto-review.html` — a single batch-review page listing every auto-pick. Present a clickable `file://` link to the auto-review page and pause once for confirmation or overrides. Transition all `auto-picked` to `chosen` only after confirmation.
 
 **If `--mode=decide`**: Generate all decision pages upfront, then ask the user for choices.
 
@@ -402,7 +401,7 @@ All decision HTML pages for this RFE go into `.decisions/<RFE-KEY>/` as well (e.
 
 For each planned decision that will be surfaced to the user, generate its HTML page **before asking any questions**. Write all pages in one batch:
 
-For each decision, write the page to `.decisions/<RFE-KEY>/decision-NNN.html` (e.g., `decision-001.html`, `decision-002.html`). Use simple numbered names — no slug suffix.
+For each decision, write the page to `.artifacts/<RFE-KEY>/decisions/decision-NNN.html` (e.g., `decision-001.html`, `decision-002.html`). Use simple numbered names — no slug suffix.
 
 Each page must contain:
 
@@ -433,10 +432,10 @@ After all pages are generated, print a summary with all the `file://` URLs so th
 All <N> decision pages generated. Review them at your own pace:
 
   1. <Decision Title>
-     file://<absolute-workspace-root>/.decisions/<RFE-KEY>/decision-001.html
+     file://<absolute-workspace-root>/.artifacts/<RFE-KEY>/decisions/decision-001.html
 
   2. <Decision Title>
-     file://<absolute-workspace-root>/.decisions/<RFE-KEY>/decision-002.html
+     file://<absolute-workspace-root>/.artifacts/<RFE-KEY>/decisions/decision-002.html
 
   ...
 
@@ -452,7 +451,7 @@ After all pages are generated, walk through each decision sequentially:
 ```
 Decision <N>/<total>: <Decision Title>
 
-  file://<absolute-workspace-root>/.decisions/<RFE-KEY>/decision-<NNN>.html
+  file://<absolute-workspace-root>/.artifacts/<RFE-KEY>/decisions/decision-<NNN>.html
 
 My recommendation: <Option Name> — <one sentence why>
 
@@ -504,8 +503,8 @@ For decisions the AI auto-resolved (high confidence), record them in `decisions.
 
 After all decisions are resolved:
 
-1. Write `.decisions/<RFE-KEY>/index.html` — a landing page showing all decisions and their status, with links to each `decision-NNN.html` page. Present a clickable `file://` link to the index page. (Individual decision pages also have navigation tabs, so the index is primarily an overview.)
-2. Write `.decisions/<RFE-KEY>/strategy-brief.md` — a summary of all choices made:
+1. Write `.artifacts/<RFE-KEY>/decisions/index.html` — a landing page showing all decisions and their status, with links to each `decision-NNN.html` page. Present a clickable `file://` link to the index page. (Individual decision pages also have navigation tabs, so the index is primarily an overview.)
+2. Write `.artifacts/<RFE-KEY>/decisions/strategy-brief.md` — a summary of all choices made:
 
 ```markdown
 # Prototype Brief: PROJ-298 — New Onboarding Wizard
@@ -538,9 +537,9 @@ With all design decisions resolved, generate the prototype. The generation appro
 
 When modifying an existing codebase:
 
-1. **Read the strategy brief** from `.decisions/strategy-brief.md` to understand all decisions made.
+1. **Read the strategy brief** from `.artifacts/<RFE-KEY>/decisions/strategy-brief.md` to understand all decisions made.
 
-2. **Read the workspace analysis** from `artifacts/workspace-analysis/<RFE-KEY>.json` to understand the codebase's conventions.
+2. **Read the workspace analysis** from `.artifacts/<RFE-KEY>/workspace-analysis.json` to understand the codebase's conventions.
 
 3. **Follow the target codebase's conventions.** If the codebase has `AGENTS.md`, `.cursor/rules/`, or similar agent instructions, follow them. Match the existing:
    - File naming and directory structure
@@ -587,7 +586,7 @@ When generating self-contained HTML prototypes:
 
 Write generated files directly to the target workspace. Track what was created or modified:
 
-Write a changeset manifest to `artifacts/changesets/<RFE-KEY>.md`:
+Write a changeset manifest to `.artifacts/<RFE-KEY>/changeset.md`:
 
 ```markdown
 ---
@@ -609,22 +608,23 @@ created: 2026-04-30T12:00:00Z
 - `src/components/Navigation/Sidebar.tsx` — Added nav item
 
 ## Decisions Applied
-See `.decisions/strategy-brief.md` for the full decision record.
+See `.artifacts/<RFE-KEY>/decisions/strategy-brief.md` for the full decision record.
 ```
 
-Also write `artifacts/prototypes/<RFE-KEY>/metadata.json` as a record (same format as standalone mode but with `workspace` field).
+Also write `.artifacts/<RFE-KEY>/metadata.json` as a record (same format as standalone mode but with `workspace` field).
 
 ### Standalone Mode
 
-Write the generated prototype to `artifacts/prototypes/<RFE-KEY>/`:
+Write the generated prototype to `.artifacts/<RFE-KEY>/prototype/`:
 
 ```
-artifacts/prototypes/<RFE-KEY>/
+.artifacts/<RFE-KEY>/prototype/
 ├── index.html              # Primary view / entry point
 ├── create.html             # (if applicable) Creation flow
-├── detail.html             # (if applicable) Detail/edit view
-└── metadata.json           # Prototype metadata
+└── detail.html             # (if applicable) Detail/edit view
 ```
+
+Write `.artifacts/<RFE-KEY>/metadata.json` at the RFE artifact root (not inside `prototype/`).
 
 ### metadata.json (both modes)
 
@@ -637,8 +637,8 @@ artifacts/prototypes/<RFE-KEY>/
   "mode": "decide",
   "created": "2026-04-30T12:00:00Z",
   "workspace": "/path/to/rhoai",
-  "decisions_dir": ".decisions/",
-  "changeset": "artifacts/changesets/PROJ-298.md",
+  "decisions_dir": ".artifacts/PROJ-298/decisions/",
+  "changeset": ".artifacts/PROJ-298/changeset.md",
   "user_stories_count": 5,
   "acceptance_criteria_count": 12,
   "assumptions": [
@@ -647,7 +647,7 @@ artifacts/prototypes/<RFE-KEY>/
   "source": {
     "type": "jira",
     "key": "PROJ-298",
-    "snapshot": "artifacts/prototype-originals/PROJ-298.md"
+    "snapshot": ".artifacts/PROJ-298/rfe-snapshot.md"
   }
 }
 ```
@@ -662,7 +662,7 @@ After writing code to the target workspace, run the verification commands specif
 
 ### 11a: Read verification commands
 
-Read the `post_change_verification` section from `artifacts/workspace-analysis/<RFE-KEY>.json`. If it wasn't captured during Step 6, read the target repo's `AGENTS.md` now and extract the commands.
+Read the `post_change_verification` section from `.artifacts/<RFE-KEY>/workspace-analysis.json`. If it wasn't captured during Step 6, read the target repo's `AGENTS.md` now and extract the commands.
 
 ### 11b: Install dependencies (if needed)
 
@@ -675,7 +675,7 @@ npm install
 
 ### 11c: Lint all changed files
 
-Run the lint command from the workspace analysis on every file you created or modified. The changeset manifest (`artifacts/changesets/<RFE-KEY>.md`) lists these files.
+Run the lint command from the workspace analysis on every file you created or modified. The changeset manifest (`.artifacts/<RFE-KEY>/changeset.md`) lists these files.
 
 ```bash
 cd <workspace-path>
@@ -709,7 +709,7 @@ npm run build
 
 ### 11e: Update changeset if files changed
 
-If you modified additional files during lint/build fixing, update the changeset manifest at `artifacts/changesets/<RFE-KEY>.md` to include them.
+If you modified additional files during lint/build fixing, update the changeset manifest at `.artifacts/<RFE-KEY>/changeset.md` to include them.
 
 **Both lint and build must pass before proceeding.** This is non-negotiable — the target repo's CI will reject the changes otherwise, and prototype preview links won't work.
 
@@ -746,9 +746,9 @@ Prototype created:
   Fidelity:   medium (realistic)
   Mode:       decide (4 decisions surfaced, 2 auto-resolved)
   Files:      6 created, 2 modified
-  Decisions:  .decisions/
-  Changeset:  artifacts/changesets/PROJ-298.md
-  Snapshot:   artifacts/prototype-originals/PROJ-298.md
+  Decisions:  .artifacts/PROJ-298/decisions/
+  Changeset:  .artifacts/PROJ-298/changeset.md
+  Snapshot:   .artifacts/PROJ-298/rfe-snapshot.md
 
 Next steps:
   • Review the changes in the workspace
@@ -764,12 +764,12 @@ Prototype created:
   RFE:       PROJ-298 — New Onboarding Wizard
   Fidelity:  medium (realistic PatternFly)
   Mode:      decide (4 decisions surfaced, 2 auto-resolved)
-  Screens:   4 files in artifacts/prototypes/PROJ-298/
-  Decisions: .decisions/
-  Snapshot:  artifacts/prototype-originals/PROJ-298.md
+  Screens:   4 files in .artifacts/PROJ-298/prototype/
+  Decisions: .artifacts/PROJ-298/decisions/
+  Snapshot:  .artifacts/PROJ-298/rfe-snapshot.md
 
   Open in browser:
-    [artifacts/prototypes/PROJ-298/index.html](file://<absolute-workspace-root>/artifacts/prototypes/PROJ-298/index.html)
+    [.artifacts/PROJ-298/prototype/index.html](file://<absolute-workspace-root>/.artifacts/PROJ-298/prototype/index.html)
 
 Next steps:
   • Run /prototype.review to score the prototype against the UX quality rubric
@@ -802,13 +802,13 @@ If the RFE lacks enough detail to determine screen count, layout, or data model:
 
 If the RFE is purely backend (API endpoints, data model changes, infrastructure) with no user-facing component:
 - Print `[SKIP] <RFE-KEY> — RFE describes API/backend changes with no UI surface. Prototype creation is not applicable.`
-- Write a note to `artifacts/prototype-originals/<RFE-KEY>.md` explaining why it was skipped.
+- Write a note to `.artifacts/<RFE-KEY>/rfe-snapshot.md` explaining why it was skipped.
 - Do NOT generate a prototype.
 
 ### Multiple RFEs that compose a single feature
 
 If the user provides multiple RFEs that clearly describe parts of the same feature (e.g., PROJ-298 is "Create pipeline" and PROJ-299 is "Monitor pipeline"), ask whether to:
-1. Prototype each RFE independently (separate `artifacts/prototypes/<KEY>/` folders)
+1. Prototype each RFE independently (separate `.artifacts/<KEY>/` folders)
 2. Combine into a single cohesive prototype (one folder, linked screens)
 
 ### Template not found (standalone mode only)
@@ -835,7 +835,7 @@ Before writing to a workspace, check for uncommitted changes. If found, warn:
 
 ### Upstream decisions exist
 
-If `.decisions/decisions.json` already exists (from a prior run or upstream thinking skill), read it. Do not re-ask questions already answered. Reference prior decisions in new decision options and recommendations.
+If `.artifacts/<RFE-KEY>/decisions/decisions.json` already exists (from a prior run or upstream thinking skill), read it. Do not re-ask questions already answered. Reference prior decisions in new decision options and recommendations.
 
 ### Jira MCP unavailable
 

@@ -29,7 +29,7 @@ The orchestrating skill (`prototype-review`) invokes this agent once per dimensi
 
 The agent receives two arguments:
 
-1. **prototype_path** — Path to the prototype directory (e.g., `artifacts/prototypes/PROJ-298/` or `local/prototypes/PROJ-298/`)
+1. **prototype_path** — Path to the prototype directory (e.g., `.artifacts/PROJ-298/prototype/`)
 2. **dimension** — One of: `completeness`, `usability`, `feasibility`, `fidelity_match`
 
 ## Procedure
@@ -54,8 +54,7 @@ Read all files in `{prototype_path}/`:
 - Any other supporting files
 
 Also check for the source RFE snapshot:
-- `local/prototype-originals/{ID}/rfe-snapshot.md` (if in local mode)
-- `artifacts/prototypes/{ID}/prototype.md` (if in CI mode)
+- `.artifacts/{ID}/rfe-snapshot.md`
 
 The RFE context is needed for the `completeness` dimension to verify story coverage.
 
@@ -95,10 +94,7 @@ Pick the highest score level (0, 1, or 2) whose criteria the prototype fully sat
 
 ### 6. Write the review file
 
-Write the score to a review file. Determine the output path based on the prototype location:
-
-- If prototype is in `local/`: write to `local/prototype-reviews/{ID}-{dimension}.md`
-- If prototype is in `artifacts/`: write to `artifacts/prototype-reviews/{ID}-{dimension}.md`
+Write the score to a review file at `.artifacts/{ID}/reviews/{dimension}.md`.
 
 **Review file format:**
 

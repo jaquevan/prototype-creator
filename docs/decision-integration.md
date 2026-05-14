@@ -61,15 +61,15 @@ Control how many decisions are surfaced with `--depth`:
 
 ### Decision Artifacts
 
-All decisions are stored in `.decisions/` following the decision-kit spec:
+All decisions are stored in `.artifacts/{ID}/decisions/` following the decision-kit spec:
 
 ```
-.decisions/
+.artifacts/PROJ-298/decisions/
 ├── decisions.json                     # Machine-readable state
-├── decision-001-page-layout.html      # Browsable visual comparison page
-├── decision-002-pipeline-display.html
-├── decision-003-creation-flow.html
-├── decision-004-status-viz.html
+├── decision-001.html                  # Browsable visual comparison page
+├── decision-002.html
+├── decision-003.html
+├── decision-004.html
 ├── index.html                         # Landing page showing all decisions
 ├── auto-review.html                   # Batch review page (auto mode)
 └── strategy-brief.md                  # Summary of all choices
@@ -90,18 +90,18 @@ This means the prototype isn't just "AI generated some code." It's "a human made
 When strat-creator runs on the same RFE, it can read the decision artifacts:
 
 ```
-.decisions/strategy-brief.md
+.artifacts/PROJ-298/decisions/strategy-brief.md
 → strat-creator reads this as architectural context
 → "The team prototyped PROJ-298 and chose List+Detail layout
     because users need side-by-side comparison"
 → Strategy includes this as a design constraint
 ```
 
-The decisions become part of the permanent record. Six months later, someone asks "why does this feature use a list+detail layout?" The answer is in `.decisions/`, with the visual comparison page showing what was considered and why.
+The decisions become part of the permanent record. Six months later, someone asks "why does this feature use a list+detail layout?" The answer is in `.artifacts/PROJ-298/decisions/`, with the visual comparison page showing what was considered and why.
 
 ## Auto Mode
 
-`--mode=auto` generates every decision with the same rigor (research, options, recommendation) but auto-picks the recommended option. After all decisions are made, a single batch-review page (`.decisions/auto-review.html`) is generated so the human can confirm or override before code generation proceeds.
+`--mode=auto` generates every decision with the same rigor (research, options, recommendation) but auto-picks the recommended option. After all decisions are made, a single batch-review page (`.artifacts/{ID}/decisions/auto-review.html`) is generated so the human can confirm or override before code generation proceeds.
 
 This is useful for:
 
@@ -118,7 +118,7 @@ When `--workspace` is set, the pipeline modifies an existing codebase instead of
 3. Generates code in the target's tech stack (React, Angular, static HTML, etc.)
 4. Writes a changeset manifest tracking what was created and modified
 
-Without `--workspace`, the pipeline generates standalone self-contained HTML prototypes to `artifacts/prototypes/`.
+Without `--workspace`, the pipeline generates standalone self-contained HTML prototypes to `.artifacts/{ID}/prototype/`.
 
 ## Without Decision Kit
 

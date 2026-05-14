@@ -29,15 +29,15 @@ Runs a simulated desirability study on a prototype to evaluate its aesthetic and
 
 | Input | Location | Required |
 |-------|----------|----------|
-| Prototype files | `artifacts/prototypes/{ID}/` or `local/prototypes/{ID}/` | Yes |
+| Prototype files | `.artifacts/{ID}/prototype/` | Yes |
 | Research context | `.context/research-context/` (personas) | Optional |
-| Comparison prototypes | `artifacts/prototypes/` (other variants, if any) | Optional |
+| Comparison prototypes | `.artifacts/` (other variants, if any) | Optional |
 
 ## Step-by-Step Procedure
 
 ### Step 1: Read the Prototype
 
-Locate and read the prototype from `artifacts/prototypes/{ID}/` (or `local/prototypes/{ID}/`).
+Locate and read the prototype from `.artifacts/{ID}/prototype/`.
 
 Analyze each screen and flow with attention to:
 - Visual design (color palette, typography, spacing, density)
@@ -105,7 +105,7 @@ Identify emotional dips (where confidence, satisfaction, or trust drops) — the
 
 Compare the prototype against 2–3 alternative approaches. Alternatives can be:
 
-1. **Other prototypes** in `artifacts/prototypes/` for the same RFE (if multiple variants exist)
+1. **Other prototypes** in `.artifacts/` for the same RFE (if multiple variants exist)
 2. **Common industry patterns** for the same problem domain (describe them conceptually)
 3. **Extremes on a spectrum** — e.g., "minimal dashboard" vs. "data-dense dashboard" vs. "wizard-guided setup"
 
@@ -142,7 +142,7 @@ Compute a net desirability score from 1–10 based on the three assessments:
 
 ### Step 7: Generate Desirability Report
 
-Write the report to `artifacts/desirability-reports/{ID}-desirability.md`:
+Write the report to `.artifacts/{ID}/desirability-report.md`:
 
 ```markdown
 ---
@@ -284,7 +284,7 @@ Dominant impression: professional, clean, modern
 Emotional dips: 1 (multi-step form → validation)
 Preference rank: 2 of 3 (behind wizard-guided alternative)
 
-Report: artifacts/desirability-reports/{ID}-desirability.md
+Report: .artifacts/{ID}/desirability-report.md
 ```
 
 ## Edge Cases
@@ -299,4 +299,4 @@ Report: artifacts/desirability-reports/{ID}-desirability.md
 
 | Output | Location |
 |--------|----------|
-| Desirability report | `artifacts/desirability-reports/{ID}-desirability.md` |
+| Desirability report | `.artifacts/{ID}/desirability-report.md` |

@@ -19,7 +19,7 @@ Output (JSON to stdout):
       "clone_url": "https://gitlab.example.com/org/repo.git",
       "branch": "3.5",
       "branch_source": "url",
-      "clone_path": "local/workspaces/PROJ-298",
+      "clone_path": ".artifacts/PROJ-298/workspace",
       "status": "cloned"
     }
 """
@@ -143,7 +143,7 @@ def resolve_workspace(workspace, rfe_key=None, branch_flag=None):
         )
 
     if rfe_key:
-        result['clone_path'] = f'local/workspaces/{rfe_key}'
+        result['clone_path'] = f'.artifacts/{rfe_key}/workspace'
 
     return result
 

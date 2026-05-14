@@ -3,11 +3,11 @@
 Apply prototype scorer results to review frontmatter files.
 
 Usage:
-    python3 scripts/score_prototype.py <prototype-id> [--reviews-dir artifacts/prototype-reviews]
+    python3 scripts/score_prototype.py <prototype-id> [--reviews-dir .artifacts/<id>/reviews]
 
-Reads individual dimension review files ({id}-{dimension}.md), extracts
+Reads individual dimension review files ({dimension}.md), extracts
 scores from frontmatter, computes the aggregate verdict, and writes a
-summary review file ({id}-summary.md).
+summary review file (summary.md).
 
 Scoring:
     - Each dimension: 0-2 (fail, partial, pass)
@@ -28,12 +28,14 @@ PASS_THRESHOLD = 6
 MIN_PER_DIMENSION = 1
 
 
-def score_prototype(prototype_id, reviews_dir='artifacts/prototype-reviews'):
+def score_prototype(prototype_id, reviews_dir=None):
+    if reviews_dir is None:
+        reviews_dir = f'.artifacts/{prototype_id}/reviews'
     scores = {}
     missing = []
 
     for dim in DIMENSIONS:
-        review_file = os.path.join(reviews_dir, f'{prototype_id}-{dim}.md')
+        review_file = os.path.join(reviews_dir, f'{dim}.md')
         if not os.path.exists(review_file):
             missing.append(dim)
             continue
@@ -63,7 +65,7 @@ def score_prototype(prototype_id, reviews_dir='artifacts/prototype-reviews'):
         'missing_dimensions': missing,
     }
 
-    summary_file = os.path.join(reviews_dir, f'{prototype_id}-summary.md')
+    summary_file = os.path.join(reviews_dir, 'summary.md')
     os.makedirs(reviews_dir, exist_ok=True)
 
     with open(summary_file, 'w') as f:
@@ -99,7 +101,7 @@ def main():
         sys.exit(1)
 
     prototype_id = sys.argv[1]
-    reviews_dir = 'artifacts/prototype-reviews'
+    reviews_dir = None
 
     i = 2
     while i < len(sys.argv):

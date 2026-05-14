@@ -26,7 +26,8 @@ import subprocess
 
 
 def publish_to_apollo(prototype_dir, apollo_url='http://localhost:1225', dry_run=False):
-    metadata_file = os.path.join(prototype_dir, 'metadata.json')
+    artifact_root = os.path.dirname(prototype_dir)
+    metadata_file = os.path.join(artifact_root, 'metadata.json')
     if not os.path.exists(metadata_file):
         print(f'Error: No metadata.json in {prototype_dir}', file=sys.stderr)
         sys.exit(1)
@@ -94,7 +95,8 @@ def publish_to_repo(prototype_dir, remote=None, dry_run=False):
 
 
 def publish_local(prototype_dir):
-    metadata_file = os.path.join(prototype_dir, 'metadata.json')
+    artifact_root = os.path.dirname(prototype_dir)
+    metadata_file = os.path.join(artifact_root, 'metadata.json')
     if os.path.exists(metadata_file):
         with open(metadata_file, 'r') as f:
             metadata = json.load(f)
@@ -133,9 +135,8 @@ def main():
         else:
             i += 1
 
-    prototype_dir = f'artifacts/prototypes/{prototype_id}'
-    if not os.path.exists(prototype_dir):
-        prototype_dir = f'local/prototypes/{prototype_id}'
+    prototype_dir = f'.artifacts/{prototype_id}/prototype'
+    metadata_dir = f'.artifacts/{prototype_id}'
     if not os.path.exists(prototype_dir):
         print(f'Error: Prototype not found: {prototype_id}', file=sys.stderr)
         sys.exit(1)

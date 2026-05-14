@@ -17,7 +17,7 @@ def reviews_dir():
 
 
 def write_review(reviews_dir, prototype_id, dimension, score):
-    filepath = os.path.join(reviews_dir, f'{prototype_id}-{dimension}.md')
+    filepath = os.path.join(reviews_dir, f'{dimension}.md')
     verdict = 'pass' if score == 2 else 'partial' if score == 1 else 'fail'
     with open(filepath, 'w') as f:
         f.write(f'---\nprototype_id: {prototype_id}\ndimension: {dimension}\nscore: {score}\nverdict: {verdict}\nreviewed_at: 2026-04-30T00:00:00Z\n---\n\nReview content.\n')
@@ -73,5 +73,5 @@ def test_summary_file_created(reviews_dir):
     for dim in DIMENSIONS:
         write_review(reviews_dir, 'TEST-006', dim, 2)
     score_prototype('TEST-006', reviews_dir)
-    summary_path = os.path.join(reviews_dir, 'TEST-006-summary.md')
+    summary_path = os.path.join(reviews_dir, 'summary.md')
     assert os.path.exists(summary_path)
