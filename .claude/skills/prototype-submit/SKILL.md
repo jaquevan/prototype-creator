@@ -41,7 +41,7 @@ Publishes a completed prototype to a target system (Apollo, a git repo, or local
 | Review scores | `artifacts/prototype-reviews/{ID}-summary.md` | Recommended |
 | Usability report | `artifacts/usability-reports/{ID}-usability.md` | Optional |
 | Desirability report | `artifacts/desirability-reports/{ID}-desirability.md` | Optional |
-| Pipeline config | `tmp/prototype-config.yaml` | Optional |
+| Pipeline config | `artifacts/prototypes/{ID}/pipeline-config.yaml` | Optional |
 
 ## Step-by-Step Procedure
 
@@ -137,26 +137,45 @@ In `--dry-run` mode: print the payload and target URL but don't POST.
 
 #### Target: `repo`
 
-Commit and push prototype changes to a git repo.
+Commit and push prototype changes to a git repo. In workspace mode, this automatically creates a GitLab merge request targeting the original workspace branch.
 
 **Workspace mode** (prototype was created in an existing codebase):
 
-The workspace is already a git repo. Commit the prototype changes on a feature branch:
+Use the `submit_to_repo.py` script to handle the full git + MR workflow:
 
 ```bash
-cd {workspace-path}
-git checkout -b prototype/{ID}
-git add {files from changeset manifest}
-git commit -m "feat: prototype for {ID} — {title}"
+python3 scripts/submit_to_repo.py \
+  --rfe-key {ID} \
+  --title "{title from metadata}" \
+  [--remote {remote}] \
+  [--no-ssl-verify] \
+  [--dry-run]
 ```
 
-If `--remote` is provided (or the workspace already has a remote), push the branch:
+The script:
+1. Reads `artifacts/workspace-analysis/{ID}.json` for the clone URL and original branch
+2. Reads `artifacts/changesets/{ID}.md` for the list of changed files
+3. Creates branch `prototype/{ID}` in the workspace
+4. Stages only the changeset files (not the entire workspace)
+5. Commits with message: `prototype: {ID} — {title}`
+6. Pushes to the remote with GitLab push options that automatically create a merge request targeting the original branch (e.g., `3.5`)
+7. Outputs JSON with the MR URL, branch name, commit hash, and remote
 
-```bash
-git push -u origin prototype/{ID}
+If `--remote` is provided, the script pushes to that URL instead of the workspace's origin. This supports fork workflows where the user wants to push to their own repo. If `--remote` is not provided, it pushes to origin (the repo the workspace was cloned from).
+
+Read the script's JSON output and use it for reporting:
+
+```json
+{
+  "status": "pushed",
+  "branch": "prototype/PROJ-298",
+  "target_branch": "3.5",
+  "remote": "https://gitlab.example.com/org/repo.git",
+  "merge_request_url": "https://gitlab.example.com/org/repo/-/merge_requests/42",
+  "commit": "abc1234",
+  "files_committed": 6
+}
 ```
-
-Print a suggestion to open a merge request for the branch.
 
 **Standalone mode** (self-contained HTML prototype):
 
@@ -268,10 +287,11 @@ No external writes performed. Remove --dry-run to submit.
 | Flag | Values | Default | Description |
 |------|--------|---------|-------------|
 | `--target` | `apollo`, `repo`, `local` | `local` | Where to publish the prototype |
-| `--remote` | Git URL | None | Remote URL for `--target=repo` |
+| `--remote` | Git URL | None | Remote URL for `--target=repo` (overrides workspace origin; useful for fork workflows) |
 | `--dry-run` | (flag) | Off | Validate and preview without external writes |
 | `--skip-jira` | (flag) | Off | Skip Jira comment and label update |
 | `--force` | (flag) | Off | Submit even if rubric score fails |
+| `--no-ssl-verify` | (flag) | Off | Skip SSL certificate verification for git push (internal GitLab with self-signed certs) |
 
 ## Edge Cases
 

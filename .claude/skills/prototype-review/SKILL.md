@@ -45,18 +45,40 @@ If `$ARGUMENTS` contains a prototype ID, review only that prototype. Otherwise, 
 
 For each prototype ID to review:
 
+**Determine if this is a workspace-mode or standalone-mode prototype:**
+
+- If `artifacts/workspace-analysis/{ID}.json` exists → **workspace mode**
+- Otherwise → **standalone mode**
+
+### Standalone Mode
+
 1. **Read the prototype directory** at `{PROTO_DIR}/{ID}/`:
    - `index.html` — the rendered prototype
    - `manifest.json` — metadata (fidelity level, mode, RFE source, creation date)
    - Any additional pages or assets
 
-2. **Read the original RFE snapshot** at `{ORIG_DIR}/{ID}.md`:
-   - This is the frozen copy of the RFE that was used to generate the prototype
-   - Contains: user stories, acceptance criteria, personas, context
+2. **Read the original RFE snapshot** at `{ORIG_DIR}/{ID}.md`
 
-3. **Read the manifest** to determine the requested fidelity level (`low`, `medium`, or `high`). This is needed for the Fidelity Match review.
+3. **Read the manifest** to determine the requested fidelity level (`low`, `medium`, or `high`).
 
-If either the prototype directory or the RFE snapshot is missing, report an error and skip this prototype.
+### Workspace Mode
+
+1. **Read the changeset manifest** at `artifacts/changesets/{ID}.md`:
+   - Lists all files created and modified in the target workspace
+   - This is the "prototype" — the set of code changes
+
+2. **Read the workspace analysis** at `artifacts/workspace-analysis/{ID}.json`:
+   - Contains the workspace path, tech stack, and relevant areas
+
+3. **Read the modified/created files** listed in the changeset:
+   - These are the actual prototype implementation files
+   - Read each file to evaluate completeness, usability, feasibility, and fidelity
+
+4. **Read the original RFE snapshot** at `{ORIG_DIR}/{ID}.md`
+
+5. **Read the metadata** at `{PROTO_DIR}/{ID}/metadata.json` to determine the requested fidelity level.
+
+If either the prototype (directory or changeset) or the RFE snapshot is missing, report an error and skip this prototype.
 
 ## Step 2: Run Four Independent Review Dimensions
 
@@ -180,12 +202,15 @@ For each heuristic, note whether it is satisfied, partially satisfied, or violat
 | **1 — Partial** | High-fidelity for main flows, but missing states, edge cases, or responsive considerations. Most components are correct but some have wrong variants or missing properties. |
 | **0 — Fail** | Does not reach high fidelity — missing too many states, using placeholder content throughout, or has significant visual inconsistencies with the design system. |
 
+**Workspace mode note**: In workspace mode, fidelity is controlled by a URL parameter (`?fidelity=low`) on the prototype link, not by the code structure. The prototype code always uses real design system components (because the target codebase requires it). The fidelity level controls what the user *sees* when they open the prototype link — low shows wireframe rendering, medium shows realistic components, high shows production-ready polish. When reviewing workspace-mode prototypes for fidelity match, evaluate based on whether the appropriate fidelity parameter is set and whether the code supports the requested fidelity's scope (e.g., low = core flow only, high = all states and edge cases).
+
 **Reviewer instructions**:
 1. Read the requested fidelity from the prototype manifest
 2. Evaluate the prototype against the fidelity-specific rubric above
-3. Note specific examples of fidelity alignment or mismatch
-4. If the prototype exceeds the requested fidelity (e.g., high when low was asked), note this as a concern — it can slow iteration and set wrong expectations
-5. Assign score based on the rubric above
+3. For workspace-mode prototypes: fidelity is a URL param — do not penalize use of real design system components. Instead evaluate scope: low = core happy path only, medium = key flows with representative data, high = all flows including edge cases and error states.
+4. Note specific examples of fidelity alignment or mismatch
+5. If the prototype exceeds the requested fidelity scope (e.g., implements all error states when low was requested), note this as a concern — it can slow iteration and set wrong expectations
+6. Assign score based on the rubric above
 
 **Output file**: `{REVIEW_DIR}/{ID}-fidelity-match.md`
 

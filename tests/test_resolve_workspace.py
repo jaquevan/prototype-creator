@@ -10,15 +10,15 @@ class TestParseGitUrl:
     """URL parsing extracts branch and produces a cloneable URL."""
 
     def test_gitlab_tree_url(self):
-        url = 'https://gitlab.cee.redhat.com/uxd/prototypes/rhoai/-/tree/3.5'
+        url = 'https://gitlab.example.com/org/prototypes/myapp/-/tree/3.5'
         clone_url, branch = parse_git_url(url)
-        assert clone_url == 'https://gitlab.cee.redhat.com/uxd/prototypes/rhoai.git'
+        assert clone_url == 'https://gitlab.example.com/org/prototypes/myapp.git'
         assert branch == '3.5'
 
     def test_gitlab_tree_url_with_query_params(self):
-        url = 'https://gitlab.cee.redhat.com/uxd/prototypes/rhoai/-/tree/3.5?ref_type=heads'
+        url = 'https://gitlab.example.com/org/prototypes/myapp/-/tree/3.5?ref_type=heads'
         clone_url, branch = parse_git_url(url)
-        assert clone_url == 'https://gitlab.cee.redhat.com/uxd/prototypes/rhoai.git'
+        assert clone_url == 'https://gitlab.example.com/org/prototypes/myapp.git'
         assert branch == '3.5'
 
     def test_github_tree_url(self):
@@ -28,27 +28,27 @@ class TestParseGitUrl:
         assert branch == 'release-4.16'
 
     def test_fragment_branch(self):
-        url = 'https://gitlab.cee.redhat.com/uxd/prototypes/rhoai.git#3.5'
+        url = 'https://gitlab.example.com/org/prototypes/myapp.git#3.5'
         clone_url, branch = parse_git_url(url)
-        assert clone_url == 'https://gitlab.cee.redhat.com/uxd/prototypes/rhoai.git'
+        assert clone_url == 'https://gitlab.example.com/org/prototypes/myapp.git'
         assert branch == '3.5'
 
     def test_plain_https_url_no_branch(self):
-        url = 'https://gitlab.cee.redhat.com/uxd/prototypes/rhoai.git'
+        url = 'https://gitlab.example.com/org/prototypes/myapp.git'
         clone_url, branch = parse_git_url(url)
-        assert clone_url == 'https://gitlab.cee.redhat.com/uxd/prototypes/rhoai.git'
+        assert clone_url == 'https://gitlab.example.com/org/prototypes/myapp.git'
         assert branch is None
 
     def test_plain_https_url_without_git_suffix(self):
-        url = 'https://gitlab.cee.redhat.com/uxd/prototypes/rhoai'
+        url = 'https://gitlab.example.com/org/prototypes/myapp'
         clone_url, branch = parse_git_url(url)
-        assert clone_url == 'https://gitlab.cee.redhat.com/uxd/prototypes/rhoai.git'
+        assert clone_url == 'https://gitlab.example.com/org/prototypes/myapp.git'
         assert branch is None
 
     def test_ssh_url_no_branch(self):
-        url = 'git@gitlab.cee.redhat.com:uxd/prototypes/rhoai.git'
+        url = 'git@gitlab.example.com:org/prototypes/myapp.git'
         clone_url, branch = parse_git_url(url)
-        assert clone_url == 'git@gitlab.cee.redhat.com:uxd/prototypes/rhoai.git'
+        assert clone_url == 'git@gitlab.example.com:org/prototypes/myapp.git'
         assert branch is None
 
     def test_gitlab_nested_group(self):
@@ -112,19 +112,19 @@ class TestResolveWorkspace:
 
     def test_git_url_with_branch_in_url(self):
         result = resolve_workspace(
-            'https://gitlab.cee.redhat.com/uxd/prototypes/rhoai/-/tree/3.5?ref_type=heads',
-            rfe_key='RHAISTRAT-1535',
+            'https://gitlab.example.com/org/prototypes/myapp/-/tree/3.5?ref_type=heads',
+            rfe_key='PROJ-298',
         )
         assert result['type'] == 'git'
-        assert result['clone_url'] == 'https://gitlab.cee.redhat.com/uxd/prototypes/rhoai.git'
+        assert result['clone_url'] == 'https://gitlab.example.com/org/prototypes/myapp.git'
         assert result['branch'] == '3.5'
         assert result['branch_source'] == 'url'
-        assert result['clone_path'] == 'local/workspaces/RHAISTRAT-1535'
+        assert result['clone_path'] == 'local/workspaces/PROJ-298'
 
     def test_git_url_with_flag_override(self):
         result = resolve_workspace(
-            'https://gitlab.cee.redhat.com/uxd/prototypes/rhoai/-/tree/main',
-            rfe_key='RHAISTRAT-1535',
+            'https://gitlab.example.com/org/prototypes/myapp/-/tree/main',
+            rfe_key='PROJ-298',
             branch_flag='3.5',
         )
         assert result['branch'] == '3.5'
@@ -133,8 +133,8 @@ class TestResolveWorkspace:
 
     def test_git_url_no_branch(self):
         result = resolve_workspace(
-            'git@gitlab.cee.redhat.com:uxd/prototypes/rhoai.git',
-            rfe_key='RHAISTRAT-1535',
+            'git@gitlab.example.com:org/prototypes/myapp.git',
+            rfe_key='PROJ-298',
         )
         assert result['type'] == 'git'
         assert result['branch'] is None
@@ -142,8 +142,8 @@ class TestResolveWorkspace:
 
     def test_git_url_with_flag_only(self):
         result = resolve_workspace(
-            'git@gitlab.cee.redhat.com:uxd/prototypes/rhoai.git',
-            rfe_key='RHAISTRAT-1535',
+            'git@gitlab.example.com:org/prototypes/myapp.git',
+            rfe_key='PROJ-298',
             branch_flag='3.5',
         )
         assert result['branch'] == '3.5'

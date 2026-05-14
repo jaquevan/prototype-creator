@@ -148,7 +148,7 @@ def resolve_workspace(workspace, rfe_key=None, branch_flag=None):
     return result
 
 
-def clone_repo(resolved):
+def clone_repo(resolved, no_ssl_verify=False):
     """Execute git clone based on resolved workspace metadata."""
     clone_path = resolved['clone_path']
     os.makedirs(os.path.dirname(clone_path), exist_ok=True)
@@ -158,14 +158,33 @@ def clone_repo(resolved):
         cmd.extend(['--branch', resolved['branch']])
     cmd.extend([resolved['clone_url'], clone_path])
 
+    env = os.environ.copy()
+    if no_ssl_verify:
+        env['GIT_SSL_NO_VERIFY'] = 'true'
+
     try:
-        subprocess.run(cmd, check=True, capture_output=True, text=True)
+        subprocess.run(cmd, check=True, capture_output=True, text=True, env=env)
         resolved['status'] = 'cloned'
     except subprocess.CalledProcessError as e:
-        resolved['status'] = 'error'
-        resolved['error'] = e.stderr.strip()
-        print(f'Error cloning: {e.stderr.strip()}', file=sys.stderr)
-        sys.exit(1)
+        if 'SSL certificate problem' in e.stderr and not no_ssl_verify:
+            print('SSL error detected, retrying with GIT_SSL_NO_VERIFY=true...',
+                  file=sys.stderr)
+            env['GIT_SSL_NO_VERIFY'] = 'true'
+            try:
+                subprocess.run(cmd, check=True, capture_output=True, text=True,
+                               env=env)
+                resolved['status'] = 'cloned'
+                resolved['ssl_verify_skipped'] = True
+            except subprocess.CalledProcessError as e2:
+                resolved['status'] = 'error'
+                resolved['error'] = e2.stderr.strip()
+                print(f'Error cloning: {e2.stderr.strip()}', file=sys.stderr)
+                sys.exit(1)
+        else:
+            resolved['status'] = 'error'
+            resolved['error'] = e.stderr.strip()
+            print(f'Error cloning: {e.stderr.strip()}', file=sys.stderr)
+            sys.exit(1)
 
     return resolved
 
@@ -179,6 +198,7 @@ def main():
     rfe_key = None
     branch_flag = None
     resolve_only = False
+    no_ssl_verify = False
 
     i = 2
     while i < len(sys.argv):
@@ -190,6 +210,9 @@ def main():
             i += 2
         elif sys.argv[i] == '--resolve-only':
             resolve_only = True
+            i += 1
+        elif sys.argv[i] == '--no-ssl-verify':
+            no_ssl_verify = True
             i += 1
         else:
             print(f'Unknown argument: {sys.argv[i]}', file=sys.stderr)
@@ -215,7 +238,7 @@ def main():
         print('Error: --rfe-key is required for git cloning', file=sys.stderr)
         sys.exit(1)
 
-    clone_repo(resolved)
+    clone_repo(resolved, no_ssl_verify=no_ssl_verify)
     print(json.dumps(resolved, indent=2))
 
 

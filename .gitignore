@@ -1,6 +1,7 @@
 # Pipeline output
 artifacts/
 local/
+tmp/
 
 # Fetched context (downloaded at runtime)
 .context/

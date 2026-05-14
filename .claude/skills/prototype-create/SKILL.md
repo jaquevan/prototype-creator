@@ -88,6 +88,16 @@ python3 ${CLAUDE_SKILL_DIR}/scripts/fetch_rfe.py PROJ-1234 --fields summary,desc
 
 The script outputs JSON to stdout with the description already converted to markdown. Parse the fields to extract user stories, acceptance criteria, and context.
 
+**Resolving the Jira `cloudId` for the Atlassian MCP:**
+
+The `getJiraIssue` MCP tool requires a `cloudId` parameter. Resolve it as follows:
+
+1. If the user provided a **full Jira URL** (e.g., `https://jira.example.com/browse/PROJ-298`), extract the hostname (`jira.example.com`) and use it as the `cloudId`.
+2. If only an **issue key** was provided (e.g., `PROJ-298`), call `getAccessibleAtlassianResources` to list available sites and pick the matching one. If only one site is available, use it automatically.
+3. If the site lookup fails, ask the user for the Jira hostname.
+
+Pass `responseContentFormat: "markdown"` to get the description as markdown rather than ADF.
+
 **If neither exists**: Ask the user to either provide RFE Jira keys (e.g., `PROJ-298`) or point to a local file containing the RFE content.
 
 ## Step 2: Select RFEs to Prototype
@@ -152,13 +162,14 @@ Read `--workspace` and `--branch` from `$ARGUMENTS`.
 **Otherwise**, use the `resolve_workspace.py` script to parse the URL, detect any embedded branch, and clone:
 
 ```bash
-python3 scripts/resolve_workspace.py <workspace> --rfe-key <RFE-KEY> [--branch <branch>]
+python3 scripts/resolve_workspace.py <workspace> --rfe-key <RFE-KEY> [--branch <branch>] [--no-ssl-verify]
 ```
 
 The script handles all workspace resolution deterministically:
 
 - **Local paths**: Validates the path exists. Ignores `--branch` if set (prints a warning).
 - **Git URLs**: Parses the URL for an embedded branch (GitLab `/-/tree/<branch>`, GitHub `/tree/<branch>`, fragment `#<branch>`), strips query params like `?ref_type=heads`, cleans the URL to a cloneable form, and clones with `git clone --depth 1`. The `--branch` flag overrides any branch detected from the URL.
+- **SSL certificate errors**: Internal git hosts with self-signed certificates may reject clones. Pass `--no-ssl-verify` to set `GIT_SSL_NO_VERIFY=true` for the clone. If cloning fails with an SSL error, the script retries automatically with SSL verification disabled.
 
 The script outputs JSON to stdout with the resolved metadata:
 
@@ -185,6 +196,8 @@ Set the resolved workspace path (from `clone_path` or `path` in the JSON output)
 ## Step 6: Analyze Target Codebase
 
 **Skip this step if no workspace is set.**
+
+**Important: Run this analysis inline, not as a background/delegated agent.** Steps 7–9 (decisions, code generation) all depend on the analysis results. Parallelizing only helps for independent operations like the Jira fetch (Step 1) and git clone (Step 5). The codebase analysis must complete before proceeding.
 
 Analyze the target codebase to understand its tech stack, conventions, and existing patterns. This informs both the design decisions and the code generation.
 
@@ -322,15 +335,17 @@ Surfacing 4 decisions for human input. 2 auto-resolved.
 
 ### Step 8b: Initialize Decision Storage
 
-Create the `.decisions/` directory in the prototype-creator workspace (not in the target codebase):
+Decisions are scoped per RFE. Each RFE gets its own decisions directory:
 
 ```bash
-mkdir -p .decisions
+mkdir -p .decisions/<RFE-KEY>
 ```
 
-If `.decisions/decisions.json` already exists (from upstream thinking skills), read it and do not re-ask questions already answered. Build on prior decisions.
+If `.decisions/<RFE-KEY>/decisions.json` already exists (from a prior run or upstream thinking skill for the same RFE), read it and do not re-ask questions already answered. Build on prior decisions.
 
-Initialize or update `decisions.json`:
+If `.decisions/<RFE-KEY>/decisions.json` does NOT exist but `.decisions/decisions.json` does (legacy format from a different RFE), ignore it — it belongs to a different prototype run.
+
+Initialize or update `.decisions/<RFE-KEY>/decisions.json`:
 
 ```json
 {
@@ -344,9 +359,13 @@ Initialize or update `decisions.json`:
 }
 ```
 
+All decision HTML pages for this RFE go into `.decisions/<RFE-KEY>/` as well (e.g., `.decisions/PROJ-298/decision-001-page-layout.html`). The strategy brief is written to `.decisions/<RFE-KEY>/strategy-brief.md`.
+
 ### Step 8c: Walk Through Decisions
 
-**If `--mode=auto`**: For each planned decision, generate the full decision page (research, options, recommendation, comparison), save it, and auto-pick the recommended option. Set status to `"auto-picked"`. After all decisions, generate `.decisions/auto-review.html` — a single batch-review page listing every auto-pick. Open it and pause once for confirmation or overrides. Transition all `auto-picked` to `chosen` only after confirmation.
+**If `--mode=auto` AND `--fidelity=low` (fast path)**: Skip HTML decision page generation entirely. For each planned decision, auto-resolve it and record directly in `decisions.json` with `status: "auto-resolved"` and a one-sentence summary. Do NOT generate individual decision HTML pages, the `auto-review.html` batch page, or the `index.html` landing page. Do NOT pause for confirmation. Proceed directly to the strategy brief (Step 8e) and then code generation. This fast path saves significant context budget for the most common CI/batch case.
+
+**If `--mode=auto` (medium or high fidelity)**: For each planned decision, generate the full decision page (research, options, recommendation, comparison), save it, and auto-pick the recommended option. Set status to `"auto-picked"`. After all decisions, generate `.decisions/<RFE-KEY>/auto-review.html` — a single batch-review page listing every auto-pick. Open it and pause once for confirmation or overrides. Transition all `auto-picked` to `chosen` only after confirmation.
 
 **If `--mode=decide`**: Surface each decision one at a time. For each decision:
 
