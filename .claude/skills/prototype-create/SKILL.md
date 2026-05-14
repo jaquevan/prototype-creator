@@ -388,7 +388,7 @@ Initialize or update `.decisions/<RFE-KEY>/decisions.json`:
 }
 ```
 
-All decision HTML pages for this RFE go into `.decisions/<RFE-KEY>/` as well (e.g., `.decisions/PROJ-298/decision-001-page-layout.html`). The strategy brief is written to `.decisions/<RFE-KEY>/strategy-brief.md`.
+All decision HTML pages for this RFE go into `.decisions/<RFE-KEY>/` as well (e.g., `.decisions/PROJ-298/decision-001.html`). Use simple numbered file names — no slug suffix. The strategy brief is written to `.decisions/<RFE-KEY>/strategy-brief.md`.
 
 ### Step 8c: Walk Through Decisions
 
@@ -402,7 +402,22 @@ All decision HTML pages for this RFE go into `.decisions/<RFE-KEY>/` as well (e.
 
 For each planned decision that will be surfaced to the user, generate its HTML page **before asking any questions**. Write all pages in one batch:
 
-For each decision, write the page to `.decisions/<RFE-KEY>/decision-NNN-slug.html`. Each page must contain:
+For each decision, write the page to `.decisions/<RFE-KEY>/decision-NNN.html` (e.g., `decision-001.html`, `decision-002.html`). Use simple numbered names — no slug suffix.
+
+Each page must contain:
+
+   - **Navigation tabs** at the very top of the page — a horizontal tab bar linking to every decision page. The current decision's tab should be visually highlighted (active state). This lets users click through all decisions in sequence without returning to the index. Use simple `<a>` links with inline CSS:
+
+     ```html
+     <nav style="display:flex; gap:2px; margin-bottom:2rem; border-bottom:2px solid #d2d2d2; padding-bottom:0;">
+       <a href="decision-001.html" style="padding:0.5rem 1rem; text-decoration:none; color:#06c; border-bottom:3px solid #06c; font-weight:600;">1. Layout</a>
+       <a href="decision-002.html" style="padding:0.5rem 1rem; text-decoration:none; color:#6a6e73;">2. Display</a>
+       <a href="decision-003.html" style="padding:0.5rem 1rem; text-decoration:none; color:#6a6e73;">3. Flow</a>
+     </nav>
+     ```
+
+     Use short labels (the decision title, truncated if needed). The active tab gets `border-bottom: 3px solid var(--accent); font-weight: 600; color: var(--accent)`. Inactive tabs get `color: var(--text-secondary)`.
+
    - A clear description of what's being decided and why it matters
    - 4 options (recommended count), each with:
      - A name and one-sentence description
@@ -418,12 +433,14 @@ After all pages are generated, print a summary with all the `file://` URLs so th
 All <N> decision pages generated. Review them at your own pace:
 
   1. <Decision Title>
-     file://<absolute-workspace-root>/.decisions/<RFE-KEY>/decision-001-<slug>.html
+     file://<absolute-workspace-root>/.decisions/<RFE-KEY>/decision-001.html
 
   2. <Decision Title>
-     file://<absolute-workspace-root>/.decisions/<RFE-KEY>/decision-002-<slug>.html
+     file://<absolute-workspace-root>/.decisions/<RFE-KEY>/decision-002.html
 
   ...
+
+Each page has navigation tabs at the top to jump between decisions.
 ```
 
 The `file://` URLs must use the absolute workspace path so the user can copy-paste them directly into their browser address bar.
@@ -435,7 +452,7 @@ After all pages are generated, walk through each decision sequentially:
 ```
 Decision <N>/<total>: <Decision Title>
 
-  file://<absolute-workspace-root>/.decisions/<RFE-KEY>/decision-<NNN>-<slug>.html
+  file://<absolute-workspace-root>/.decisions/<RFE-KEY>/decision-<NNN>.html
 
 My recommendation: <Option Name> — <one sentence why>
 
@@ -451,7 +468,6 @@ For each decision, record the choice in `decisions.json`:
 ```json
 {
   "id": "decision-001",
-  "slug": "page-layout",
   "title": "Page Layout Pattern",
   "status": "chosen",
   "chosenOption": "B",
@@ -459,7 +475,7 @@ For each decision, record the choice in `decisions.json`:
   "reasoning": null,
   "options": ["A", "B", "C", "D"],
   "recommended": "B",
-  "htmlFile": "decision-001-page-layout.html",
+  "htmlFile": "decision-001.html",
   "decidedAt": "2026-04-30T12:05:00Z",
   "summary": "Master list on left, detail panel on right for item comparison"
 }
@@ -476,7 +492,6 @@ For decisions the AI auto-resolved (high confidence), record them in `decisions.
 ```json
 {
   "id": "decision-005",
-  "slug": "nav-integration",
   "title": "Navigation Integration",
   "status": "auto-resolved",
   "chosenTitle": "Existing sidebar pattern",
@@ -489,7 +504,7 @@ For decisions the AI auto-resolved (high confidence), record them in `decisions.
 
 After all decisions are resolved:
 
-1. Write `.decisions/<RFE-KEY>/index.html` — a landing page showing all decisions and their status. Present a clickable `file://` link to the index page.
+1. Write `.decisions/<RFE-KEY>/index.html` — a landing page showing all decisions and their status, with links to each `decision-NNN.html` page. Present a clickable `file://` link to the index page. (Individual decision pages also have navigation tabs, so the index is primarily an overview.)
 2. Write `.decisions/<RFE-KEY>/strategy-brief.md` — a summary of all choices made:
 
 ```markdown
