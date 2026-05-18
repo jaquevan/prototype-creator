@@ -357,7 +357,7 @@ def main():
     run_git(['add'] + files_to_add, cwd=workspace_path, env=env,
             dry_run=dry_run)
 
-    commit_msg = f'prototype: {rfe_key} — {title}'
+    commit_msg = f'Prototype: {rfe_key} - {title}'
     commit_result = run_git(['commit', '-m', commit_msg],
                             cwd=workspace_path, env=env,
                             dry_run=dry_run, allow_failure=True)
