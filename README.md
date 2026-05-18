@@ -29,7 +29,8 @@ Prototypes scoring **6+ total** (no zeros across four dimensions) receive the `p
 ### Human-in-the-Loop Pipeline
 
 ```
-RFE (Jira) → prototype.create --fidelity=medium --mode=decide
+RFE (Jira) → prototype.create --fidelity=medium --mode=decide [--workspace=/path/to/repo]
+               ├── Analyze target codebase (if --workspace is set)
                ├── Decision 1: Layout pattern        [human picks]
                ├── Decision 2: Core interaction       [human picks]
                ├── Decision 3: Information density    [human picks]
@@ -43,6 +44,8 @@ RFE (Jira) → prototype.create --fidelity=medium --mode=decide
 ```
 
 In `decide` mode, the pipeline produces a [decision-kit](https://github.com/jnemargut/decision-kit) artifact at each junction — a browsable page with options, visual previews, tradeoffs, and a side-by-side comparison. Nothing advances without human judgment.
+
+Adding `--workspace` makes the pipeline target an existing codebase — see [Standalone vs. Workspace Mode](#standalone-vs-workspace-mode) for details.
 
 ### Local Human Review
 
@@ -205,6 +208,19 @@ bash scripts/bootstrap-decision-kit.sh
 /prototype.submit PROJ-298
 ```
 
+### Run a Prototype (targeting an existing codebase)
+
+```bash
+# Build on a local repo — generates React/Angular/etc. components
+/prototype.create PROJ-298 --fidelity=medium --mode=decide --workspace=/path/to/your/repo
+
+# Or target a remote repo — cloned automatically, branch auto-detected
+/prototype.create PROJ-298 --workspace=https://gitlab.example.com/org/repo/-/tree/3.5
+
+# Override the branch if needed
+/prototype.create PROJ-298 --workspace=https://gitlab.example.com/org/repo --branch=release-3.5
+```
+
 ### Local Review Workflow
 
 ```bash
@@ -218,6 +234,65 @@ bash scripts/bootstrap-decision-kit.sh
 # Push back to CI when ready
 /prototype.push PROJ-298
 ```
+
+## Standalone vs. Workspace Mode
+
+By default, prototypes are generated as **standalone HTML** — self-contained files you can open in any browser with no build step. This is the fastest way to explore an idea.
+
+When you pass `--workspace`, the pipeline targets an **existing codebase** instead. It analyzes the repo's tech stack, conventions, and file structure, then generates code that fits naturally into the project — React components for a React app, Angular components for Angular, etc. The new feature integrates with existing routing, navigation, and design system usage.
+
+### Standalone (default)
+
+```bash
+/prototype.create PROJ-298 --fidelity=medium --mode=auto
+```
+
+Output goes to `.artifacts/PROJ-298/prototype/` as self-contained HTML files using PatternFly CDN.
+
+### Workspace — local path
+
+```bash
+/prototype.create PROJ-298 --fidelity=medium --mode=decide --workspace=/path/to/your/repo
+```
+
+The pipeline reads the codebase at the given path and writes new files directly into it, matching its conventions. A changeset manifest (`.artifacts/PROJ-298/changeset.md`) tracks every file created or modified. Lint and build verification run automatically against the target repo's rules.
+
+### Workspace — git URL
+
+```bash
+/prototype.create PROJ-298 --workspace=https://gitlab.example.com/org/repo/-/tree/3.5
+```
+
+The pipeline clones the repo into `.artifacts/PROJ-298/workspace/`, detects the branch from the URL, and works against the clone. Embedded branches are auto-detected from GitLab (`/-/tree/<branch>`), GitHub (`/tree/<branch>`), and URL fragments (`#<branch>`).
+
+Use `--branch` to override the detected branch or specify one when the URL doesn't include it:
+
+```bash
+/prototype.create PROJ-298 --workspace=https://gitlab.example.com/org/repo --branch=release-3.5
+```
+
+### What changes in workspace mode
+
+| Aspect | Standalone | Workspace |
+|---|---|---|
+| **Output format** | Self-contained HTML + inline CSS/JS | Components in the target's tech stack (React, Angular, etc.) |
+| **Output location** | `.artifacts/{ID}/prototype/` | Directly in the target codebase |
+| **Codebase analysis** | Skipped | Analyzes tech stack, conventions, existing patterns |
+| **Design system** | PatternFly CDN (medium/high fidelity) | Whatever the codebase already uses |
+| **Navigation** | Links between HTML files | Integrated with existing routing and nav |
+| **Post-change verification** | Skipped | Runs lint + build against the repo's rules |
+| **Changeset tracking** | N/A | `.artifacts/{ID}/changeset.md` lists all files touched |
+
+## Flags Reference
+
+| Flag | Values | Default | Description |
+|---|---|---|---|
+| `--workspace` | Local path or git URL | *(none — standalone mode)* | Target codebase to modify. When set, output is code changes in the target's tech stack. When omitted, generates standalone HTML. |
+| `--branch` | Branch name | *(auto-detected from URL)* | Git branch to clone when `--workspace` is a git URL. Overrides any branch detected from the URL. Ignored for local paths. |
+| `--fidelity` | `low`, `medium`, `high` | `medium` | Wireframe → realistic design system components → production-ready. |
+| `--mode` | `auto`, `decide` | `auto` | AI decides everything vs. stops at each design decision for human input. |
+| `--depth` | `under`, `normal`, `over` | `normal` | How many decisions to surface: 2–3 (`under`), 4–7 (`normal`), 8–12 (`over`). Only meaningful in `decide` mode. |
+| `--dry-run` | *(flag)* | off | Skip all external writes (Jira label updates). Still produces all local artifacts. |
 
 ## Two Modes
 
