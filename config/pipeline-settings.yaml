@@ -62,6 +62,21 @@ decision_kit:
     - shape
     - product-design
 
+# --- Usability Testing Integration ---
+usability_testing:
+  repo: https://gitlab.cee.redhat.com/zbodnar/automated-usability-testing
+  context_path: .context/usability-testing/
+  personas_dir: personas/
+  rubric: prompts/evaluate-flow.md
+  dimensions:
+    - workflow_continuity
+    - cross_persona_handoffs
+    - scalability_complexity
+    - system_status_trust
+    - technical_abstraction
+    - mental_model_fidelity
+    - accessibility_inclusion
+
 # --- Decision Depth ---
 # Controls how many decisions are surfaced in --mode=decide.
 # Decisions are dynamically planned based on the RFE and codebase context.

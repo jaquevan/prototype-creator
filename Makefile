@@ -16,10 +16,11 @@ test-scripts:
 setup:
 	uv sync
 
-# Fetch context (design system + decision-kit)
+# Fetch context (design system + decision-kit + usability testing)
 context:
 	bash scripts/fetch-design-system-context.sh
 	bash scripts/bootstrap-decision-kit.sh
+	bash scripts/bootstrap-usability-testing.sh
 
 # Clean generated artifacts
 clean:

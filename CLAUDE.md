@@ -125,7 +125,8 @@ prototype-creator/
 ├── .context/                          # Fetched at runtime (gitignored)
 │   ├── design-system/                 # PatternFly component docs + tokens
 │   ├── research-context/              # UX research (personas, JTBD, top tasks)
-│   └── decision-kit/                  # Vendored decision-kit thinking skills
+│   ├── decision-kit/                  # Vendored decision-kit thinking skills
+│   └── usability-testing/             # Vendored personas + rubric from automated-usability-testing
 ├── docs/                              # Documentation
 ├── tests/                             # Test suite
 ├── pyproject.toml
@@ -138,6 +139,7 @@ prototype-creator/
 - [rfe-creator](https://github.com/jwforres/rfe-creator) — Phase 1: RFE creation and assessment (upstream input)
 - [strat-creator](https://github.com/ederign/strat-creator) — Phase 3: Strategy creation from approved RFEs (downstream consumer)
 - [decision-kit](https://github.com/jnemargut/decision-kit) — Decision Driven Development toolkit (integrated for human-in-the-loop decisions)
+- [automated-usability-testing](https://gitlab.cee.redhat.com/zbodnar/automated-usability-testing) — Persona-based usability evaluation with 7-dimension rubric (integrated for prototype evaluation)
 - [assess-rfe](https://github.com/n1hility/assess-rfe) — RFE quality scoring rubric (pattern reference)
 
 ## Development
@@ -162,6 +164,9 @@ bash scripts/fetch-design-system-context.sh
 
 # Bootstrap decision-kit skills into .context/
 bash scripts/bootstrap-decision-kit.sh
+
+# Bootstrap usability testing personas + rubric into .context/
+bash scripts/bootstrap-usability-testing.sh
 ```
 
 $ARGUMENTS

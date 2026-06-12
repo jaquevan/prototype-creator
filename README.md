@@ -135,11 +135,13 @@ prototype-creator/
 │   └── decision-pages/                    # Decision artifact templates
 ├── scripts/                               # Python scripts
 │   ├── fetch-design-system-context.sh     # Fetch PatternFly docs
-│   └── bootstrap-decision-kit.sh          # Bootstrap decision-kit skills
+│   ├── bootstrap-decision-kit.sh          # Bootstrap decision-kit skills
+│   └── bootstrap-usability-testing.sh     # Bootstrap usability testing personas + rubric
 ├── .context/                              # Fetched at runtime (gitignored)
 │   ├── design-system/                     # PatternFly component docs + tokens
 │   ├── research-context/                  # UX research (personas, JTBD)
-│   └── decision-kit/                      # Vendored decision-kit skills
+│   ├── decision-kit/                      # Vendored decision-kit skills
+│   └── usability-testing/                 # Vendored personas + rubric from automated-usability-testing
 ├── local/                                 # Human review workspace (gitignored)
 │   ├── prototypes/                        # Pulled prototypes for iteration
 │   ├── prototype-reviews/                 # Local review scores
@@ -175,6 +177,9 @@ bash scripts/fetch-design-system-context.sh
 
 # Bootstrap decision-kit thinking skills
 bash scripts/bootstrap-decision-kit.sh
+
+# Bootstrap usability testing personas + rubric
+bash scripts/bootstrap-usability-testing.sh
 ```
 
 ### Run a Prototype (CI mode)
@@ -319,6 +324,7 @@ Decision points in `decide` mode:
 | **prototype-creator** | Phase 2: The SHOW | This project — makes the experience tangible |
 | [strat-creator](https://github.com/ederign/strat-creator) | Phase 3: The HOW | Downstream — takes approved prototypes and creates implementation strategies |
 | [decision-kit](https://github.com/jnemargut/decision-kit) | Decision support | Integrated — surfaces design decisions as browsable artifacts |
+| [automated-usability-testing](https://gitlab.cee.redhat.com/zbodnar/automated-usability-testing) | Usability evaluation | Integrated — persona-based usability scoring for prototype evaluation |
 | [assess-rfe](https://github.com/n1hility/assess-rfe) | Quality scoring | Pattern reference — rubric-based scoring approach |
 
 ## Development
