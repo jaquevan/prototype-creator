@@ -147,6 +147,50 @@ components:
       .modal-close{position:absolute;top:1rem;right:1rem;background:var(--bg2);border:1px solid var(--border);color:var(--text);width:2rem;height:2rem;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:1.125rem;cursor:pointer;transition:background 0.15s}
       .modal-close:hover{background:var(--border)}
 
+  # Think-aloud narrative components (Step 3c)
+  think_aloud:
+    base_class: "ta"
+    css: |
+      .ta-step{margin-bottom:1.5rem;padding-bottom:1.5rem;border-bottom:1px solid var(--border)}
+      .ta-step:last-child{border-bottom:none}
+      .ta-step-head{font-family:var(--font-heading);font-size:0.875rem;font-weight:500;margin-bottom:0.5rem}
+      .ta-see,.ta-think{font-style:italic;font-size:0.8125rem;color:var(--text2);line-height:1.6;margin:0.25rem 0}
+      .ta-think{border-left:2px solid var(--border);padding-left:0.75rem;margin-left:0.25rem}
+      .ta-patience{display:inline-flex;align-items:center;gap:0.4rem;font-size:0.75rem;font-family:var(--font-mono);margin:0.35rem 0}
+      .ta-patience-bar{width:80px;height:6px;background:var(--border);border-radius:3px;overflow:hidden;display:inline-block}
+      .ta-patience-fill{height:100%;border-radius:3px;transition:width 0.3s}
+      .ta-patience-high .ta-patience-fill{background:var(--status-success)}
+      .ta-patience-med .ta-patience-fill{background:var(--status-warning)}
+      .ta-patience-low .ta-patience-fill{background:var(--status-danger)}
+
+  # Confusion callout — highlighted moment of persona friction
+  confusion_callout:
+    base_class: "ta-callout"
+    css: |
+      .ta-callout{padding:0.5rem 0.75rem;border-radius:0.375rem;font-size:0.8125rem;margin:0.4rem 0}
+      .ta-callout-confusion{background:color-mix(in srgb,var(--status-warning) 8%,transparent);border-left:3px solid var(--status-warning)}
+      .ta-callout-expected{background:color-mix(in srgb,var(--accent) 6%,transparent);border-left:3px solid var(--accent)}
+      .ta-callout-feedback{background:color-mix(in srgb,var(--status-danger) 6%,transparent);border-left:3px solid color-mix(in srgb,var(--status-danger) 40%,transparent)}
+      .ta-callout strong{font-size:0.75rem;text-transform:uppercase;letter-spacing:0.02em}
+
+  # Response strategy label
+  response_strategy:
+    base_class: "ta-strategy"
+    css: |
+      .ta-strategy{display:inline-block;padding:0.1rem 0.4rem;border-radius:0.25rem;font-size:0.65rem;font-weight:600;text-transform:uppercase;letter-spacing:0.03em}
+      .ta-strategy-guess{background:color-mix(in srgb,var(--status-warning) 12%,transparent);color:var(--status-warning)}
+      .ta-strategy-help{background:color-mix(in srgb,var(--accent) 12%,transparent);color:var(--accent)}
+      .ta-strategy-abandon{background:color-mix(in srgb,var(--status-danger) 12%,transparent);color:var(--status-danger)}
+
+  # Confidence indicator per step
+  confidence:
+    base_class: "ta-confidence"
+    css: |
+      .ta-confidence{font-size:0.7rem;font-weight:500;text-transform:uppercase;letter-spacing:0.02em}
+      .ta-confidence-high{color:var(--status-success)}
+      .ta-confidence-low{color:var(--status-warning)}
+      .ta-confidence-none{color:var(--status-danger)}
+
   # Split pane layout with resizer
   layout:
     css: |

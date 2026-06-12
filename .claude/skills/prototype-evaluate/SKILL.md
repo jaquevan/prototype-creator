@@ -89,6 +89,7 @@ This is intentionally simple. No scoring rubric, no weighted judges, no eval har
 | `--depth` | `quick` or `thorough` | No | `quick` |
 | `--post-to-jira` | flag | No | Off |
 | `--feed-to-refine` | flag | No | Off |
+| `--usability` | `deep` or `thorough` | No | Off (inference-only via Step 3b) |
 
 Parse from `$ARGUMENTS`. Accept formats like:
 
@@ -97,6 +98,18 @@ Parse from `$ARGUMENTS`. Accept formats like:
 - `RHAISTRAT-1536 https://deploy-preview-42.app.dev/feature --depth=quick`
 - `RHAISTRAT-1536 http://localhost:4200 --post-to-jira`
 - `RHAISTRAT-1536 http://localhost:4200 --depth=thorough --feed-to-refine`
+- `RHAISTRAT-1536 http://localhost:4200 --usability=deep`
+- `RHAISTRAT-1536 http://localhost:4200 --depth=thorough --usability=thorough --feed-to-refine`
+
+### Usability Flag
+
+Controls how deep usability testing goes. Step 3b (inference-based scoring) always runs when `.context/usability-testing/` is available. The `--usability` flag adds Step 3c (think-aloud):
+
+| Value | Step 3b (inference) | Step 3c (think-aloud) | Report |
+|-------|--------------------|-----------------------|--------|
+| *(not set)* | Runs | Skipped | Quick dimension scores only |
+| `deep` | Runs | 1-2 personas | Both layers + comparison section |
+| `thorough` | Runs | 3 personas | Both layers + full comparison |
 
 ### Depth Flag
 
@@ -688,6 +701,122 @@ Add a `usability_dimensions` section to `.artifacts/<KEY>/journey-log.json`:
 
 The `composite_score` per dimension is the average across evaluated personas. The `overall_score` is the sum of composite scores out of 21.
 
+## Step 3c: Think-Aloud Usability (Optional — `--usability=deep|thorough`)
+
+This step runs Zack Bodnar's full dual-phase usability evaluation: the agent role-plays as a persona navigating the prototype, then scores the experience. It produces richer diagnostic evidence than Step 3b's inference — surfacing false confidence, silent errors, wrong mental models, and cumulative frustration that per-step analysis misses.
+
+**Only run if `--usability=deep` or `--usability=thorough` is passed AND `.context/usability-testing/` is bootstrapped.** If neither flag is present, skip entirely. Step 3b (inference) still runs regardless.
+
+### Why Both Layers Exist
+
+Step 3b (inference) is fast — good for CI, regression testing, quick triage. It correctly identifies structural blockers.
+
+Step 3c (think-aloud) is slow but reveals causality:
+- **False confidence**: persona completes a step but doesn't know if data is correct ("completed but wrong" is worse than "visibly failed")
+- **Guess-and-pray pattern**: low-patience personas submit blindly rather than seeking help, creating silent errors
+- **Wrong mental models**: persona expects X but UI offers Y — actionable design feedback inference can't surface
+- **Missing positive feedback**: absence of success confirmation erodes trust even on successful completions
+- **Cumulative stress**: frustration builds across steps, not just at individual confusion points
+
+### Persona Selection
+
+| Flag | Personas |
+|------|----------|
+| `--usability=deep` | 1-2 personas — pick the most friction-revealing pair (e.g., one junior + one senior) |
+| `--usability=thorough` | 3 personas — junior, senior, and a cross-domain persona (e.g., `deena-junior` + `alex-senior` + `paula-platform-engineer`) |
+
+Use the same persona selection logic as Step 3b.1 — match based on the RFE's target audience.
+
+### Phase 1: The Actor
+
+Read the Phase 1 protocol from `.context/usability-testing/prompts/evaluate-flow.md`. For each selected persona:
+
+1. **Load the persona YAML.** Adopt their identity — their knowledge is your knowledge, their gaps are your gaps.
+2. **Do NOT read the rubric.** Phase 1 is blind to the scoring criteria. You are a user trying to complete a task, not an analyst.
+3. **Navigate step by step** using the journey definitions from Step 1c as a guide. At each step, produce a think-aloud log entry:
+
+```
+STEP [n]:
+- What I see: [describe from the persona's perspective, not an analyst's]
+- What I'm thinking: [first person, in-character internal monologue]
+- What I'll try: [what action and why]
+- Confidence: [high/low/none — does the persona believe they're doing the right thing?]
+- Response strategy: [if confused: help-seeking / guess-and-continue / abandon]
+- Patience: [X% — track as depleting resource per persona's behavioral_attributes]
+```
+
+4. **Track patience** using the persona's model:
+   - High patience: -5% per confusion, -10% per dead end, +10% per success
+   - Medium patience: -10% per confusion, -20% per dead end, +5% per success
+   - Low patience: -15% per confusion, -30% per dead end, +5% per success
+   - At 0%: persona abandons. Log why and stop.
+
+5. **Log special events:**
+   - `[CLI ESCAPE]`: Persona would leave the UI (open terminal, ask colleague, check docs)
+   - `[CONTEXT LOSS]`: Navigating between pages caused loss of context
+   - `[EXPECTED vs ACTUAL]`: Persona expected to find X but UI showed Y — capture both
+   - `[MISSING FEEDBACK]`: A step succeeded but the UI gave no positive confirmation
+
+6. **At the end**, summarize:
+```
+NAVIGATION COMPLETE:
+- Outcome: [Completed / Completed with low confidence / Abandoned at step N]
+- Final patience: [X%]
+- CLI escapes: [count]
+- Confusion events: [count]
+- Response strategy distribution: [N help-seeking, N guess-and-continue, N abandon]
+- What happened: [2-3 sentences from the persona's perspective]
+```
+
+### Phase 2: The Evaluator
+
+After Phase 1 is complete for a persona, switch roles to Senior UX Researcher. Read the Phase 2 protocol from `.context/usability-testing/prompts/evaluate-flow.md`.
+
+1. **Run Target Audience Alignment Check** — is this persona a plausible user of this feature? Note any expertise mismatch and its confidence impact.
+2. **Score all 7 dimensions** (0-3) using the Phase 1 trace as evidence. For each:
+   - Score + Confidence (High/Medium/Low)
+   - Key finding (one sentence)
+   - Evidence (cite specific STEP numbers and quotes from Phase 1)
+3. **Map findings to JTBD** from the persona YAML.
+4. **Note "Expected vs Actual" moments** — these are the highest-value design insights.
+
+### Output
+
+Write per-persona think-aloud files:
+- `.artifacts/<KEY>/usability-thinkaloud-<persona-id>.md` — the full Phase 1 trace + Phase 2 scores
+
+Add to `journey-log.json` under `usability_dimensions.think_aloud`:
+
+```json
+{
+  "usability_dimensions": {
+    "think_aloud": {
+      "personas_evaluated": ["deena-junior"],
+      "traces": [
+        {
+          "persona": "deena-junior",
+          "outcome": "completed_low_confidence",
+          "patience_end": 45,
+          "confusion_events": 4,
+          "cli_escapes": 1,
+          "response_strategies": {"help_seeking": 0, "guess_and_continue": 3, "abandon": 1},
+          "expected_vs_actual": [
+            {"step": 7, "expected": "Add model inside provider", "actual": "Separate Deployments tab", "impact": "Navigation dead end"}
+          ],
+          "missing_feedback": [
+            {"step": 5, "context": "Form submitted but no success confirmation"}
+          ],
+          "dimension_scores": {
+            "workflow_continuity": {"score": 1, "confidence": "High"},
+            "technical_abstraction": {"score": 0, "confidence": "High"}
+          }
+        }
+      ]
+    }
+  }
+}
+```
+
 ## Step 4: Write the Report
 
 Write the evaluation report to `.artifacts/<KEY>/evaluation-report.md`:
@@ -992,6 +1121,63 @@ Screenshots are captured at key moments: when a new view loads, when a form open
 **Strengths (dimensions scored 3):**
 - **<Dimension>**: <what the UI did well>
 
+### Think-Aloud Narratives (Step 3c — only if `--usability=deep|thorough`)
+
+Include this section only when Step 3c ran. If skipped, omit entirely (don't show a placeholder).
+
+For each persona that went through the think-aloud:
+
+#### <Persona Name> — Think-Aloud Trace
+
+**Outcome**: Completed / Completed with low confidence / Abandoned at step N
+**Final patience**: X% | **Confusion events**: N | **CLI escapes**: N
+**Response strategy**: N guess-and-continue, N help-seeking, N abandon
+
+<details>
+<summary>Full think-aloud trace (N steps)</summary>
+
+**Step 1 — <action>**
+
+*What I see:* <persona's description of the screen>
+
+*What I'm thinking:* <first person internal monologue>
+
+*Confidence:* high / low / none
+*Patience:* X% <direction arrow>
+
+(If confusion event:)
+> **Confusion** — <what triggered it>. Response: <guess-and-continue / help-seeking / abandon>
+
+(If expected vs actual mismatch:)
+> **Expected vs Actual** — Persona expected: <X>. UI showed: <Y>. Impact: <what this meant for navigation>
+
+(If missing positive feedback:)
+> **Missing feedback** — <step succeeded but no confirmation shown>
+
+**Step 2 — <action>**
+...
+
+</details>
+
+#### Think-Aloud Dimension Scores
+
+| Dimension | Inference (3b) | Think-Aloud (3c) | Delta | What Think-Aloud Surfaced |
+|-----------|---------------|-------------------|-------|--------------------------|
+| <dimension> | X/3 | X/3 | 0 or +/-N | <what the narrative revealed that inference missed, or "Agreement"> |
+
+#### Key Diagnostic Insights (from think-aloud only)
+
+These findings are not visible from inference-based scoring alone:
+
+- **<Finding type>**: <specific insight with step citation>
+
+Types to look for:
+- **False confidence**: persona completed a step but doesn't know if data is correct
+- **Guess-and-pray**: persona submitted uncertain data rather than seeking help
+- **Wrong mental model**: persona expected X but UI organized around Y
+- **Missing positive feedback**: success with no confirmation erodes trust
+- **Cumulative frustration**: stress built across steps beyond what per-step analysis shows
+
 ## Flagged for Human Review
 
 Items below need human judgment. Each includes why it was flagged and what action is needed.
@@ -1050,43 +1236,40 @@ These flagged items do not block the evaluation. Review them asynchronously and 
 
 ## Step 4b: Generate HTML Report
 
-Generate a self-contained HTML at `.artifacts/<KEY>/evaluation-report.html`. Single shareable file with embedded screenshots.
+Generate the HTML report by running the render script. **Do NOT generate HTML manually.** The template at `templates/evaluation-report.html` is the single source of truth for structure, CSS, and JavaScript. The render script fills it with data from the eval artifacts.
 
-### How to Generate (Token-Efficient)
+```bash
+node scripts/render-report.js .artifacts/<KEY>/
+```
 
-Read `config/report-style.yaml` — it contains a **complete component system** with reusable CSS classes based on PatternFly v6. Follow these rules strictly to minimize token usage:
+This reads `evaluation-report.csv`, `journey-log.json`, `evaluation-report.md`, `screenshots/*.png`, and any `usability-thinkaloud-*.md` files from the artifacts directory, then writes the final self-contained HTML to `.artifacts/<KEY>/evaluation-report.html`.
 
-1. **Emit CSS once.** Copy `css_variables` and each component's `css` block into a single `<style>` tag. Never duplicate.
-2. **Use class names only.** Never inline styles. Use `class="badge badge-pass"`, `class="pf-card"`, `class="pf-table"`, etc.
-3. **Embed screenshots as base64.** Read each PNG, encode to base64, use `data:image/png;base64,...` in `src`. Never file paths.
-4. **Load fonts.** Emit the `<link>` tag from `fonts.cdn`.
+### What the Render Script Handles
 
-### Component → HTML Mapping
+- Embeds all screenshots as base64 data URIs
+- Builds the AC results table from the CSV
+- Builds journey step blocks with narrations from journey-log.json
+- Builds usability dimension tables and think-aloud narratives
+- Builds the breadcrumb bar from journey-log.json breadcrumb data
+- Embeds the CSV as a JS variable for the download button
+- Sets the download filename to `evaluation-<KEY>.html`
+- Gracefully degrades when files are missing (sections are hidden, not broken)
 
-| Component | Class | PatternFly Ref | Use For |
-|-----------|-------|---------------|---------|
-| Status badge | `badge badge-pass/fail/flagged` | Simple pill (subtle tint) | PASS/FAIL/FLAGGED verdicts |
-| Card | `pf-card` | Card | Methodology, conclusion, callout boxes |
-| Card (warning) | `pf-card pf-card-warning` | Card (with accent) | Flagged items section |
-| Table | `pf-table` | Table (compact) | AC results, usability scores, patience |
-| Narration | `pf-narration` | Blockquote pattern | Journey step explanations |
-| Screenshot | `pf-screenshot` | — | Clickable images (open modal on click) |
-| Stat | `pf-stat` | — | Summary number cards |
-| Modal | `pf-modal-overlay/content/close` | Modal | Expanded screenshot view |
-| Split layout | `pf-split/split-left/split-right` | — | Report (left) + Journeys (right) |
-| Resizer | `pf-resizer` | — | Draggable pane divider |
+### What the Template Provides (locked, never changes)
 
-### Layout
+- All CSS (badges, cards, tables, narrations, screenshots, modals, split pane, think-aloud classes)
+- All JavaScript (download buttons, resizable panes, screenshot modal with slideshow, header collapse, stat card scroll-to-section)
+- Fixed structure: header → breadcrumb → split pane (left: report, right: journeys + think-aloud)
+- INF vs TA explanation in the "How Usability Scores Are Calculated" section
+- Light mode only, Red Hat fonts, warm Notion/Claude aesthetic
 
-Split-pane: report on left, Playwright journeys on right. Both independently scrollable. Resizable divider between them. Stacks vertically below 900px. Collapsible header bar at top with STRAT context and download buttons (HTML + CSV).
+### AI Insights (flexible section)
 
-### Status Labels (PF v6 Label Mapping)
+The template includes an "Additional Insights" section on the left panel that is hidden by default. If the eval discovers something noteworthy that doesn't fit the standard sections (e.g., an unusual pattern, a cross-cutting concern, or a recommendation beyond the AC verdicts), write it to a `{{AI_INSIGHTS}}` token in the render data. The section will appear automatically.
 
-- **PASS** → outline, success status, compact — low visual noise for passing items
-- **FAIL** → filled, danger status, compact — high emphasis, immediately visible
-- **FLAGGED** → outline, warning status, compact — draws attention without alarm
+### When to Regenerate
 
-These are the same labels used in tables, journey steps, and summary stats. One class per variant, reused everywhere.
+If you need to update the HTML after the eval (e.g., to add AI insights or fix data), re-run the render script — it's idempotent and fast. Do NOT manually edit the HTML file.
 
 ## Step 5: CSV Export
 

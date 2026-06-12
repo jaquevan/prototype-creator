@@ -1,0 +1,479 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Evaluation: {{PROTOTYPE_ID}}</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Red+Hat+Display:wght@400;500;700&family=Red+Hat+Text:wght@400;500&family=Red+Hat+Mono&display=swap">
+<style>
+:root{--bg:#fff;--bg2:#f9f9f9;--text:#1a1a1a;--text2:#6b7280;--border:#eaeaea;--accent:#0066cc;--status-success:#16a34a;--status-danger:#dc2626;--status-warning:#d97706;--narr-bg:#fafafa;--narr-brd:#e8e8e8;--font-heading:'Red Hat Display',-apple-system,sans-serif;--font-body:'Red Hat Text',-apple-system,sans-serif;--font-mono:'Red Hat Mono','SFMono-Regular',monospace}
+*,*::before,*::after{box-sizing:border-box}
+body{margin:0;font-family:var(--font-body);font-size:0.9375rem;line-height:1.6;color:var(--text);background:var(--bg)}
+h1,h2,h3{font-family:var(--font-heading);margin:0 0 0.75rem}
+h1{font-size:1.5rem;font-weight:700}
+h2{font-size:1.25rem;font-weight:700;margin-top:2rem}
+h3{font-size:1.125rem;font-weight:500}
+a{color:var(--accent);text-decoration:none}
+a:hover{text-decoration:underline}
+p{margin:0.5rem 0}
+details{margin:1rem 0}
+details summary{cursor:pointer;font-weight:500;font-size:0.9375rem;padding:0.5rem 0;user-select:none;list-style:none}
+details summary::-webkit-details-marker{display:none}
+details summary::before{content:'▶';display:inline-block;margin-right:0.5rem;font-size:0.7rem;transition:transform 0.2s}
+details[open] summary::before{transform:rotate(90deg)}
+
+/* Badge */
+.badge{display:inline-block;padding:0.12rem 0.55rem;border-radius:999px;font-size:0.7rem;font-weight:600;text-transform:uppercase;letter-spacing:0.03em}
+.badge-pass{background:rgba(22,163,74,0.12);color:#16a34a}
+.badge-fail{background:rgba(220,38,38,0.12);color:#dc2626}
+.badge-flagged{background:rgba(217,119,6,0.12);color:#d97706}
+
+/* Card */
+.card{background:var(--bg2);border:1px solid var(--border);border-radius:0.5rem;padding:1.25rem;margin:1rem 0}
+.card-compact{padding:0.75rem}
+.card-warning{border-left:3px solid var(--status-warning)}
+
+/* Table */
+.tbl{width:100%;border-collapse:collapse;font-size:0.8125rem}
+.tbl th,.tbl td{padding:0.5rem 0.75rem;text-align:left;border-bottom:1px solid var(--border)}
+.tbl th{font-weight:500;color:var(--text2);font-size:0.7rem;text-transform:uppercase;letter-spacing:0.04em}
+.tbl tr:last-child td{border-bottom:none}
+
+/* Narration */
+.narration{padding:0.6rem 0.9rem;margin:0.4rem 0 1.25rem;font-size:0.8125rem;color:var(--text2);line-height:1.6;font-style:italic;border-left:2px solid var(--border);opacity:0.85}
+
+/* Screenshot */
+.screenshot{margin:0.6rem 0;cursor:pointer;position:relative}
+.screenshot img{width:100%;border-radius:0.375rem;border:1px solid var(--border);display:block}
+.screenshot:hover::after{content:'Click to expand';position:absolute;bottom:0.5rem;right:0.5rem;background:rgba(0,0,0,0.7);color:#fff;padding:0.2rem 0.5rem;border-radius:0.25rem;font-size:0.7rem}
+
+/* Stat card */
+.stat{text-align:center;padding:0.75rem 1.25rem;background:var(--bg2);border:1px solid var(--border);border-radius:0.5rem;min-width:80px;cursor:pointer;transition:box-shadow 0.15s,border-color 0.15s}
+.stat:hover{border-color:var(--accent);box-shadow:0 2px 8px rgba(0,0,0,0.06)}
+.stat-n{font-family:var(--font-heading);font-size:1.5rem;font-weight:700}
+.stat-l{font-size:0.7rem;color:var(--text2);text-transform:uppercase;letter-spacing:0.04em}
+
+/* Modal */
+.modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);z-index:1000;align-items:center;justify-content:center;padding:2rem}
+.modal-overlay.active{display:flex}
+.modal-content{background:var(--bg);border-radius:0.75rem;max-width:88vw;max-height:88vh;overflow:auto;padding:2rem;position:relative;box-shadow:0 25px 50px -12px rgba(0,0,0,0.25)}
+.modal-content img{max-width:100%;max-height:65vh;border-radius:0.5rem;display:block;margin:0 auto 1rem}
+.modal-narration{font-size:0.8125rem;color:var(--text2);line-height:1.6;padding:0.75rem 0;border-top:1px solid var(--border)}
+.modal-close{position:absolute;top:1rem;right:1rem;background:var(--bg2);border:1px solid var(--border);color:var(--text);width:2rem;height:2rem;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:1.125rem;cursor:pointer;transition:background 0.15s}
+.modal-close:hover{background:var(--border)}
+.modal-nav{display:flex;justify-content:space-between;align-items:center;margin-top:0.75rem;padding-top:0.75rem;border-top:1px solid var(--border)}
+.modal-nav button{background:var(--bg2);border:1px solid var(--border);color:var(--text);padding:0.35rem 0.75rem;border-radius:0.375rem;cursor:pointer;font-family:var(--font-body);font-size:0.8125rem}
+.modal-nav button:hover{background:var(--border)}
+.modal-nav button:disabled{opacity:0.3;cursor:default}
+.modal-counter{font-size:0.75rem;color:var(--text2);font-family:var(--font-mono)}
+.modal-download{position:absolute;top:1rem;right:3.5rem;background:var(--bg2);border:1px solid var(--border);color:var(--text);width:2rem;height:2rem;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:0.875rem;cursor:pointer;transition:background 0.15s;text-decoration:none}
+.modal-download:hover{background:var(--border);text-decoration:none}
+
+/* Split layout */
+.split{display:flex;height:calc(100vh - 56px)}
+.split-left{flex:1;overflow-y:auto;padding:2rem 2.5rem;border-right:1px solid var(--border);min-width:300px}
+.split-right{flex:1;overflow-y:auto;padding:2rem 2.5rem;min-width:400px}
+.resizer{width:4px;cursor:col-resize;background:var(--border);flex-shrink:0;transition:background 0.15s}
+.resizer:hover,.resizer.active{background:var(--accent)}
+@media(max-width:900px){.split{flex-direction:column;height:auto}.split-left,.split-right{border-right:none;min-width:0}.resizer{display:none}}
+
+/* Header bar */
+.header-bar{position:sticky;top:0;z-index:100;background:var(--bg);border-bottom:1px solid var(--border);padding:0.75rem 2rem;display:flex;align-items:center;gap:1.5rem;flex-wrap:wrap}
+.header-bar h1{margin:0;white-space:nowrap}
+.header-links{display:flex;align-items:center;gap:0.35rem;font-size:0.8125rem;flex-wrap:wrap}
+.header-links a{display:inline-flex;align-items:center}
+.header-links .arrow{color:var(--border);font-size:0.65rem;margin:0 0.1rem}
+.header-actions{display:flex;gap:0.5rem;margin-left:auto}
+.header-actions button{background:var(--bg2);border:1px solid var(--border);color:var(--text);padding:0.35rem 0.75rem;border-radius:0.375rem;cursor:pointer;font-family:var(--font-body);font-size:0.8125rem;display:inline-flex;align-items:center;gap:0.3rem}
+.header-actions button:hover{background:var(--border)}
+.header-toggle{background:none;border:none;cursor:pointer;font-size:0.8125rem;color:var(--text2);padding:0.25rem 0.5rem;font-family:var(--font-body);transition:color 0.15s}
+.header-toggle:hover{color:var(--text)}
+
+/* Header details */
+.header-details{background:var(--bg2);border-bottom:1px solid var(--border);padding:1.25rem 2rem;display:none}
+.header-details.open{display:block}
+.header-details p{margin:0.25rem 0;font-size:0.9375rem;color:var(--text)}
+.meta-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:1.5rem;margin-top:1rem}
+.meta-item{font-size:0.8125rem}
+.meta-label{color:var(--text2);font-size:0.7rem;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:0.15rem}
+.meta-value{color:var(--text);font-weight:500}
+
+/* Breadcrumb */
+.breadcrumb-bar{background:var(--bg);border-bottom:1px solid var(--border);padding:0.5rem 2rem;font-size:0.75rem;color:var(--text2)}
+.breadcrumb-bar a{color:var(--accent);font-size:0.75rem}
+.breadcrumb-bar span.sep{margin:0 0.4rem;color:var(--border)}
+
+/* Stats row */
+.stats-row{display:flex;gap:0.75rem;flex-wrap:wrap;margin:1.5rem 0}
+
+/* Think-aloud styles */
+.ta-step{background:var(--bg2);border-radius:0.5rem;padding:1rem;margin:0.75rem 0}
+.ta-step-head{font-family:var(--font-heading);font-size:0.875rem;font-weight:500;margin-bottom:0.5rem}
+.ta-see,.ta-think{font-style:italic;font-size:0.8125rem;color:var(--text2);line-height:1.6;margin:0.25rem 0}
+.ta-think{border-left:2px solid var(--border);padding-left:0.75rem;margin-left:0.25rem}
+.ta-patience{display:inline-flex;align-items:center;gap:0.4rem;font-size:0.75rem;font-family:var(--font-mono);margin:0.35rem 0}
+.ta-patience-bar{width:80px;height:6px;background:var(--border);border-radius:3px;overflow:hidden;display:inline-block}
+.ta-patience-fill{height:100%;border-radius:3px;transition:width 0.3s}
+.ta-patience-high .ta-patience-fill{background:var(--status-success)}
+.ta-patience-med .ta-patience-fill{background:var(--status-warning)}
+.ta-patience-low .ta-patience-fill{background:var(--status-danger)}
+.ta-callout{padding:0.5rem 0.75rem;border-radius:0.375rem;font-size:0.8125rem;margin:0.4rem 0}
+.ta-callout-confusion{background:rgba(217,119,6,0.08);border-left:3px solid var(--status-warning)}
+.ta-callout-expected{background:rgba(0,102,204,0.06);border-left:3px solid var(--accent)}
+.ta-callout-feedback{background:rgba(220,38,38,0.06);border-left:3px solid rgba(220,38,38,0.4)}
+.ta-callout strong{font-size:0.75rem;text-transform:uppercase;letter-spacing:0.02em}
+.ta-strategy{display:inline-block;padding:0.1rem 0.4rem;border-radius:0.25rem;font-size:0.65rem;font-weight:600;text-transform:uppercase;letter-spacing:0.03em}
+.ta-strategy-guess{background:rgba(217,119,6,0.12);color:var(--status-warning)}
+.ta-strategy-help{background:rgba(0,102,204,0.12);color:var(--accent)}
+.ta-strategy-abandon{background:rgba(220,38,38,0.12);color:var(--status-danger)}
+.ta-confidence{font-size:0.7rem;font-weight:500;text-transform:uppercase;letter-spacing:0.02em}
+.ta-confidence-high{color:var(--status-success)}
+.ta-confidence-low{color:var(--status-warning)}
+.ta-confidence-none{color:var(--status-danger)}
+
+/* Journey dividers */
+.journey-divider{border-top:2px solid var(--border);margin:2rem 0;padding-top:1.5rem}
+
+/* Panel tabs */
+.panel-tabs{display:flex;border-bottom:2px solid var(--border);margin-bottom:1.5rem;gap:0}
+.panel-tab{padding:0.5rem 1.25rem;font-size:0.875rem;font-weight:500;color:var(--text2);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-2px;background:none;border-top:none;border-left:none;border-right:none;font-family:var(--font-body)}
+.panel-tab:hover{color:var(--text)}
+.panel-tab.active{color:var(--accent);border-bottom-color:var(--accent)}
+.panel-content{display:none}
+.panel-content.active{display:block}
+
+/* INF vs TA explanation */
+.inf-ta-box{background:rgba(0,102,204,0.04);border:1px solid rgba(0,102,204,0.15);border-radius:0.5rem;padding:1rem 1.25rem;margin:0.75rem 0;font-size:0.8125rem;line-height:1.6}
+
+/* Footer */
+.report-footer{border-top:1px solid var(--border);padding:1.5rem 2rem;font-size:0.75rem;color:var(--text2);text-align:center;background:var(--bg2)}
+
+/* Utility */
+.max-w{max-width:64rem}
+.mono{font-family:var(--font-mono)}
+.small{font-size:0.8125rem}
+.muted{color:var(--text2)}
+.mt1{margin-top:1rem}
+.mt2{margin-top:2rem}
+.mb1{margin-bottom:1rem}
+</style>
+</head>
+<body>
+
+<!-- Header Bar -->
+<div class="header-bar">
+  <h1>{{PROTOTYPE_ID}}</h1>
+  <div class="header-links">
+    <a href="{{RFE_URL}}" target="_blank">RFE</a>
+    <span class="arrow">→</span>
+    <a href="{{JIRA_URL}}" target="_blank">STRAT</a>
+    <span class="arrow">→</span>
+    <a href="{{PROTOTYPE_REPO_URL}}" target="_blank">Prototype</a>
+    <span class="arrow">·</span>
+    <a href="{{MR_URL}}" target="_blank" style="font-size:0.75rem;opacity:0.7">MRs</a>
+    <span class="arrow">→</span>
+    <strong style="color:var(--text);font-size:0.8125rem">Eval</strong>
+  </div>
+  <div class="header-actions">
+    <button onclick="downloadHTML()">↓ HTML</button>
+    <button onclick="downloadCSV()">↓ CSV</button>
+    <button class="header-toggle" id="detailsToggle" onclick="toggleDetails()" aria-label="Toggle details">Details ▶</button>
+  </div>
+</div>
+
+<!-- Header Details (collapsible) -->
+<div class="header-details" id="headerDetails">
+  <p>{{DESCRIPTION}}</p>
+  <div class="meta-grid">
+    <div class="meta-item"><div class="meta-label">Story</div><div class="meta-value">{{STORY_TITLE}}</div></div>
+    <div class="meta-item"><div class="meta-label">Depth</div><div class="meta-value">{{DEPTH}}</div></div>
+    <div class="meta-item"><div class="meta-label">Evaluated</div><div class="meta-value">{{EVAL_DATE}}</div></div>
+    <div class="meta-item"><div class="meta-label">Usability</div><div class="meta-value">{{USABILITY_SCORE}}</div></div>
+    <div class="meta-item"><div class="meta-label">Journeys</div><div class="meta-value">{{JOURNEY_SUMMARY}}</div></div>
+    <div class="meta-item"><div class="meta-label">Gaps</div><div class="meta-value">{{GAPS_SUMMARY}}</div></div>
+  </div>
+</div>
+
+<!-- Split Pane -->
+<div class="split">
+
+  <!-- Left Panel: Report -->
+  <div class="split-left">
+
+    <!-- Stats row -->
+    <div class="stats-row">
+      <div class="stat" onclick="scrollToSection('ac-results')">
+        <div class="stat-n" style="color:var(--status-success)">{{PASS_COUNT}}</div>
+        <div class="stat-l">Pass</div>
+      </div>
+      <div class="stat" onclick="scrollToSection('ac-results')">
+        <div class="stat-n" style="color:var(--status-danger)">{{FAIL_COUNT}}</div>
+        <div class="stat-l">Fail</div>
+      </div>
+      <div class="stat" onclick="scrollToSection('flagged')">
+        <div class="stat-n" style="color:var(--status-warning)">{{FLAGGED_COUNT}}</div>
+        <div class="stat-l">Flagged</div>
+      </div>
+      <div class="stat" onclick="scrollToSection('usability-dimensions')">
+        <div class="stat-n">{{USABILITY_SCORE}}</div>
+        <div class="stat-l">Usability</div>
+      </div>
+      <div class="stat" onclick="scrollToSection('path-comparison')">
+        <div class="stat-n">{{JOURNEY_RATIO}}</div>
+        <div class="stat-l">Journeys</div>
+      </div>
+    </div>
+
+    <!-- Methodology -->
+    <details>
+      <summary>How This Evaluation Was Conducted</summary>
+      <div class="card">
+        {{METHODOLOGY_HTML}}
+      </div>
+    </details>
+
+    <!-- Usability Scoring Explanation -->
+    <details>
+      <summary>How Usability Scores Are Calculated</summary>
+      <div class="card">
+        <div class="inf-ta-box">
+          <strong>Two scoring layers:</strong>
+          <p><strong>INF (Inference)</strong> — fast, structural analysis. The evaluator applies persona knowledge constraints to the Playwright journey evidence and scores each dimension based on observable UI patterns. Good for CI and regression testing.</p>
+          <p><strong>TA (Think-Aloud)</strong> — slow, diagnostic analysis. The evaluator role-plays as a persona navigating the prototype step by step, producing a first-person internal monologue. Reveals false confidence, wrong mental models, guess-and-pray patterns, and cumulative frustration that inference misses.</p>
+        </div>
+        <table class="tbl mt1">
+          <thead>
+            <tr><th>Dimension</th><th>What It Measures</th><th>0 = Broken</th><th>3 = Seamless</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>Workflow Continuity</td><td>Can the user complete the flow without infrastructure cliffs?</td><td>Dead ends, crashes</td><td>Uninterrupted flow</td></tr>
+            <tr><td>Cross-Persona Handoffs</td><td>Is context preserved across roles and workflow stages?</td><td>Context lost on handoff</td><td>Seamless transitions</td></tr>
+            <tr><td>Scalability &amp; Complexity</td><td>Does it serve both novices and experts?</td><td>One-size-fits-none</td><td>Progressive disclosure</td></tr>
+            <tr><td>System Status &amp; Trust</td><td>Does the UI explain what's happening?</td><td>Silent failures</td><td>Clear feedback always</td></tr>
+            <tr><td>Technical Abstraction</td><td>Relevant info or infrastructure leaks?</td><td>Raw infrastructure</td><td>Domain-native terms</td></tr>
+            <tr><td>Mental Model Fidelity</td><td>Does the UI speak the user's language?</td><td>System language</td><td>User language</td></tr>
+            <tr><td>Accessibility</td><td>Keyboard nav, screen readers, constrained environments?</td><td>Inaccessible</td><td>WCAG compliant</td></tr>
+          </tbody>
+        </table>
+        <p class="small muted mt1"><strong>Composite score</strong>: average across evaluated personas per dimension. Overall is sum of composites out of 21.</p>
+        <p class="small muted"><strong>Confidence levels</strong>: High = structural blocker directly observed. Medium = friction consistent with persona profile. Low = logical inference from constraints.</p>
+        <p class="small muted"><strong>Patience model</strong>: each persona starts at 100%. Confusion costs 5-15%, dead ends cost 10-30%, successful sub-tasks recover 5-10%. At 0% the persona abandons.</p>
+        <p class="small muted mt1">Scoring rubric from <a href="https://gitlab.cee.redhat.com/zbodnar/automated-usability-testing" target="_blank">automated-usability-testing</a>.</p>
+      </div>
+    </details>
+
+    <!-- AC Results -->
+    <h2 id="ac-results">Acceptance Criteria Results</h2>
+    <table class="tbl">
+      <thead>
+        <tr><th>ID</th><th>Story</th><th>Criterion</th><th>Tier</th><th>Verdict</th><th>Rationale</th></tr>
+      </thead>
+      <tbody>
+        {{AC_TABLE_ROWS}}
+      </tbody>
+    </table>
+
+    <!-- Usability Dimensions -->
+    <h2 id="usability-dimensions">Usability Dimension Scores (INF)</h2>
+    {{USABILITY_TABLE}}
+    {{PERSONA_SENSITIVITY}}
+    {{PATIENCE_TRACKING}}
+
+    <!-- Think-Aloud Comparison -->
+    {{THINK_ALOUD_COMPARISON}}
+
+    <!-- Flagged -->
+    <h2 id="flagged">Flagged for Human Review</h2>
+    {{FLAGGED_HTML}}
+
+    <!-- Conclusion -->
+    <h2>Conclusion</h2>
+    <div class="card">
+      {{CONCLUSION_HTML}}
+    </div>
+
+    <!-- AI Insights -->
+    <div id="ai-insights" style="{{AI_INSIGHTS_DISPLAY}}">
+      <h2>Additional Insights</h2>
+      {{AI_INSIGHTS}}
+    </div>
+
+  </div>
+
+  <!-- Resizer -->
+  <div class="resizer" id="resizer"></div>
+
+  <!-- Right Panel: Journeys + Think-Aloud -->
+  <div class="split-right">
+
+    <div class="panel-tabs">
+      <button class="panel-tab active" onclick="switchTab('journeys')">Playwright Journeys</button>
+      <button class="panel-tab" onclick="switchTab('thinkaloud')" id="taTab" style="{{TA_TAB_DISPLAY}}">Think-Aloud</button>
+    </div>
+    <div class="panel-content active" id="panel-journeys">
+      <h2 id="path-comparison">Path Comparison</h2>
+      {{PATH_COMPARISON_TABLE}}
+      {{JOURNEY_BLOCKS}}
+    </div>
+    <div class="panel-content" id="panel-thinkaloud">
+      {{THINK_ALOUD_NARRATIVES}}
+    </div>
+
+  </div>
+
+</div>
+
+<!-- Footer -->
+<div class="report-footer">
+  Report by prototype-evaluate. Usability scoring powered by <a href="https://gitlab.cee.redhat.com/zbodnar/automated-usability-testing">automated-usability-testing</a>.
+</div>
+
+<!-- Screenshot Modal -->
+<div class="modal-overlay" id="screenshotModal">
+  <div class="modal-content">
+    <button class="modal-close" onclick="closeModal()">×</button>
+    <a class="modal-download" id="modalDownload" download title="Download screenshot">↓</a>
+    <img id="modalImg" src="" alt="Screenshot">
+    <div class="modal-narration" id="modalNarration"></div>
+    <div class="modal-nav">
+      <button id="modalPrev" onclick="modalNavigate(-1)">← Previous</button>
+      <span class="modal-counter" id="modalCounter"></span>
+      <button id="modalNext" onclick="modalNavigate(1)">Next →</button>
+    </div>
+  </div>
+</div>
+
+<script>
+var csvData = `{{CSV_DATA}}`;
+
+var screenshotData = [{{SCREENSHOT_ARRAY}}];
+var currentScreenshotIdx = 0;
+
+function downloadHTML() {
+  var blob = new Blob([document.documentElement.outerHTML], {type: 'text/html'});
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'evaluation-{{PROTOTYPE_ID}}.html';
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+function downloadCSV() {
+  var blob = new Blob([csvData], {type: 'text/csv'});
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'evaluation-{{PROTOTYPE_ID}}.csv';
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+function toggleDetails() {
+  var details = document.getElementById('headerDetails');
+  var toggle = document.getElementById('detailsToggle');
+  var isOpen = details.classList.toggle('open');
+  toggle.textContent = isOpen ? 'Details ▼' : 'Details ▶';
+}
+
+function switchTab(tab) {
+  document.querySelectorAll('.panel-tab').forEach(function(t) { t.classList.remove('active'); });
+  document.querySelectorAll('.panel-content').forEach(function(c) { c.classList.remove('active'); });
+  document.querySelector('[onclick="switchTab(\'' + tab + '\')"]').classList.add('active');
+  document.getElementById('panel-' + tab).classList.add('active');
+}
+
+function scrollToSection(id) {
+  var el = document.getElementById(id);
+  if (el) el.scrollIntoView({behavior: 'smooth', block: 'start'});
+}
+
+// Resizer
+(function() {
+  var resizer = document.getElementById('resizer');
+  var left = resizer.previousElementSibling;
+  var right = resizer.nextElementSibling;
+  var startX, startLeftW;
+
+  resizer.addEventListener('mousedown', function(e) {
+    startX = e.clientX;
+    startLeftW = left.getBoundingClientRect().width;
+    resizer.classList.add('active');
+    document.addEventListener('mousemove', onMouseMove);
+    document.addEventListener('mouseup', onMouseUp);
+    e.preventDefault();
+  });
+
+  function onMouseMove(e) {
+    var dx = e.clientX - startX;
+    var newW = startLeftW + dx;
+    var container = left.parentElement.getBoundingClientRect().width;
+    if (newW < 300) newW = 300;
+    if (container - newW - 4 < 400) newW = container - 404;
+    left.style.flex = 'none';
+    left.style.width = newW + 'px';
+    right.style.flex = '1';
+  }
+
+  function onMouseUp() {
+    resizer.classList.remove('active');
+    document.removeEventListener('mousemove', onMouseMove);
+    document.removeEventListener('mouseup', onMouseUp);
+  }
+})();
+
+// Screenshot modal
+function openModal(idx) {
+  currentScreenshotIdx = idx;
+  renderModal();
+  document.getElementById('screenshotModal').classList.add('active');
+}
+
+function closeModal() {
+  document.getElementById('screenshotModal').classList.remove('active');
+}
+
+function renderModal() {
+  var s = screenshotData[currentScreenshotIdx];
+  if (!s) return;
+  document.getElementById('modalImg').src = s.src;
+  document.getElementById('modalNarration').textContent = s.narration || '';
+  document.getElementById('modalCounter').textContent = (currentScreenshotIdx + 1) + ' / ' + screenshotData.length;
+  document.getElementById('modalPrev').disabled = currentScreenshotIdx === 0;
+  document.getElementById('modalNext').disabled = currentScreenshotIdx === screenshotData.length - 1;
+  var dl = document.getElementById('modalDownload');
+  dl.href = s.src;
+  dl.download = s.filename || 'screenshot.png';
+}
+
+function modalNavigate(dir) {
+  var next = currentScreenshotIdx + dir;
+  if (next >= 0 && next < screenshotData.length) {
+    currentScreenshotIdx = next;
+    renderModal();
+  }
+}
+
+document.getElementById('screenshotModal').addEventListener('click', function(e) {
+  if (e.target === this) closeModal();
+});
+
+document.addEventListener('keydown', function(e) {
+  var modal = document.getElementById('screenshotModal');
+  if (!modal.classList.contains('active')) return;
+  if (e.key === 'Escape') closeModal();
+  if (e.key === 'ArrowLeft') modalNavigate(-1);
+  if (e.key === 'ArrowRight') modalNavigate(1);
+});
+
+// Wire up screenshot clicks
+document.addEventListener('DOMContentLoaded', function() {
+  document.querySelectorAll('.screenshot').forEach(function(el) {
+    var idx = parseInt(el.getAttribute('data-idx'), 10);
+    if (!isNaN(idx)) {
+      el.addEventListener('click', function() { openModal(idx); });
+    }
+  });
+});
+</script>
+
+</body>
+</html>
