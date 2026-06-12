@@ -336,11 +336,22 @@ function buildTokens() {
       if (step.timestamp_ms !== undefined) block += ` · <span class="mono muted">${step.timestamp_ms}ms</span>`;
       block += `</p>`;
 
-      if (step.screenshot) {
-        const filename = path.basename(step.screenshot);
-        const idx = registerScreenshot(filename, step.narration || '');
+      // Find screenshot: explicit path in JSON, or auto-detect by naming convention
+      let ssFilename = step.screenshot ? path.basename(step.screenshot) : null;
+      if (!ssFilename) {
+        const jIdx = journeys.indexOf(journey) + 1;
+        const candidates = [
+          `journey-${jIdx}-step-${step.step}.png`,
+          `journey-${jIdx}-step-${step.step}-FAIL.png`
+        ];
+        for (const c of candidates) {
+          if (screenshots[c]) { ssFilename = c; break; }
+        }
+      }
+      if (ssFilename && screenshots[ssFilename]) {
+        const idx = registerScreenshot(ssFilename, step.narration || '');
         if (idx >= 0) {
-          block += `<div class="screenshot" data-idx="${idx}"><img src="${screenshots[filename]}" alt="Step ${step.step}"></div>`;
+          block += `<div class="screenshot" data-idx="${idx}"><img src="${screenshots[ssFilename]}" alt="Step ${step.step}"></div>`;
         }
       }
 
@@ -567,11 +578,33 @@ function buildTokens() {
   const csvDataEscaped = csvRaw.replace(/`/g, '\\`').replace(/\\/g, '\\\\').replace(/\$/g, '\\$');
 
   // Build link URLs
+  // Extract RFE key from markdown or journey-log
   const rfeKeyMatch = mdRaw.match(/RHAIRFE-\d+/);
   const rfeKey = rfeKeyMatch ? rfeKeyMatch[0] : '';
   const rfeUrl = rfeKey ? `https://issues.redhat.com/browse/${rfeKey}` : jiraUrl;
-  const protoRepoUrl = 'https://gitlab.cee.redhat.com/uxd/prototypes/rhoai/-/tree/3.5';
-  const mrUrl = 'https://gitlab.cee.redhat.com/uxd/prototypes/rhoai/-/merge_requests';
+
+  // Prototype repo — detect from journey-log or default
+  const protoRepoBase = 'https://gitlab.cee.redhat.com/uxd/prototypes/rhoai';
+  const protoRepoUrl = (journeyLog && journeyLog.breadcrumb && journeyLog.breadcrumb.prototype)
+    ? journeyLog.breadcrumb.prototype.url
+    : `${protoRepoBase}/-/tree/3.5`;
+
+  // MR detection — known mapping from prototype evaluator spreadsheet
+  const knownMRs = {
+    'RHAISTRAT-1527': 168, 'RHAISTRAT-133': 169, 'RHAISTRAT-1492': 170,
+    'RHAISTRAT-1267': 167, 'RHAISTRAT-1536': 171, 'RHAISTRAT-1535': 172,
+    'RHAISTRAT-1745': 176, 'RHAISTRAT-1474': 173, 'RHAISTRAT-1740': 175,
+    'RHAISTRAT-432': 174, 'RHAISTRAT-1521': 177, 'RHAISTRAT-1433': 178,
+    'RHAISTRAT-1762': 180, 'RHAISTRAT-1761': 183, 'RHAISTRAT-1758': 181,
+    'RHAISTRAT-1744': 182, 'RHAISTRAT-1742': 184, 'RHAISTRAT-1741': 179
+  };
+  const mrNumber = knownMRs[protoId];
+  const mrUrl = mrNumber
+    ? `${protoRepoBase}/-/merge_requests/${mrNumber}`
+    : `${protoRepoBase}/-/merge_requests`;
+  const protoDeployUrl = mrNumber
+    ? `https://rhoai-5171de.pages.redhat.com/mr-${mrNumber}/`
+    : prototypeUrl;
 
   return {
     '{{PROTOTYPE_ID}}': protoId,
@@ -580,6 +613,7 @@ function buildTokens() {
     '{{RFE_URL}}': rfeUrl,
     '{{PROTOTYPE_REPO_URL}}': protoRepoUrl,
     '{{MR_URL}}': mrUrl,
+    '{{MR_LABEL}}': mrNumber ? `MR !${mrNumber}` : 'MRs',
     '{{DESCRIPTION}}': escapeHtml(description),
     '{{STORY_TITLE}}': escapeHtml(storyTitle),
     '{{DEPTH}}': escapeHtml(depth),

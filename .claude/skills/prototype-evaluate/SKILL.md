@@ -134,14 +134,26 @@ python3 scripts/fetch_rfe.py <KEY> --fields summary,description,acceptance_crite
 
 ### 1a: Extract Acceptance Criteria
 
-Look for:
+**CRITICAL: Use the STRAT's acceptance criteria EXACTLY as written. Do not rephrase, merge, split, synthesize, or generate new criteria. Every criterion in the report must be traceable to a specific line in the Jira ticket.**
 
-- Explicit "Acceptance Criteria" heading
+Look for acceptance criteria in the Jira ticket description under:
+- An explicit "Acceptance Criteria" heading (most common)
 - Given/When/Then blocks
 - Checkbox lists (`- [ ] ...`)
 - Numbered requirements under a "Requirements" or "Definition of Done" heading
 
-Parse each criterion into a discrete, testable statement. Number them sequentially (AC-1, AC-2, ...).
+**Extraction rules:**
+1. Copy each criterion verbatim from the ticket. Do NOT paraphrase.
+2. If the ticket uses Given/When/Then format, each Given/When/Then block is ONE criterion.
+3. If the ticket uses bullet points or numbered items, each bullet/number is ONE criterion.
+4. Number them AC-1, AC-2, etc. in the order they appear in the ticket.
+5. Do NOT split a single criterion into multiple sub-criteria.
+6. Do NOT generate criteria from the prototype source code — criteria come from Jira ONLY.
+7. Do NOT generate criteria from the usability personas or user stories — those feed into Steps 3b/3c, not into AC extraction.
+
+**Verification step:** After extracting, list all criteria and confirm each one appears word-for-word (or near-verbatim) in the Jira ticket. If a criterion doesn't match, remove it.
+
+**Also look for "High Level Requirements"** — some STRAT tickets have both "Acceptance Criteria" and "High Level Requirements" sections. Use the Acceptance Criteria section. The HLRs are broader user stories that inform journeys (Step 1c) but are NOT individual testable criteria.
 
 If no acceptance criteria can be found, stop and tell the user:
 
@@ -558,7 +570,9 @@ In `--depth=thorough`, each journey additionally:
 
 ### Output
 
-Save the full journey log to `.artifacts/<KEY>/journey-log.json`:
+Save the full journey log to `.artifacts/<KEY>/journey-log.json`.
+
+**CRITICAL: Every step that has a screenshot MUST include a `"screenshot"` field** with the path relative to the artifacts directory (e.g., `"screenshots/journey-1-step-1.png"`). Also include a `"narration"` field with a brief explanation of what the step shows. The render script uses these to embed screenshots as base64 in the HTML report. If screenshot paths are missing, the report will have no images.
 
 ```json
 {
@@ -575,8 +589,8 @@ Save the full journey log to `.artifacts/<KEY>/journey-log.json`:
       "steps_expected": 6,
       "steps_completed": 6,
       "steps": [
-        { "step": 1, "action": "navigate", "target": "/ai-hub/models", "result": "success", "timestamp_ms": 0 },
-        { "step": 2, "action": "click", "target": "Tab > External providers", "result": "success", "timestamp_ms": 3102 }
+        { "step": 1, "action": "navigate", "target": "/ai-hub/models", "result": "success", "timestamp_ms": 0, "screenshot": "screenshots/journey-1-step-1.png" },
+        { "step": 2, "action": "click", "target": "Tab > External providers", "result": "success", "timestamp_ms": 3102, "screenshot": "screenshots/journey-1-step-2.png", "narration": "Tab loaded with providers table visible" }
       ]
     }
   ]
