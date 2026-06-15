@@ -3,6 +3,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const { execSync } = require('child_process');
 
 const artifactsDir = process.argv[2];
 if (!artifactsDir) {
@@ -189,6 +190,299 @@ function loadScreenshots(screenshotsDir) {
 // ---------------------------------------------------------------------------
 // Build tokens
 // ---------------------------------------------------------------------------
+
+function buildDeltaHtml() {
+  const deltaPath = path.join(absArtifacts, 'mr-delta.json');
+  const delta = readJsonOr(deltaPath, null);
+  if (!delta) return '<p class="muted small">No MR delta data available. Run with --workspace to enable.</p>';
+
+  const addIcon = '<span class="delta-added" title="Added">+</span>';
+  const modIcon = '<span class="delta-modified" title="Modified">~</span>';
+
+  const protoId = extractPrototypeId();
+  const knownMRs = { 'RHAISTRAT-1527':168,'RHAISTRAT-133':169,'RHAISTRAT-1492':170,'RHAISTRAT-1267':167,'RHAISTRAT-1536':171,'RHAISTRAT-1535':172,'RHAISTRAT-1745':176,'RHAISTRAT-1474':173,'RHAISTRAT-1740':175,'RHAISTRAT-432':174,'RHAISTRAT-1521':177,'RHAISTRAT-1433':178,'RHAISTRAT-1762':180,'RHAISTRAT-1761':183,'RHAISTRAT-1758':181,'RHAISTRAT-1744':182,'RHAISTRAT-1742':184,'RHAISTRAT-1741':179 };
+  const mrNum = delta.mr_number || knownMRs[protoId];
+  const mrDiffUrl = mrNum ? `https://gitlab.cee.redhat.com/uxd/prototypes/rhoai/-/merge_requests/${mrNum}/diffs` : '';
+
+  let html = `<p class="small"><strong>${delta.total_files_changed || 0} files changed</strong> against <code>${escapeHtml(delta.base_branch || '?')}</code>`;
+  if (mrNum) html += ` · <a href="${mrDiffUrl}" target="_blank">View full diff on GitLab (MR !${mrNum})</a>`;
+  html += `</p>`;
+
+  // Metadata row with icons
+  html += `<div class="delta-meta">`;
+  html += `<span>${delta.route_changes ? '✓' : '✗'} Routes</span>`;
+  html += `<span>${delta.nav_changes ? '✓' : '✗'} Sidebar nav</span>`;
+  html += `<span>${delta.feature_flag_changes ? '✓' : '✗'} Feature flags</span>`;
+  html += `</div>`;
+
+  // Navigation warning
+  if (delta.nav_warning) {
+    html += `<div class="delta-nav-warn">${escapeHtml(delta.nav_warning)}</div>`;
+  }
+
+  // File lists with icons
+  const newFiles = delta.new_files || [];
+  const modFiles = delta.modified_files || [];
+
+  html += `<div class="delta-files">`;
+  if (newFiles.length) {
+    html += `<div class="delta-file-group"><h4>${addIcon} ${newFiles.length} Added</h4><ul class="delta-file-list">`;
+    for (const f of newFiles.slice(0, 8)) {
+      const short = f.replace('src/app/', '').replace('src/', '');
+      html += `<li>${addIcon} <code>${escapeHtml(short)}</code></li>`;
+    }
+    if (newFiles.length > 8) html += `<li class="muted">+${newFiles.length - 8} more</li>`;
+    html += `</ul></div>`;
+  }
+  if (modFiles.length) {
+    // Highlight important modified files
+    const important = modFiles.filter(f => f.includes('AppLayout') || f.includes('routes') || f.includes('FeatureFlag'));
+    const other = modFiles.filter(f => !important.includes(f));
+
+    html += `<div class="delta-file-group"><h4>${modIcon} ${modFiles.length} Modified</h4><ul class="delta-file-list">`;
+    for (const f of important) {
+      const short = f.replace('src/app/', '').replace('src/', '');
+      html += `<li>${modIcon} <code><strong>${escapeHtml(short)}</strong></code></li>`;
+    }
+    for (const f of other.slice(0, 5)) {
+      const short = f.replace('src/app/', '').replace('src/', '');
+      html += `<li>${modIcon} <code>${escapeHtml(short)}</code></li>`;
+    }
+    if (other.length > 5) html += `<li class="muted">+${other.length - 5} more</li>`;
+    html += `</ul></div>`;
+  }
+  html += `</div>`;
+
+  // New routes
+  if (delta.new_routes && delta.new_routes.length) {
+    html += `<p class="small muted mt1">New routes: ${delta.new_routes.map(r => '<code>' + escapeHtml(r) + '</code>').join(', ')}</p>`;
+  }
+
+  if (delta.summary) html += `<p class="small mt1">${escapeHtml(delta.summary)}</p>`;
+  return html;
+}
+
+function buildPersonaSelectionHtml() {
+  const journeyLog = readJsonOr(path.join(absArtifacts, 'journey-log.json'), null);
+  const ud = journeyLog ? journeyLog.usability_dimensions : null;
+  if (!ud || !ud.personas_evaluated || !ud.personas_evaluated.length) {
+    return '<p class="muted small">No persona data available.</p>';
+  }
+
+  const selection = ud.persona_selection;
+  if (selection) {
+    let html = `<p class="small"><strong>Method:</strong> ${escapeHtml(selection.method || 'automatic')}</p>`;
+    html += `<p class="small"><strong>Target audience:</strong> ${escapeHtml(selection.target_audience_text || '—')}</p>`;
+    html += `<p class="small"><strong>Reasoning:</strong> ${escapeHtml(selection.reasoning || '—')}</p>`;
+    html += `<p class="small"><strong>Selected:</strong> ${(selection.selected || []).map(p => '<code>' + escapeHtml(p) + '</code>').join(', ')}</p>`;
+    if (selection.considered_but_rejected && selection.considered_but_rejected.length) {
+      html += `<details><summary class="small muted">Considered but rejected</summary><ul class="small">`;
+      for (const r of selection.considered_but_rejected) {
+        html += `<li><code>${escapeHtml(r.persona)}</code> — ${escapeHtml(r.reason)}</li>`;
+      }
+      html += `</ul></details>`;
+    }
+    return html;
+  }
+
+  // No formal selection data — build a reasonable explanation from what we have
+  let html = `<p class="small"><strong>Personas evaluated:</strong> ${ud.personas_evaluated.map(p => '<code>' + escapeHtml(p) + '</code>').join(', ')}</p>`;
+  html += `<p class="small muted">Persona selection reasoning was not logged for this run. To enable, the eval should write <code>persona_selection</code> data to journey-log.json (see SKILL.md Step 3b.1). The personas above were selected based on the RFE's target audience.</p>`;
+  return html;
+}
+
+function buildPersonaProfilesHtml() {
+  const journeyLog = readJsonOr(path.join(absArtifacts, 'journey-log.json'), null);
+  const ud = journeyLog ? journeyLog.usability_dimensions : null;
+  if (!ud || !ud.personas_evaluated) return '';
+
+  const contextDir = path.join(path.resolve(__dirname, '..'), '.context', 'usability-testing', 'personas');
+  let html = '';
+
+  for (const pid of ud.personas_evaluated) {
+    const yamlPath = path.join(contextDir, pid + '.yaml');
+    const raw = readFileOr(yamlPath, '');
+    if (!raw) continue;
+
+    const nameMatch = raw.match(/^name:\s*"?(.+?)"?\s*$/m);
+    const roleMatch = raw.match(/^rh_persona:\s*(.+)$/m);
+    const archetypeMatch = raw.match(/^rh_persona_archetype:\s*(.+)$/m);
+    const levelMatch = raw.match(/^experience_level:\s*(.+)$/m);
+    const patienceMatch = raw.match(/^\s+patience:\s*(\w+)/m);
+    const explorationMatch = raw.match(/^\s+exploration_tendency:\s*(\w+)/m);
+    const errorRecoveryMatch = raw.match(/^\s+error_recovery:\s*(\w+)/m);
+
+    const name = nameMatch ? nameMatch[1] : pid;
+    const role = roleMatch ? roleMatch[1].trim() : '';
+    const archetype = archetypeMatch ? archetypeMatch[1].trim() : '';
+    const level = levelMatch ? levelMatch[1].trim() : '';
+    const patience = patienceMatch ? patienceMatch[1].trim() : '';
+    const exploration = explorationMatch ? explorationMatch[1].trim() : '';
+    const errorRecovery = errorRecoveryMatch ? errorRecoveryMatch[1].trim() : '';
+
+    html += `<div class="persona-card">`;
+    html += `<h4>${escapeHtml(name)}</h4>`;
+    html += `<div class="persona-meta">`;
+    html += `<span>${escapeHtml(role)}</span>`;
+    if (archetype) html += `<span>${escapeHtml(archetype)}</span>`;
+    html += `<span>${escapeHtml(level)}</span>`;
+    html += `</div>`;
+
+    // Behavioral attributes
+    html += `<div class="persona-meta">`;
+    html += `<span>Patience: <strong>${escapeHtml(patience)}</strong></span>`;
+    if (exploration) html += `<span>Exploration: <strong>${escapeHtml(exploration)}</strong></span>`;
+    if (errorRecovery) html += `<span>Error recovery: <strong>${escapeHtml(errorRecovery)}</strong></span>`;
+    html += `</div>`;
+
+    // Domain knowledge as color-coded tags
+    const knowledgeSection = raw.match(/domain_knowledge:\n((?:\s+\w+:.+\n?)+)/);
+    if (knowledgeSection) {
+      const entries = knowledgeSection[1].match(/^\s+(\w+):\s*(\w+)/gm);
+      if (entries) {
+        html += `<div class="persona-knowledge">`;
+        for (const entry of entries) {
+          const [, domain, level] = entry.trim().match(/(\w+):\s*(\w+)/) || [];
+          if (!domain) continue;
+          let cls = 'knowledge-tag';
+          if (['strong', 'competent', 'intermediate'].includes(level)) cls += ' strong';
+          else if (['basic', 'minimal'].includes(level)) cls += ' basic';
+          else if (level === 'none') cls += ' none';
+          html += `<span class="${cls}">${escapeHtml(domain)}: ${escapeHtml(level)}</span>`;
+        }
+        html += `</div>`;
+      }
+    }
+
+    // Pain points
+    const painMatch = raw.match(/known_pain_points:\n((?:\s+-\s+.+\n?)+)/);
+    if (painMatch) {
+      const pains = painMatch[1].match(/-\s+"?(.+?)"?\s*$/gm);
+      if (pains && pains.length) {
+        html += `<details><summary class="small muted">Known pain points</summary><ul class="small" style="margin:0.25rem 0 0 1rem">`;
+        for (const p of pains.slice(0, 5)) {
+          html += `<li>${escapeHtml(p.replace(/^-\s+"?/, '').replace(/"$/, ''))}</li>`;
+        }
+        html += `</ul></details>`;
+      }
+    }
+    html += `</div>`;
+  }
+  return html;
+}
+
+function buildCodeDeltasHtml() {
+  const delta = readJsonOr(path.join(absArtifacts, 'mr-delta.json'), null);
+  if (!delta) return '<p class="muted small">No MR delta data. Run with --workspace to enable code delta analysis.</p>';
+
+  const protoId = extractPrototypeId();
+  const knownMRs = { 'RHAISTRAT-1527':168,'RHAISTRAT-133':169,'RHAISTRAT-1492':170,'RHAISTRAT-1267':167,'RHAISTRAT-1536':171,'RHAISTRAT-1535':172,'RHAISTRAT-1745':176,'RHAISTRAT-1474':173,'RHAISTRAT-1740':175,'RHAISTRAT-432':174,'RHAISTRAT-1521':177,'RHAISTRAT-1433':178,'RHAISTRAT-1762':180,'RHAISTRAT-1761':183,'RHAISTRAT-1758':181,'RHAISTRAT-1744':182,'RHAISTRAT-1742':184,'RHAISTRAT-1741':179 };
+  const mrNum = delta.mr_number || knownMRs[protoId];
+  const baseUrl = 'https://gitlab.cee.redhat.com/uxd/prototypes/rhoai/-/merge_requests';
+
+  let html = '';
+
+  // Summary card
+  html += `<div class="card card-compact">`;
+  html += `<p class="small"><strong>${delta.total_files_changed || 0} files changed</strong> · Base: <code>${escapeHtml(delta.base_branch || '?')}</code>`;
+  if (mrNum) html += ` · <a href="${baseUrl}/${mrNum}/diffs" target="_blank">Full diff on GitLab</a>`;
+  html += `</p>`;
+  if (delta.nav_warning) {
+    html += `<div class="delta-nav-warn">${escapeHtml(delta.nav_warning)}</div>`;
+  }
+  html += `</div>`;
+
+  // Try to read actual diffs for critical files
+  const workspaceDir = path.join(absArtifacts, 'workspace');
+  const canReadDiff = fs.existsSync(workspaceDir);
+
+  function getFileDiff(filePath, maxLines) {
+    if (!canReadDiff) return null;
+    try {
+      const diff = execSync(`git diff origin/3.5 HEAD -- "${filePath}" 2>/dev/null`, { cwd: workspaceDir, encoding: 'utf8', maxBuffer: 1024 * 100 });
+      if (!diff) return null;
+      const lines = diff.split('\\n');
+      return lines.slice(0, maxLines || 30).join('\\n');
+    } catch { return null; }
+  }
+
+  // Critical files with inline diffs
+  const allFiles = [...(delta.new_files || []), ...(delta.modified_files || [])];
+  const critical = allFiles.filter(f => f.includes('AppLayout') || f.includes('routes') || f.includes('FeatureFlag') || f.includes('Nav'));
+
+  if (critical.length) {
+    html += `<h3>Critical Changes</h3><p class="small muted">These files affect navigation, routing, or feature visibility.</p>`;
+
+    for (const f of critical) {
+      const short = f.replace('src/app/', '').replace('src/', '');
+      const isNew = (delta.new_files || []).includes(f);
+      const type = isNew ? '<span class="delta-added">+ Added</span>' : '<span class="delta-modified">~ Modified</span>';
+
+      let impact = '';
+      let scoreImpact = '';
+      if (f.includes('AppLayout')) {
+        impact = delta.nav_changes ? 'Sidebar nav updated' : 'Header/layout changed but <strong>sidebar nav NOT updated</strong>';
+        scoreImpact = !delta.nav_changes ? 'Causes: Workflow Continuity 0/3, all journeys FAIL at nav step' : '';
+      } else if (f.includes('routes')) {
+        impact = 'Route registration — new URL paths added';
+        scoreImpact = 'Enables: pages exist at URLs but only reachable if nav links exist';
+      } else if (f.includes('FeatureFlag')) {
+        impact = 'Feature flag configuration changed';
+        scoreImpact = 'May hide/show features depending on flag state at runtime';
+      }
+
+      html += `<div class="card card-compact" style="margin:0.5rem 0">`;
+      html += `<p class="small"><strong><code>${escapeHtml(short)}</code></strong> ${type}</p>`;
+      html += `<p class="small muted">${impact}</p>`;
+      if (scoreImpact) html += `<p class="small" style="color:var(--status-danger)">${scoreImpact}</p>`;
+
+      // Try to show actual diff snippet
+      const diff = getFileDiff(f, 40);
+      if (diff) {
+        html += `<details><summary class="small muted">View changes</summary>`;
+        html += `<div class="diff-block"><pre>`;
+        const diffLines = diff.split('\n');
+        for (const line of diffLines) {
+          if (line.startsWith('@@')) {
+            html += `<span class="diff-line diff-line-header">${escapeHtml(line)}</span>\n`;
+          } else if (line.startsWith('+') && !line.startsWith('+++')) {
+            html += `<span class="diff-line diff-line-add">${escapeHtml(line)}</span>\n`;
+          } else if (line.startsWith('-') && !line.startsWith('---')) {
+            html += `<span class="diff-line diff-line-del">${escapeHtml(line)}</span>\n`;
+          } else if (line.startsWith('diff ') || line.startsWith('index ') || line.startsWith('---') || line.startsWith('+++')) {
+            // skip diff headers
+          } else {
+            html += `<span class="diff-line diff-line-context">${escapeHtml(line)}</span>\n`;
+          }
+        }
+        html += `</pre></div></details>`;
+      }
+      html += `</div>`;
+    }
+  }
+
+  // New pages
+  const newPages = (delta.new_files || []).filter(f => f.includes('/pages/') || f.includes('/AIHub/'));
+  if (newPages.length) {
+    html += `<h3>New Pages</h3><ul class="delta-file-list">`;
+    for (const f of newPages) {
+      const short = f.replace('src/app/', '').replace('src/', '');
+      html += `<li><span class="delta-added">+</span> <code>${escapeHtml(short)}</code></li>`;
+    }
+    html += `</ul>`;
+  }
+
+  // New routes
+  if (delta.new_routes && delta.new_routes.length) {
+    html += `<h3>New Routes</h3><ul class="delta-file-list">`;
+    for (const r of delta.new_routes) {
+      html += `<li><code>${escapeHtml(r)}</code></li>`;
+    }
+    html += `</ul>`;
+  }
+
+  return html;
+}
 
 function buildTokens() {
   const protoId = extractPrototypeId();
@@ -639,9 +933,15 @@ function buildTokens() {
     '{{CONCLUSION_HTML}}': conclusionHtml,
     '{{AI_INSIGHTS}}': aiInsights,
     '{{AI_INSIGHTS_DISPLAY}}': aiInsightsDisplay,
+    '{{DELTA_HTML}}': buildDeltaHtml(),
+    '{{DELTA_DISPLAY}}': fs.existsSync(path.join(absArtifacts, 'mr-delta.json')) ? '' : 'display:none',
     '{{CSV_DATA}}': csvDataEscaped,
     '{{SCREENSHOT_ARRAY}}': screenshotArrayStr,
-    '{{TA_TAB_DISPLAY}}': thinkAloudNarratives ? '' : 'display:none'
+    '{{PERSONAS_TAB_DISPLAY}}': (ud && ud.personas_evaluated && ud.personas_evaluated.length) ? '' : 'display:none',
+    '{{DELTAS_TAB_DISPLAY}}': fs.existsSync(path.join(absArtifacts, 'mr-delta.json')) ? '' : 'display:none',
+    '{{PERSONA_SELECTION_HTML}}': buildPersonaSelectionHtml(),
+    '{{PERSONA_PROFILES_HTML}}': buildPersonaProfilesHtml(),
+    '{{CODE_DELTAS_HTML}}': buildCodeDeltasHtml()
   };
 }
 

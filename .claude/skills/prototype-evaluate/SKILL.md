@@ -118,6 +118,73 @@ Controls how deep the Playwright persona journey walkthroughs go:
 - **`--depth=quick`** (default) — verify each journey's flow is navigable. Click through to the target view/form, confirm it renders with expected elements. No data entry, no form submission. Faster, good for CI or quick checks.
 - **`--depth=thorough`** — full end-to-end walkthrough. Fill forms with realistic test data from the RFE domain, submit, and verify results appear in the UI. Tests error states. Slower but catches more issues. Best for pre-merge evaluation.
 
+## Step 0b: Extract MR Deltas (when workspace is available)
+
+If the eval is running against a `--workspace`, extract the MR diff to understand exactly what the prototype changed. This data feeds into Steps 1-3 to focus the eval on what's new.
+
+**Skip this step** if no workspace is available (standalone HTML prototypes).
+
+### How to extract
+
+Run from the workspace directory:
+
+```bash
+cd <workspace-path>
+
+# Detect base branch (usually origin/3.5 or origin/main)
+BASE=$(git merge-base HEAD origin/3.5 2>/dev/null || git merge-base HEAD origin/main 2>/dev/null || echo "")
+
+# Get changed files
+git diff $BASE...HEAD --name-only > /tmp/changed-files.txt
+
+# Get diff stats
+git diff $BASE...HEAD --stat > /tmp/diff-stats.txt
+```
+
+### Categorize changes
+
+Read the changed file list and categorize:
+
+- **New pages/components**: files in `src/pages/` or `src/components/` that are additions (not modifications)
+- **Modified components**: existing files with changes
+- **Route/nav changes**: changes to routing files (`AppLayout.tsx`, `AppRoutes.tsx`, nav config files, sidebar config). **If new pages were added but NO route/nav files were modified, flag this as "new pages may not be navigable."**
+- **Feature flag changes**: changes to feature flag files or flag references
+- **Style changes**: CSS/SCSS modifications
+- **Test changes**: test file additions or modifications
+
+### Save to `mr-delta.json`
+
+Write to `.artifacts/<KEY>/mr-delta.json`:
+
+```json
+{
+  "mr_number": 175,
+  "base_branch": "3.5",
+  "total_files_changed": 12,
+  "new_files": [
+    "src/pages/AgentCatalog/AgentCatalog.tsx",
+    "src/pages/AgentCatalog/AgentCatalogDetail.tsx",
+    "src/pages/AgentCatalog/data/starterKits.json"
+  ],
+  "modified_files": [
+    "src/app/AppRoutes.tsx"
+  ],
+  "route_changes": true,
+  "nav_changes": false,
+  "feature_flag_changes": false,
+  "nav_warning": "New pages added (AgentCatalog) but AppLayout.tsx/sidebar config was NOT modified — pages may not be navigable via sidebar",
+  "new_routes": ["/ai-hub/agents/catalog", "/ai-hub/agents/catalog/:id"],
+  "summary": "Added Agent Catalog with 3 new page files and 1 route registration. Sidebar nav was NOT updated."
+}
+```
+
+### How this feeds into later steps
+
+- **Step 1a**: If an AC mentions a feature, check whether related files appear in the delta. If they don't, note "this feature was not part of this MR."
+- **Step 2**: Check changed files FIRST for AC evidence. If new pages were added but nav wasn't updated, flag nav registration gap BEFORE Playwright even runs.
+- **Step 3**: When Zack's skill runs and the persona gets stuck, use the delta as a "colleague hint" — provide the new route URL so the persona can continue. Score both the unassisted attempt and the assisted continuation.
+- **Step 4**: Report includes a "What Changed" section showing the delta summary.
+
 ## Step 1: Load the Jira Story and Extract Context
 
 Fetch the story using MCP:
@@ -434,9 +501,16 @@ For each criterion:
 - **FAIL** — The criterion is clearly NOT satisfied. The required element, flow, or behavior is missing or broken.
 - **FLAGGED** — You cannot make a confident judgment. State why (missing reference, requires runtime, subjective) and what evidence you *did* find. Include the tier classification so the human reviewer knows what kind of verification is needed.
 
-### How to Check (Tier 1 and observable parts of Tier 2–4)
+### How to Check (Tier 1 and observable parts of Tier 2-4)
 
-Read the prototype source (HTML/JS/TSX) from the workspace or artifact directory:
+**If MR delta data is available** (from Step 0b), use it to focus the search:
+
+1. **Check changed files FIRST.** Read `mr-delta.json` and start with the new/modified files listed there. Most AC evidence will be in the changed code.
+2. **Flag pre-existing vs new.** If an AC relates to a component that exists but was NOT in the MR diff, note: "This component exists but was NOT part of this MR — may be pre-existing functionality."
+3. **Check nav registration.** If `mr-delta.json` shows `nav_changes: false` but new pages were added, flag it immediately: "New pages added but sidebar navigation was NOT updated — pages may be orphaned." This predicts the Playwright nav failure before Step 3 even runs.
+4. **Check feature flag wiring.** If `feature_flag_changes: false` but new components reference feature flags, flag: "Component references feature flags but no flag changes in this MR — may be hidden behind inactive flags."
+
+**General checking (with or without delta data):**
 
 1. Search for relevant UI elements, text, components, routes
 2. Trace the user flow if the criterion describes an interaction
@@ -447,7 +521,35 @@ If the prototype is only accessible via URL (no local source), state what you ca
 
 ## Step 3: Persona Journey Walkthroughs (Playwright)
 
-Run each persona journey defined in Step 1c as a Playwright walkthrough. The script simulates a real user following the flow described by each user story — clicking through the UI step-by-step, never shortcutting via direct URL navigation.
+Run each persona journey defined in Step 1c as a Playwright walkthrough — clicking through the UI step-by-step, never shortcutting via direct URL navigation.
+
+### Preferred: Delegate to Zack's Usability Skill
+
+When `.context/usability-testing/` is bootstrapped, prefer running the walkthrough using the [automated-usability-testing](https://gitlab.cee.redhat.com/zbodnar/automated-usability-testing) protocol. Zack's skill already handles Playwright navigation, screenshot capture at decision points, annotated screenshots, and think-aloud traces. Use his Phase 1 (Actor) protocol from `.context/usability-testing/prompts/evaluate-flow.md` for the persona walkthrough.
+
+**How delegation works:** Run Zack's Phase 1 protocol as the persona navigating the prototype. If the persona gets stuck (can't find a page, nav dead end), check the MR delta data from Step 0b. If the delta shows a new route that the persona couldn't reach:
+
+1. **Record the unassisted result** — the persona's honest experience (FAIL at step N, patience at X%)
+2. **Provide an MR delta hint** — like a colleague saying "oh, it's at this URL" based on the new routes in the MR
+3. **Continue the journey assisted** — navigate to the hinted URL and complete the remaining steps
+4. **Record the assisted result** — whether the feature WORKS once found
+
+This produces two scores per journey:
+- **Unassisted**: the real usability result (can users find this?)
+- **Assisted**: the functionality result (does it work once found?)
+- **Discoverability gap**: the delta between them — feature exists but is orphaned
+
+```
+Journey: Browse Agent Catalog
+  Unassisted: FAIL at step 2 (can't find in nav) — patience: 45%
+  MR delta hint: "New page at /ai-hub/agents/catalog (from AgentCatalog.tsx in MR !175)"
+  Assisted: PASS (6/6 steps once pointed to the page)
+  Gap: Discoverability — feature is orphaned from navigation
+```
+
+### Fallback: Self-Generated Playwright Script
+
+If `.context/usability-testing/` is not available, generate a `journey-test.mjs` script as before. The Playwright honesty rules below still apply to the generated script.
 
 ### Setup
 
@@ -472,7 +574,14 @@ For each journey defined in Step 1c, generate and run a Playwright walkthrough:
 
 **Click-first rule**: Every navigation must happen via visible UI elements (links, buttons, tabs, menu items). If a step cannot be completed via click, it is a **failure** — log the blocked step and continue to the next journey.
 
-**URL fallback**: Only used as a *diagnostic* after a journey fails. If the target view is reachable via URL but not via clicks, that's a critical usability failure (the user would never find it).
+**URL fallback is DIAGNOSTIC ONLY — NEVER marks a step as PASS.** The generated Playwright script must follow these rules strictly:
+
+1. Try to reach the target via UI clicks (sidebar nav, buttons, tabs, links).
+2. If the click times out or the element isn't found, the step result is `"FAIL"` with `"error": "Element not found via UI navigation"`.
+3. AFTER marking the step as FAIL, attempt `page.goto(url)` as a diagnostic check.
+4. If `page.goto` succeeds, add `"url_fallback": "reachable"` to the step — this means the page EXISTS but is orphaned (not discoverable by users). This is a **critical usability failure**.
+5. If `page.goto` also fails, add `"url_fallback": "unreachable"` — the page doesn't exist at all.
+6. **NEVER use `page.goto` as a silent fallback that marks the step PASS.** The generated script must NOT have a try/catch that swallows nav failures and falls back to direct URL navigation while reporting success. This is the single most important rule for Playwright honesty.
 
 **Per-step logging**: Every Playwright action is logged with full context:
 
@@ -500,14 +609,23 @@ Capture screenshots at **key moments only** (not every single action):
 - **Form/modal opened** — shows the initial empty state of a form
 - **Form filled** (thorough mode) — shows the completed form before submission
 - **Step failure** — captures exactly what the user sees when something breaks
+- **Verify steps** — MUST screenshot AFTER scrolling the target element into view
 
 Save screenshots to `.artifacts/<KEY>/screenshots/journey-<N>-step-<N>.png` (e.g., `screenshots/journey-1-step-2.png`).
 
-In the generated Playwright script, use:
+**Scroll before verify screenshots.** When a verify step checks a specific element on the page (e.g., a tools section, a deployment requirements panel, a specific form field), the generated script MUST scroll that element into the viewport before taking the screenshot:
 
 ```javascript
+// For verify steps: scroll target into view, wait for render, then screenshot
+const target = page.locator('selector-for-what-we-are-verifying');
+await target.scrollIntoViewIfNeeded();
+await page.waitForTimeout(500);
 await page.screenshot({ path: `screenshots/journey-${journeyIdx}-step-${stepIdx}.png`, fullPage: false });
 ```
+
+Without this, multiple verify steps on the same page produce identical screenshots that don't show what's being verified. Each screenshot must visually demonstrate the element the step claims to check.
+
+**Visible vs total element counts.** When verifying element counts (e.g., "cards in a catalog"), report BOTH the total DOM count and the visible-in-viewport count. Use this in the narration: "Found 66 elements total in DOM (6 visible in current viewport)." Do not claim all elements are visible when only a few are on screen.
 
 Create the screenshots directory before running:
 
@@ -527,10 +645,11 @@ node .artifacts/<KEY>/journey-test.mjs
 
 The script walks through each journey sequentially:
 
-1. Start at the prototype URL
-2. For each journey step: locate the target element, click/fill/verify, log the result
-3. If a step fails (element not found, timeout, crash): log the failure, attempt URL fallback as diagnostic, move to next journey
-4. After all journeys: output the full log as JSON
+1. Start at the prototype URL (this is the ONLY acceptable use of `page.goto` — the initial entry point)
+2. For each journey step: locate the target element via UI clicks, log the result
+3. If a step fails (element not found, timeout): mark result as `"FAIL"`, run `page.goto` ONLY as a diagnostic (record `url_fallback: "reachable"` or `"unreachable"`), then move to next journey
+4. **NEVER mark a step PASS if it required `page.goto` to reach.** A step that needed direct URL navigation is ALWAYS a FAIL — the page is orphaned.
+5. After all journeys: output the full log as JSON
 
 ### Quick Mode Behavior
 
@@ -626,6 +745,33 @@ Select 2-3 personas relevant to the RFE's target audience (extracted in Step 1c)
 | Regulated/air-gapped environments | `raj-regulated.yaml` |
 
 If the RFE's target audience doesn't clearly match any persona, default to a junior and senior variant of the closest match (e.g., `deena-junior.yaml` + `deena-senior.yaml`).
+
+**Where to find the target audience:** Look in the Jira ticket for:
+- "Affected Customers/Partners & Scope" section — this names the target users explicitly
+- "Target Audience" field — e.g., "Data Science Platform Administrators who are not necessarily Kubernetes experts"
+- High Level Requirements "As a [role]..." — the role names the persona type
+
+**Always pick one junior + one senior** when possible. Junior personas surface friction that seniors tolerate. The gap between their scores is the most actionable signal.
+
+**REQUIRED: Log the selection reasoning** to journey-log.json under `usability_dimensions.persona_selection`. This MUST be written for every eval run:
+
+```json
+{
+  "persona_selection": {
+    "method": "automatic",
+    "target_audience_text": "Data Science Platform Administrators who are not necessarily Kubernetes experts",
+    "target_audience_source": "Jira RHAISTRAT-1740 > Affected Customers section",
+    "reasoning": "Target audience mentions 'Data Science' and 'not Kubernetes experts' — matches Deena persona family. Selected junior + senior pair for maximum friction range.",
+    "selected": ["deena-junior", "deena-senior"],
+    "considered_but_rejected": [
+      {"persona": "alex-senior", "reason": "Target audience is not AI engineers"},
+      {"persona": "paula-platform-engineer", "reason": "Target audience explicitly non-K8s expert — Paula has deep K8s"}
+    ]
+  }
+}
+```
+
+If the Jira ticket has NO affected customers section, note `"target_audience_source": "not found in ticket — defaulting to closest match"`.
 
 ### 3b.2: Apply Persona Constraints to Journey Evidence
 
@@ -1472,6 +1618,25 @@ See the "Post-Evaluation Feedback to Jira" section under Future Improvements for
 | `.artifacts/<KEY>/journey-log.json` | Raw Playwright step log with usability dimension overlays — every action, target, result, and timestamp |
 | `.artifacts/<KEY>/journey-test.mjs` | The generated Playwright script (kept for re-runs and debugging) |
 | `.artifacts/<KEY>/refinement-suggestions.json` | Structured suggestions for prototype-refine (only if `--feed-to-refine`) |
+
+## Step 6b: Log Run
+
+After all artifacts are written, log this run for tracking and comparison across iterations.
+
+```bash
+node scripts/log-run.js .artifacts/<KEY>/ --note="description of this run"
+```
+
+This reads the eval artifacts and:
+1. Appends a summary row to `.artifacts/runs/run-log.csv` (pass/fail counts, usability score, skill version, etc.)
+2. Archives key artifacts (CSV, JSON, HTML) to `.artifacts/runs/<KEY>/<run-id>/`
+
+To compare runs:
+```bash
+node scripts/compare-runs.js RHAISTRAT-1740
+```
+
+Shows verdict count deltas, journey changes, usability score changes, and per-criterion verdict changes between runs.
 
 ## Error Handling
 

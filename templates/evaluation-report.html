@@ -148,6 +148,50 @@ details[open] summary::before{transform:rotate(90deg)}
 /* Footer */
 .report-footer{border-top:1px solid var(--border);padding:1.5rem 2rem;font-size:0.75rem;color:var(--text2);text-align:center;background:var(--bg2)}
 
+/* Persona cards */
+.persona-card{background:var(--bg2);border:1px solid var(--border);border-radius:0.5rem;padding:1rem 1.25rem;margin:0.75rem 0}
+.persona-card h4{margin:0 0 0.25rem;font-size:0.9375rem}
+.persona-card .persona-meta{display:flex;gap:1rem;flex-wrap:wrap;font-size:0.75rem;color:var(--text2);margin-bottom:0.5rem}
+.persona-card .persona-meta span{display:flex;align-items:center;gap:0.25rem}
+.persona-card .persona-knowledge{display:flex;gap:0.4rem;flex-wrap:wrap;margin:0.5rem 0}
+.persona-card .knowledge-tag{display:inline-block;padding:0.1rem 0.45rem;border-radius:0.25rem;font-size:0.65rem;font-family:var(--font-mono);border:1px solid var(--border)}
+.knowledge-tag.strong{background:rgba(22,163,74,0.08);border-color:rgba(22,163,74,0.3);color:var(--status-success)}
+.knowledge-tag.basic{background:rgba(217,119,6,0.08);border-color:rgba(217,119,6,0.3);color:var(--status-warning)}
+.knowledge-tag.none{background:rgba(220,38,38,0.06);border-color:rgba(220,38,38,0.2);color:var(--status-danger)}
+
+/* Code diff styling */
+.diff-block{font-family:var(--font-mono);font-size:0.7rem;line-height:1.5;border-radius:0.375rem;overflow:hidden;margin:0.5rem 0;border:1px solid var(--border)}
+.diff-block pre{margin:0;padding:0.75rem;overflow-x:auto;background:var(--bg)}
+.diff-line{display:block;padding:0 0.5rem;min-height:1.2em}
+.diff-line-add{background:rgba(22,163,74,0.08);color:#16a34a}
+.diff-line-del{background:rgba(220,38,38,0.06);color:#dc2626}
+.diff-line-context{color:var(--text2)}
+.diff-line-header{color:var(--accent);font-weight:500;background:rgba(0,102,204,0.04)}
+.diff-file-header{background:var(--bg2);padding:0.4rem 0.75rem;font-size:0.75rem;font-weight:500;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center}
+.diff-file-header code{font-size:0.7rem}
+.diff-impact{font-size:0.7rem;padding:0.15rem 0.5rem;border-radius:0.25rem;font-weight:500}
+.diff-impact-critical{background:rgba(220,38,38,0.08);color:var(--status-danger)}
+.diff-impact-info{background:rgba(0,102,204,0.06);color:var(--accent)}
+
+/* Section icons */
+.section-icon{display:inline-block;width:16px;height:16px;vertical-align:-2px;margin-right:0.4rem;opacity:0.6}
+.section-icon svg{width:16px;height:16px;fill:currentColor}
+details summary .section-icon{opacity:0.5}
+details[open] summary .section-icon{opacity:0.8}
+
+/* Delta file list */
+.delta-files{display:flex;gap:2rem;margin:0.75rem 0;font-size:0.8125rem;flex-wrap:wrap}
+.delta-file-group{min-width:200px}
+.delta-file-group h4{font-size:0.75rem;color:var(--text2);margin:0 0 0.35rem;font-weight:600;text-transform:uppercase;letter-spacing:0.03em;display:flex;align-items:center;gap:0.3rem}
+.delta-file-list{list-style:none;padding:0;margin:0}
+.delta-file-list li{font-size:0.75rem;padding:0.15rem 0;font-family:var(--font-mono);display:flex;align-items:center;gap:0.3rem}
+.delta-file-list li code{font-size:0.7rem;background:none;padding:0}
+.delta-added{color:var(--status-success)}
+.delta-modified{color:var(--status-warning)}
+.delta-nav-warn{background:rgba(220,38,38,0.06);border:1px solid rgba(220,38,38,0.2);border-radius:0.375rem;padding:0.5rem 0.75rem;margin:0.75rem 0;font-size:0.8125rem;color:var(--status-danger);font-weight:500}
+.delta-meta{display:flex;gap:1.5rem;font-size:0.75rem;color:var(--text2);margin:0.5rem 0;flex-wrap:wrap}
+.delta-meta span{display:flex;align-items:center;gap:0.25rem}
+
 /* Utility */
 .max-w{max-width:64rem}
 .mono{font-family:var(--font-mono)}
@@ -224,9 +268,19 @@ details[open] summary::before{transform:rotate(90deg)}
       </div>
     </div>
 
+    <!-- What Changed (MR Delta) -->
+    <div id="what-changed" style="{{DELTA_DISPLAY}}">
+      <details>
+        <summary><span class="section-icon"><svg viewBox="0 0 16 16"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg></span>What Changed in This MR</summary>
+        <div class="card card-compact">
+          {{DELTA_HTML}}
+        </div>
+      </details>
+    </div>
+
     <!-- Methodology -->
     <details>
-      <summary>How This Evaluation Was Conducted</summary>
+      <summary><span class="section-icon"><svg viewBox="0 0 16 16"><path d="M8 1.5c-2.363 0-4 1.69-4 3.75 0 .984.424 1.625.984 2.304l.214.253c.223.264.47.556.673.848.284.411.537.896.621 1.49a.75.75 0 01-1.484.211c-.04-.282-.163-.547-.37-.847a8.456 8.456 0 00-.542-.68c-.084-.1-.173-.205-.268-.32C3.201 7.75 2.5 6.766 2.5 5.25 2.5 2.31 4.863 0 8 0s5.5 2.31 5.5 5.25c0 1.516-.701 2.5-1.328 3.259-.095.115-.184.22-.268.319-.207.245-.383.453-.541.681-.208.3-.33.565-.37.847a.75.75 0 01-1.485-.212c.084-.593.337-1.078.621-1.489.203-.292.45-.584.673-.848l.213-.253c.561-.679.985-1.32.985-2.304 0-2.06-1.637-3.75-4-3.75zM6 15.25a.75.75 0 01.75-.75h2.5a.75.75 0 010 1.5h-2.5a.75.75 0 01-.75-.75zM5.75 12a.75.75 0 000 1.5h4.5a.75.75 0 000-1.5h-4.5z"/></svg></span>How This Evaluation Was Conducted</summary>
       <div class="card">
         {{METHODOLOGY_HTML}}
       </div>
@@ -234,7 +288,7 @@ details[open] summary::before{transform:rotate(90deg)}
 
     <!-- Usability Scoring Explanation -->
     <details>
-      <summary>How Usability Scores Are Calculated</summary>
+      <summary><span class="section-icon"><svg viewBox="0 0 16 16"><path d="M8 0a8 8 0 100 16A8 8 0 008 0zm-.5 4.75a.75.75 0 011.5 0v3.5a.75.75 0 01-1.5 0v-3.5zM8 12a1 1 0 110-2 1 1 0 010 2z"/></svg></span>How Usability Scores Are Calculated</summary>
       <div class="card">
         <div class="inf-ta-box">
           <strong>Two scoring layers:</strong>
@@ -307,16 +361,36 @@ details[open] summary::before{transform:rotate(90deg)}
   <div class="split-right">
 
     <div class="panel-tabs">
-      <button class="panel-tab active" onclick="switchTab('journeys')">Playwright Journeys</button>
-      <button class="panel-tab" onclick="switchTab('thinkaloud')" id="taTab" style="{{TA_TAB_DISPLAY}}">Think-Aloud</button>
+      <button class="panel-tab active" onclick="switchTab('journeys')">Journeys</button>
+      <button class="panel-tab" onclick="switchTab('personas')" style="{{PERSONAS_TAB_DISPLAY}}">Personas & Think-Aloud</button>
+      <button class="panel-tab" onclick="switchTab('deltas')" style="{{DELTAS_TAB_DISPLAY}}">Code Deltas</button>
     </div>
+
+    <!-- Tab: Journeys -->
     <div class="panel-content active" id="panel-journeys">
       <h2 id="path-comparison">Path Comparison</h2>
       {{PATH_COMPARISON_TABLE}}
       {{JOURNEY_BLOCKS}}
     </div>
-    <div class="panel-content" id="panel-thinkaloud">
+
+    <!-- Tab: Personas & Think-Aloud -->
+    <div class="panel-content" id="panel-personas">
+      <h2>Personas</h2>
+
+      <div class="card card-compact" style="margin-bottom:1rem">
+        <h4 style="margin-top:0">Why These Personas Were Selected</h4>
+        {{PERSONA_SELECTION_HTML}}
+      </div>
+
+      {{PERSONA_PROFILES_HTML}}
+
       {{THINK_ALOUD_NARRATIVES}}
+    </div>
+
+    <!-- Tab: Code Deltas -->
+    <div class="panel-content" id="panel-deltas">
+      <h2>Code Deltas</h2>
+      {{CODE_DELTAS_HTML}}
     </div>
 
   </div>
