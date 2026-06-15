@@ -220,6 +220,20 @@ details[open] summary .section-icon{opacity:0.8}
 .delta-meta{display:flex;gap:1.5rem;font-size:0.75rem;color:var(--text2);margin:0.5rem 0;flex-wrap:wrap}
 .delta-meta span{display:flex;align-items:center;gap:0.25rem}
 
+/* Consistency violations */
+.consistency-summary{display:flex;gap:1.5rem;flex-wrap:wrap;margin-bottom:1rem}
+.consistency-stat{display:flex;flex-direction:column;align-items:center;min-width:52px;padding:0.5rem 0.75rem;background:var(--bg2);border:1px solid var(--border);border-radius:0.375rem}
+.consistency-stat-n{font-family:var(--font-heading);font-size:1.125rem;font-weight:700;line-height:1.2}
+.consistency-stat-l{font-size:0.6rem;color:var(--text2);text-transform:uppercase;letter-spacing:0.04em}
+.consistency-finding{border:1px solid var(--border);border-radius:0.375rem;padding:0.65rem 0.85rem;margin:0.4rem 0}
+.consistency-finding-error{border-left:3px solid var(--status-danger)}
+.consistency-finding-warning{border-left:3px solid var(--status-warning)}
+.consistency-finding-head{display:flex;justify-content:space-between;align-items:center;gap:0.5rem;flex-wrap:wrap}
+.consistency-finding-head code{font-size:0.75rem;font-weight:500;background:none;padding:0}
+.consistency-guideline{font-size:0.75rem;color:var(--text2);margin:0.2rem 0 0}
+.consistency-suggestion{font-size:0.75rem;color:var(--accent);margin:0.2rem 0 0}
+.consistency-seen-on{font-size:0.7rem;color:var(--text2);margin-top:0.2rem}
+
 /* Utility */
 .max-w{max-width:64rem}
 .mono{font-family:var(--font-mono)}
@@ -407,6 +421,7 @@ details[open] summary .section-icon{opacity:0.8}
       <button class="panel-tab active" onclick="switchTab('journeys')">Journeys</button>
       <button class="panel-tab" onclick="switchTab('personas')" style="{{PERSONAS_TAB_DISPLAY}}">Personas & Think-Aloud</button>
       <button class="panel-tab" onclick="switchTab('deltas')" style="{{DELTAS_TAB_DISPLAY}}">Code Deltas</button>
+      <button class="panel-tab" onclick="switchTab('consistency')" style="{{CONSISTENCY_TAB_DISPLAY}}">Consistency</button>
     </div>
 
     <!-- Tab: Journeys -->
@@ -448,6 +463,13 @@ details[open] summary .section-icon{opacity:0.8}
     <div class="panel-content" id="panel-deltas">
       <h2>Code Deltas</h2>
       {{CODE_DELTAS_HTML}}
+    </div>
+
+    <!-- Tab: Consistency -->
+    <div class="panel-content" id="panel-consistency">
+      <h2>Design Consistency</h2>
+      <p class="small muted" style="margin:-0.5rem 0 1rem">Powered by <a href="https://gitlab.cee.redhat.com/bmorley/consistency-checker" target="_blank">consistency-checker</a> (Beau Morley). Advisory — does not block the eval.</p>
+      {{CONSISTENCY_HTML}}
     </div>
 
   </div>

@@ -1064,6 +1064,93 @@ Add to `journey-log.json` under `usability_dimensions.think_aloud`:
 }
 ```
 
+## Step 3e: Design Consistency Check (Optional)
+
+Run Beau Morley's [consistency-checker](https://gitlab.cee.redhat.com/bmorley/consistency-checker) against the prototype. This catches PatternFly and RHOAI design pattern violations (CTA placement, icon style, empty state structure, pagination) that are cheap to fix and should be addressed before iterating on the heavier AC/usability scoring.
+
+**If `.context/consistency-checker/` does not exist, skip this step entirely.** Add a note: "Design consistency checks skipped. Run `bash scripts/bootstrap-consistency-checker.sh` to enable." This step is advisory — it does not block the eval from completing.
+
+### Source Code Mode (fast — seconds)
+
+Runs when a `--workspace` path is available. Executes Beau's grep-based analysis against the prototype source code:
+
+```bash
+python3 .context/consistency-checker/scripts/analyze.py --src=<workspace-path>
+```
+
+Parse the output. Each violation maps to a guideline ID, file path, line number, severity (`error` or `warning`), and description.
+
+If the workspace is not available (standalone HTML prototype), skip source mode and note `"ran": false` in the output.
+
+### Visual Mode (thorough — minutes)
+
+Runs against the screenshots already captured by Step 3's unified Playwright session. **No new browser session.**
+
+1. Collect all unique screenshots from `journey-log.json` — both prescribed journey steps and exploration steps that have a `screenshot` field.
+2. Read the guideline markdown files from `.context/consistency-checker/guidelines/`. Each guideline has frontmatter with `id`, `title`, `category`, `severity`, and a `## Rule` section describing what to check.
+3. For each screenshot, read it alongside the applicable guidelines and return a verdict per guideline: `PASS`, `VIOLATION`, or `NOT_APPLICABLE`.
+4. This uses the same AI visual analysis approach as Beau's visual mode — Claude reads the screenshot + guideline text and evaluates. The difference is we skip his Playwright extraction step since we already have the screenshots.
+
+**Deduplication:** If the same violation appears on multiple screenshots (e.g., sidebar icon issue on every page), collapse to one finding with a `seen_on` list of screenshot paths. Only report each unique guideline violation once.
+
+### Output
+
+Write to `.artifacts/<KEY>/consistency-report.json`:
+
+```json
+{
+  "source": "consistency-checker",
+  "checked_at": "<ISO timestamp>",
+  "guidelines_version": "<git short hash from .context/consistency-checker/>",
+  "source_mode": {
+    "ran": true,
+    "violations": [
+      {
+        "guideline_id": "icon-style-consistency",
+        "guideline_title": "Icon Style Consistency",
+        "category": "icons",
+        "severity": "error",
+        "file": "src/app/AIHub/AgentCatalog/AgentCatalog.tsx",
+        "line": 42,
+        "description": "FolderIcon used without Outlined suffix",
+        "suggestion": "Replace FolderIcon with OutlinedFolderIcon"
+      }
+    ]
+  },
+  "visual_mode": {
+    "ran": true,
+    "screenshots_checked": 12,
+    "findings": [
+      {
+        "screenshot": "screenshots/journey-1-step-3.png",
+        "journey": "journey-1",
+        "step": 3,
+        "guideline_id": "page-cta-placement",
+        "guideline_title": "Page CTA Placement",
+        "category": "layouts",
+        "severity": "error",
+        "verdict": "VIOLATION",
+        "description": "Primary CTA button is below the fold",
+        "suggestion": "Move the Deploy action to the page header or toolbar area",
+        "seen_on": ["screenshots/journey-1-step-3.png", "screenshots/journey-2-step-1.png"]
+      }
+    ]
+  },
+  "summary": {
+    "total_guidelines_checked": 8,
+    "violations": 3,
+    "warnings": 1,
+    "passes": 4
+  }
+}
+```
+
+### Open Items (coordinate with Beau)
+
+- **Guideline stability**: Are the guideline IDs and `guidelines/` file structure stable enough to depend on? If guidelines are renamed, our cached version drifts. Pin to a specific commit hash in the bootstrap script and update periodically.
+- **False positive rate**: Beau is actively reducing false positives. Monitor and adjust severity thresholds as the guidelines mature.
+- **Visual mode bridge**: We skip Beau's Playwright extraction (we already have screenshots). If Beau adds a "screenshot-only" input mode to his scripts, we should switch to it. Until then, the AI analysis is done inline by the eval skill.
+
 ## Step 4: Write the Summary Report
 
 Write a concise summary to `.artifacts/<KEY>/evaluation-report.md`. This is a lightweight reference — the canonical report with full screenshots, journeys, and usability analysis is the HTML output from Step 4b.
@@ -1171,6 +1258,7 @@ This CSV is the **primary machine-readable output** of the evaluation. It is des
 | `rationale`      | string     | Why this verdict was reached, with specific evidence. (Displayed as "Evidence" in the report.)                                                                                                                           |
 | `reference_used` | string     | URL or doc name checked for Tier 2 criteria. Empty if not applicable.                                                                                                                                                    |
 | `human_action`   | string     | What a human reviewer needs to do for FLAGGED items. Empty if not applicable.                                                                                                                                            |
+| `consistency_violations` | string | Comma-separated guideline IDs from Step 3e that flagged violations on pages related to this criterion. Empty if Step 3e didn't run or no violations found. Appended at end to avoid breaking existing consumers.         |
 
 
 ### Example
@@ -1336,6 +1424,7 @@ Write to `.artifacts/<KEY>/refinement-suggestions.json`:
 | `.artifacts/<KEY>/usability-dimensions.csv`    | Per-persona usability dimension scores (only if Step 3b ran)                                                  |
 | `.artifacts/<KEY>/journey-log.json`            | Raw Playwright step log with usability dimension overlays — every action, target, result, and timestamp       |
 | `.artifacts/<KEY>/journey-test.mjs`            | The generated Playwright script (kept for re-runs and debugging)                                              |
+| `.artifacts/<KEY>/consistency-report.json`     | Design guideline violations from Beau's consistency-checker (only if Step 3e ran)                             |
 | `.artifacts/<KEY>/refinement-suggestions.json` | Structured suggestions for prototype-refine (only if `--feed-to-refine`)                                      |
 
 

@@ -551,6 +551,97 @@ function buildCodeDeltasHtml() {
   return html;
 }
 
+function buildConsistencyHtml() {
+  const report = readJsonOr(path.join(absArtifacts, 'consistency-report.json'), null);
+  if (!report) return '<p class="muted small">No consistency data. Run with `.context/consistency-checker/` bootstrapped to enable.</p>';
+
+  const summary = report.summary || {};
+  let html = '';
+
+  // Summary stats
+  html += `<div class="consistency-summary">`;
+  html += `<div class="consistency-stat"><span class="consistency-stat-n">${summary.total_guidelines_checked || 0}</span><span class="consistency-stat-l">Checked</span></div>`;
+  if (summary.violations) html += `<div class="consistency-stat"><span class="consistency-stat-n" style="color:var(--status-danger)">${summary.violations}</span><span class="consistency-stat-l">Violations</span></div>`;
+  if (summary.warnings) html += `<div class="consistency-stat"><span class="consistency-stat-n" style="color:var(--status-warning)">${summary.warnings}</span><span class="consistency-stat-l">Warnings</span></div>`;
+  html += `<div class="consistency-stat"><span class="consistency-stat-n" style="color:var(--status-success)">${summary.passes || 0}</span><span class="consistency-stat-l">Passes</span></div>`;
+  html += `</div>`;
+
+  if (report.guidelines_version) {
+    html += `<p class="small muted">Guidelines version: <code>${escapeHtml(report.guidelines_version)}</code></p>`;
+  }
+
+  // Source code violations
+  const srcMode = report.source_mode;
+  if (srcMode && srcMode.ran && srcMode.violations && srcMode.violations.length) {
+    html += `<h3>Source Code Violations</h3>`;
+    html += `<p class="small muted" style="margin:-0.25rem 0 0.5rem">Grep-based checks against prototype source files</p>`;
+
+    const sorted = [...srcMode.violations].sort((a, b) => (a.severity === 'error' ? 0 : 1) - (b.severity === 'error' ? 0 : 1));
+    for (const v of sorted) {
+      const sevClass = v.severity === 'error' ? 'consistency-finding-error' : 'consistency-finding-warning';
+      const sevTag = v.severity === 'error'
+        ? '<span class="delta-tag delta-tag-critical">error</span>'
+        : '<span class="delta-tag delta-tag-high">warning</span>';
+
+      html += `<div class="consistency-finding ${sevClass}">`;
+      html += `<div class="consistency-finding-head">`;
+      html += `<code>${escapeHtml(v.file || '')}${v.line ? ':' + v.line : ''}</code>`;
+      html += `<span class="delta-tags">${sevTag}<span class="delta-tag delta-tag-mod">${escapeHtml(v.category || '')}</span></span>`;
+      html += `</div>`;
+      html += `<p class="consistency-guideline"><strong>${escapeHtml(v.guideline_title || v.guideline_id)}</strong> — ${escapeHtml(v.description)}</p>`;
+      if (v.suggestion) html += `<p class="consistency-suggestion">${escapeHtml(v.suggestion)}</p>`;
+      html += `</div>`;
+    }
+  } else if (srcMode && srcMode.ran) {
+    html += `<h3>Source Code</h3><p class="small muted">No source code violations found.</p>`;
+  }
+
+  // Visual mode findings
+  const visMode = report.visual_mode;
+  if (visMode && visMode.ran && visMode.findings && visMode.findings.length) {
+    html += `<h3>Visual Findings</h3>`;
+    html += `<p class="small muted" style="margin:-0.25rem 0 0.5rem">${visMode.screenshots_checked || 0} screenshots analyzed against design guidelines</p>`;
+
+    const sorted = [...visMode.findings].sort((a, b) => (a.severity === 'error' ? 0 : 1) - (b.severity === 'error' ? 0 : 1));
+    for (const f of sorted) {
+      const sevClass = f.severity === 'error' ? 'consistency-finding-error' : 'consistency-finding-warning';
+      const sevTag = f.severity === 'error'
+        ? '<span class="delta-tag delta-tag-critical">violation</span>'
+        : '<span class="delta-tag delta-tag-high">warning</span>';
+
+      html += `<div class="consistency-finding ${sevClass}">`;
+      html += `<div class="consistency-finding-head">`;
+      html += `<code>${escapeHtml(f.guideline_title || f.guideline_id)}</code>`;
+      html += `<span class="delta-tags">${sevTag}<span class="delta-tag delta-tag-mod">${escapeHtml(f.category || '')}</span></span>`;
+      html += `</div>`;
+      html += `<p class="consistency-guideline">${escapeHtml(f.description)}</p>`;
+      if (f.suggestion) html += `<p class="consistency-suggestion">${escapeHtml(f.suggestion)}</p>`;
+
+      // Screenshot thumbnail
+      const ssFile = f.screenshot ? path.basename(f.screenshot) : null;
+      if (ssFile) {
+        const ssPath = path.join(absArtifacts, 'screenshots', ssFile);
+        if (fs.existsSync(ssPath)) {
+          const data = fs.readFileSync(ssPath);
+          const src = 'data:image/png;base64,' + data.toString('base64');
+          html += `<details><summary class="small muted">Screenshot</summary><img src="${src}" alt="${escapeHtml(f.guideline_id)}" style="width:100%;border-radius:0.375rem;border:1px solid var(--border);margin-top:0.5rem"></details>`;
+        }
+      }
+
+      if (f.seen_on && f.seen_on.length > 1) {
+        html += `<p class="consistency-seen-on">Also seen on: ${f.seen_on.slice(1).map(s => '<code>' + escapeHtml(path.basename(s)) + '</code>').join(', ')}</p>`;
+      }
+      html += `</div>`;
+    }
+  } else if (visMode && visMode.ran) {
+    html += `<h3>Visual</h3><p class="small muted">No visual violations found in ${visMode.screenshots_checked || 0} screenshots.</p>`;
+  } else if (!visMode || !visMode.ran) {
+    html += `<p class="small muted">Visual analysis did not run.</p>`;
+  }
+
+  return html;
+}
+
 function buildExplorationHtml() {
   const journeyLog = readJsonOr(path.join(absArtifacts, 'journey-log.json'), null);
   if (!journeyLog || !journeyLog.exploration || !journeyLog.exploration.length) return '';
@@ -1243,6 +1334,8 @@ function buildTokens() {
     '{{PERSONA_SELECTION_HTML}}': buildPersonaSelectionHtml(),
     '{{PERSONA_PROFILES_HTML}}': buildPersonaProfilesHtml(),
     '{{CODE_DELTAS_HTML}}': buildCodeDeltasHtml(),
+    '{{CONSISTENCY_HTML}}': buildConsistencyHtml(),
+    '{{CONSISTENCY_TAB_DISPLAY}}': fs.existsSync(path.join(absArtifacts, 'consistency-report.json')) ? '' : 'display:none',
     '{{EXPLORATION_HTML}}': buildExplorationHtml(),
     '{{EXPLORATION_DISPLAY}}': (readJsonOr(path.join(absArtifacts, 'journey-log.json'), {}).exploration || []).length ? '' : 'display:none',
     '{{EXTERNAL_USABILITY_HTML}}': buildExternalUsabilityHtml(),
