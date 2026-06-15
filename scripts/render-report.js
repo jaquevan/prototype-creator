@@ -271,8 +271,8 @@ function buildPersonaSelectionHtml() {
 
   const selection = ud.persona_selection;
   if (selection) {
-    let html = `<p class="small"><strong>Method:</strong> ${escapeHtml(selection.method || 'automatic')}</p>`;
-    html += `<p class="small"><strong>Target audience:</strong> ${escapeHtml(selection.target_audience_text || '—')}</p>`;
+    let html = `<p class="small"><strong>Target audience:</strong> ${escapeHtml(selection.target_audience_text || '—')}</p>`;
+    if (selection.target_audience_source) html += `<p class="small muted"><strong>Source:</strong> ${escapeHtml(selection.target_audience_source)}</p>`;
     html += `<p class="small"><strong>Reasoning:</strong> ${escapeHtml(selection.reasoning || '—')}</p>`;
     html += `<p class="small"><strong>Selected:</strong> ${(selection.selected || []).map(p => '<code>' + escapeHtml(p) + '</code>').join(', ')}</p>`;
     if (selection.considered_but_rejected && selection.considered_but_rejected.length) {
@@ -380,19 +380,6 @@ function buildCodeDeltasHtml() {
   const mrNum = delta.mr_number || knownMRs[protoId];
   const baseUrl = 'https://gitlab.cee.redhat.com/uxd/prototypes/rhoai/-/merge_requests';
 
-  let html = '';
-
-  // Summary card
-  html += `<div class="card card-compact">`;
-  html += `<p class="small"><strong>${delta.total_files_changed || 0} files changed</strong> · Base: <code>${escapeHtml(delta.base_branch || '?')}</code>`;
-  if (mrNum) html += ` · <a href="${baseUrl}/${mrNum}/diffs" target="_blank">Full diff on GitLab</a>`;
-  html += `</p>`;
-  if (delta.nav_warning) {
-    html += `<div class="delta-nav-warn">${escapeHtml(delta.nav_warning)}</div>`;
-  }
-  html += `</div>`;
-
-  // Try to read actual diffs for critical files
   const workspaceDir = path.join(absArtifacts, 'workspace');
   const canReadDiff = fs.existsSync(workspaceDir);
 
@@ -401,87 +388,387 @@ function buildCodeDeltasHtml() {
     try {
       const diff = execSync(`git diff origin/3.5 HEAD -- "${filePath}" 2>/dev/null`, { cwd: workspaceDir, encoding: 'utf8', maxBuffer: 1024 * 100 });
       if (!diff) return null;
-      const lines = diff.split('\\n');
-      return lines.slice(0, maxLines || 30).join('\\n');
+      const lines = diff.split('\n');
+      return lines.slice(0, maxLines || 40).join('\n');
     } catch { return null; }
   }
 
-  // Critical files with inline diffs
+  function renderDiffBlock(diff) {
+    if (!diff) return '';
+    let out = `<details><summary class="small muted">View diff</summary><div class="diff-block"><pre>`;
+    for (const line of diff.split('\n')) {
+      if (line.startsWith('@@')) {
+        out += `<span class="diff-line diff-line-header">${escapeHtml(line)}</span>\n`;
+      } else if (line.startsWith('+') && !line.startsWith('+++')) {
+        out += `<span class="diff-line diff-line-add">${escapeHtml(line)}</span>\n`;
+      } else if (line.startsWith('-') && !line.startsWith('---')) {
+        out += `<span class="diff-line diff-line-del">${escapeHtml(line)}</span>\n`;
+      } else if (/^(diff |index |---|[+]{3})/.test(line)) {
+        // skip headers
+      } else {
+        out += `<span class="diff-line diff-line-context">${escapeHtml(line)}</span>\n`;
+      }
+    }
+    out += `</pre></div></details>`;
+    return out;
+  }
+
+  // Classify every file into a tier with metadata
+  const newFiles = new Set(delta.new_files || []);
   const allFiles = [...(delta.new_files || []), ...(delta.modified_files || [])];
-  const critical = allFiles.filter(f => f.includes('AppLayout') || f.includes('routes') || f.includes('FeatureFlag') || f.includes('Nav'));
+  const boilerplate = /\/(index|types|__tests__|\.test\.|\.spec\.|\.stories\.)(\.\w+)?$/;
+  const rendered = new Set();
 
-  if (critical.length) {
-    html += `<h3>Critical Changes</h3><p class="small muted">These files affect navigation, routing, or feature visibility.</p>`;
+  function classify(f) {
+    if (f.includes('AppLayout') || f.includes('Sidebar') || f.includes('Nav'))
+      return { tier: 0, severity: 'critical', label: 'Navigation', reason: delta.nav_changes ? 'Sidebar nav updated' : 'Sidebar nav NOT updated — pages orphaned' };
+    if (f.includes('routes'))
+      return { tier: 1, severity: 'critical', label: 'Routing', reason: 'Route registration — controls which URLs exist' };
+    if (f.includes('FeatureFlag'))
+      return { tier: 2, severity: 'high', label: 'Feature Flags', reason: 'Controls runtime feature visibility' };
+    if (f.match(/\/(pages|AIHub)\//) && !boilerplate.test(f) && newFiles.has(f))
+      return { tier: 3, severity: 'medium', label: 'New Page', reason: null };
+    if (f.match(/\/(pages|AIHub)\//) && !boilerplate.test(f))
+      return { tier: 4, severity: 'low', label: 'Modified Page', reason: null };
+    if (boilerplate.test(f))
+      return { tier: 9, severity: 'skip', label: 'Boilerplate', reason: null };
+    return { tier: 5, severity: 'low', label: 'Support', reason: null };
+  }
 
-    for (const f of critical) {
-      const short = f.replace('src/app/', '').replace('src/', '');
-      const isNew = (delta.new_files || []).includes(f);
-      const type = isNew ? '<span class="delta-added">+ Added</span>' : '<span class="delta-modified">~ Modified</span>';
+  const classified = allFiles
+    .map(f => ({ path: f, short: f.replace('src/app/', '').replace('src/', ''), isNew: newFiles.has(f), ...classify(f) }))
+    .filter(f => f.severity !== 'skip')
+    .sort((a, b) => a.tier - b.tier);
 
-      let impact = '';
-      let scoreImpact = '';
-      if (f.includes('AppLayout')) {
-        impact = delta.nav_changes ? 'Sidebar nav updated' : 'Header/layout changed but <strong>sidebar nav NOT updated</strong>';
-        scoreImpact = !delta.nav_changes ? 'Causes: Workflow Continuity 0/3, all journeys FAIL at nav step' : '';
-      } else if (f.includes('routes')) {
-        impact = 'Route registration — new URL paths added';
-        scoreImpact = 'Enables: pages exist at URLs but only reachable if nav links exist';
-      } else if (f.includes('FeatureFlag')) {
-        impact = 'Feature flag configuration changed';
-        scoreImpact = 'May hide/show features depending on flag state at runtime';
-      }
-
-      html += `<div class="card card-compact" style="margin:0.5rem 0">`;
-      html += `<p class="small"><strong><code>${escapeHtml(short)}</code></strong> ${type}</p>`;
-      html += `<p class="small muted">${impact}</p>`;
-      if (scoreImpact) html += `<p class="small" style="color:var(--status-danger)">${scoreImpact}</p>`;
-
-      // Try to show actual diff snippet
-      const diff = getFileDiff(f, 40);
-      if (diff) {
-        html += `<details><summary class="small muted">View changes</summary>`;
-        html += `<div class="diff-block"><pre>`;
-        const diffLines = diff.split('\n');
-        for (const line of diffLines) {
-          if (line.startsWith('@@')) {
-            html += `<span class="diff-line diff-line-header">${escapeHtml(line)}</span>\n`;
-          } else if (line.startsWith('+') && !line.startsWith('+++')) {
-            html += `<span class="diff-line diff-line-add">${escapeHtml(line)}</span>\n`;
-          } else if (line.startsWith('-') && !line.startsWith('---')) {
-            html += `<span class="diff-line diff-line-del">${escapeHtml(line)}</span>\n`;
-          } else if (line.startsWith('diff ') || line.startsWith('index ') || line.startsWith('---') || line.startsWith('+++')) {
-            // skip diff headers
-          } else {
-            html += `<span class="diff-line diff-line-context">${escapeHtml(line)}</span>\n`;
-          }
-        }
-        html += `</pre></div></details>`;
-      }
-      html += `</div>`;
+  // Deduplicate: group files from the same directory together
+  const seen = new Set();
+  const deduped = [];
+  for (const f of classified) {
+    const dir = f.path.replace(/\/[^/]+$/, '');
+    const key = f.tier <= 2 ? f.path : dir;
+    if (f.tier <= 2 || !seen.has(key)) {
+      seen.add(key);
+      deduped.push(f);
     }
   }
 
-  // New pages
-  const newPages = (delta.new_files || []).filter(f => f.includes('/pages/') || f.includes('/AIHub/'));
-  if (newPages.length) {
-    html += `<h3>New Pages</h3><ul class="delta-file-list">`;
-    for (const f of newPages) {
-      const short = f.replace('src/app/', '').replace('src/', '');
-      html += `<li><span class="delta-added">+</span> <code>${escapeHtml(short)}</code></li>`;
-    }
-    html += `</ul>`;
+  let html = '';
+
+  // Summary header
+  const critCount = deduped.filter(f => f.severity === 'critical').length;
+  const highCount = deduped.filter(f => f.severity === 'high').length;
+  const newCount = (delta.new_files || []).filter(f => !boilerplate.test(f)).length;
+  const modCount = (delta.modified_files || []).length;
+
+  html += `<div class="delta-summary">`;
+  html += `<div class="delta-summary-row">`;
+  html += `<div class="delta-stat"><span class="delta-stat-n">${delta.total_files_changed || 0}</span><span class="delta-stat-l">Files</span></div>`;
+  html += `<div class="delta-stat"><span class="delta-stat-n delta-added">${newCount}</span><span class="delta-stat-l">Added</span></div>`;
+  html += `<div class="delta-stat"><span class="delta-stat-n delta-modified">${modCount}</span><span class="delta-stat-l">Modified</span></div>`;
+  if (critCount) html += `<div class="delta-stat"><span class="delta-stat-n" style="color:var(--status-danger)">${critCount}</span><span class="delta-stat-l">Critical</span></div>`;
+  html += `</div>`;
+  html += `<p class="small muted" style="margin:0.5rem 0 0">Base: <code>${escapeHtml(delta.base_branch || '?')}</code>`;
+  if (mrNum) html += ` · <a href="${baseUrl}/${mrNum}/diffs" target="_blank">View full diff (MR !${mrNum})</a>`;
+  html += `</p>`;
+  html += `</div>`;
+
+  // Nav warning — prominent banner
+  if (delta.nav_warning) {
+    html += `<div class="delta-nav-warn"><strong>⚠ Navigation Gap</strong> — ${escapeHtml(delta.nav_warning)}</div>`;
   }
+
+  // Status indicators
+  html += `<div class="delta-meta">`;
+  html += `<span class="${delta.route_changes ? 'delta-added' : ''}">${delta.route_changes ? '✓' : '✗'} Routes</span>`;
+  html += `<span class="${delta.nav_changes ? 'delta-added' : ''}" style="${!delta.nav_changes && delta.route_changes ? 'color:var(--status-danger);font-weight:500' : ''}">${delta.nav_changes ? '✓' : '✗'} Sidebar nav</span>`;
+  html += `<span class="${delta.feature_flag_changes ? 'delta-modified' : ''}">${delta.feature_flag_changes ? '✓' : '✗'} Feature flags</span>`;
+  html += `</div>`;
 
   // New routes
   if (delta.new_routes && delta.new_routes.length) {
-    html += `<h3>New Routes</h3><ul class="delta-file-list">`;
+    html += `<div class="delta-routes">`;
     for (const r of delta.new_routes) {
-      html += `<li><code>${escapeHtml(r)}</code></li>`;
+      html += `<code class="delta-route">${escapeHtml(r)}</code>`;
     }
-    html += `</ul>`;
+    html += `</div>`;
+  }
+
+  // File list grouped by severity
+  let currentSeverity = '';
+  for (const f of deduped) {
+    if (f.severity !== currentSeverity) {
+      currentSeverity = f.severity;
+      const heading = f.severity === 'critical' ? 'Critical — Score Impact'
+        : f.severity === 'high' ? 'High — Runtime Impact'
+        : f.severity === 'medium' ? 'New Feature Files'
+        : 'Modified Support Files';
+      html += `<h3 class="delta-group-heading">${heading}</h3>`;
+    }
+
+    const typeTag = f.isNew
+      ? '<span class="delta-tag delta-tag-add">added</span>'
+      : '<span class="delta-tag delta-tag-mod">modified</span>';
+    const severityTag = f.severity === 'critical'
+      ? '<span class="delta-tag delta-tag-critical">critical</span>'
+      : f.severity === 'high'
+      ? '<span class="delta-tag delta-tag-high">high</span>'
+      : '';
+
+    html += `<div class="delta-file-card delta-file-${f.severity}">`;
+    html += `<div class="delta-file-head">`;
+    html += `<code class="delta-file-name">${escapeHtml(f.short)}</code>`;
+    html += `<span class="delta-tags">${typeTag}${severityTag}</span>`;
+    html += `</div>`;
+
+    if (f.reason) {
+      const reasonClass = f.severity === 'critical' ? 'delta-file-reason-critical' : 'delta-file-reason';
+      html += `<p class="${reasonClass}">${f.reason}</p>`;
+    }
+
+    // Score impact for critical files
+    if (f.severity === 'critical') {
+      let impact = '';
+      if (f.path.includes('AppLayout') && !delta.nav_changes) {
+        impact = 'Caps Workflow Continuity + Mental Model Fidelity at 1/3 for all personas';
+      } else if (f.path.includes('routes') && !delta.nav_changes) {
+        impact = 'Pages exist at URLs but unreachable without nav — nav-assisted only';
+      } else if (f.path.includes('FeatureFlag')) {
+        impact = 'May hide/show features depending on runtime flag state';
+      }
+      if (impact) {
+        html += `<p class="delta-score-impact">${impact}</p>`;
+      }
+    }
+
+    html += renderDiffBlock(getFileDiff(f.path, 40));
+    html += `</div>`;
+  }
+
+  if (delta.summary) {
+    html += `<p class="small muted mt1">${escapeHtml(delta.summary)}</p>`;
   }
 
   return html;
+}
+
+function buildExplorationHtml() {
+  const journeyLog = readJsonOr(path.join(absArtifacts, 'journey-log.json'), null);
+  if (!journeyLog || !journeyLog.exploration || !journeyLog.exploration.length) return '';
+
+  let html = '';
+
+  for (const expl of journeyLog.exploration) {
+    const pName = escapeHtml(expl.persona_name || expl.persona);
+    const goal = escapeHtml(expl.goal || '');
+    const gap = escapeHtml(expl.prescribed_gap || '');
+    const paths = (expl.paths_covered || []).map(p => '<code>' + escapeHtml(p) + '</code>').join(', ');
+
+    html += `<div class="card" style="margin:0.75rem 0;border-left:3px solid var(--status-warning)">`;
+    html += `<h4 style="margin:0 0 0.25rem">${pName} — Exploratory Navigation</h4>`;
+    html += `<p class="small muted" style="margin:0 0 0.35rem">${goal}</p>`;
+    if (gap) html += `<p class="small" style="margin:0 0 0.35rem"><strong>Why explored:</strong> ${gap}</p>`;
+    if (paths) html += `<p class="small" style="margin:0"><strong>Paths covered:</strong> ${paths}</p>`;
+    html += `</div>`;
+
+    const steps = expl.steps || [];
+    if (steps.length) {
+      html += `<details><summary>Exploration Steps (${steps.length})</summary>`;
+      for (const step of steps) {
+        html += `<div class="ta-step">`;
+        html += `<div class="ta-step-head">Step ${step.step} — ${escapeHtml(step.action || '')} → <code>${escapeHtml(step.target || '')}</code> · ${badgeHtml(step.result === 'success' ? 'PASS' : 'FAIL')}</div>`;
+
+        if (step.narration) {
+          html += `<div class="narration">${escapeHtml(step.narration)}</div>`;
+        }
+        if (step.persona_reaction) {
+          html += `<div class="ta-think">${escapeHtml(step.persona_reaction)}</div>`;
+        }
+
+        // Screenshot
+        const ssFile = step.screenshot ? path.basename(step.screenshot) : null;
+        if (ssFile) {
+          const ssPath = path.join(absArtifacts, 'screenshots', ssFile);
+          if (fs.existsSync(ssPath)) {
+            const data = fs.readFileSync(ssPath);
+            const src = 'data:image/png;base64,' + data.toString('base64');
+            html += `<div class="screenshot"><img src="${src}" alt="Step ${step.step}"></div>`;
+          }
+        }
+
+        if (step.error) {
+          html += `<div class="ta-callout ta-callout-confusion"><strong>Error:</strong> ${escapeHtml(step.error)}</div>`;
+        }
+        html += `</div>`;
+      }
+      html += `</details>`;
+    }
+  }
+
+  return html;
+}
+
+function buildExternalUsabilityHtml() {
+  const extDir = path.join(absArtifacts, 'zack-skill-output');
+  if (!fs.existsSync(extDir)) return '';
+
+  const summary = readFileOr(path.join(extDir, 'summary.md'), '');
+  const thinkaloud = readFileOr(path.join(extDir, 'phase1-thinkaloud.md'), '');
+  const evaluation = readFileOr(path.join(extDir, 'phase2-evaluation.md'), '');
+  if (!summary && !thinkaloud) return '';
+
+  let html = '';
+
+  // Summary card
+  const personaMatch = summary.match(/\|\s*Persona\s*\|\s*(.+?)\s*\|/);
+  const outcomeMatch = summary.match(/\|\s*Outcome\s*\|\s*(.+?)\s*\|/);
+  const patienceMatch = summary.match(/\|\s*Patience remaining\s*\|\s*(\d+)%/);
+  const scoreMatch = summary.match(/\|\s*Overall score\s*\|\s*\*\*(.+?)\*\*/);
+  const stepsMatch = summary.match(/\|\s*Steps\s*\|\s*(\d+)/);
+
+  const persona = personaMatch ? personaMatch[1].trim() : 'Unknown';
+  const outcome = outcomeMatch ? outcomeMatch[1].trim() : '—';
+  const patience = patienceMatch ? parseInt(patienceMatch[1], 10) : 0;
+  const score = scoreMatch ? scoreMatch[1].trim() : '—';
+  const steps = stepsMatch ? stepsMatch[1].trim() : '—';
+
+  const pClass = patience > 60 ? 'ta-patience-high' : patience > 30 ? 'ta-patience-med' : 'ta-patience-low';
+
+  html += `<div class="card card-compact" style="border-left:3px solid var(--accent)">`;
+  html += `<p class="small" style="margin:0 0 0.25rem"><strong>Source:</strong> <a href="https://gitlab.cee.redhat.com/zbodnar/automated-usability-testing" target="_blank">automated-usability-testing</a> (Zack Bodnar)</p>`;
+  html += `<p class="small" style="margin:0"><strong>Persona:</strong> ${escapeHtml(persona)} · <strong>Outcome:</strong> ${escapeHtml(outcome)} · <strong>Steps:</strong> ${escapeHtml(steps)} · <strong>Score:</strong> ${escapeHtml(score)}</p>`;
+  html += `<span class="ta-patience ${pClass}" style="margin-top:0.35rem"><span class="ta-patience-bar"><span class="ta-patience-fill" style="width:${patience}%"></span></span> Patience: ${patience}%</span>`;
+  html += `</div>`;
+
+  // Dimension scores table from summary.md
+  const dimTableMatch = summary.match(/## Dimension Scores\s*\n\n((?:\|.+\|\n?)+)/);
+  if (dimTableMatch) {
+    const tableLines = dimTableMatch[1].trim().split('\n');
+    if (tableLines.length >= 3) {
+      html += `<h3>Dimension Scores (External Skill)</h3>`;
+      html += `<table class="tbl"><thead><tr>`;
+      const headers = tableLines[0].split('|').filter(c => c.trim());
+      for (const h of headers) html += `<th>${escapeHtml(h.trim())}</th>`;
+      html += `</tr></thead><tbody>`;
+      for (const row of tableLines.slice(2)) {
+        const cells = row.split('|').filter(c => c.trim());
+        if (cells.length < 2) continue;
+        html += `<tr>`;
+        for (const c of cells) {
+          const val = c.trim();
+          if (val.includes('/3')) {
+            const n = parseInt(val);
+            const cls = n <= 1 ? 'color:var(--status-danger)' : n === 2 ? 'color:var(--status-warning)' : 'color:var(--status-success)';
+            html += `<td style="${cls};font-weight:500">${escapeHtml(val)}</td>`;
+          } else {
+            html += `<td>${escapeHtml(val)}</td>`;
+          }
+        }
+        html += `</tr>`;
+      }
+      html += `</tbody></table>`;
+    }
+  }
+
+  // Top findings from summary.md
+  const findingsSection = extractMdSection(summary, 'Top 3 Findings');
+  if (findingsSection) {
+    html += `<details><summary>Top Findings</summary><div class="card">${mdToHtml(findingsSection)}</div></details>`;
+  }
+
+  // Think-aloud narrative (collapsed)
+  if (thinkaloud) {
+    const taSteps = parseTaExternalSteps(thinkaloud);
+    if (taSteps.length) {
+      html += `<details><summary>Think-Aloud Trace (${taSteps.length} steps)</summary>`;
+      for (const step of taSteps) {
+        html += `<div class="ta-step">`;
+        html += `<div class="ta-step-head">Step ${escapeHtml(step.num)} ${step.action ? '— ' + escapeHtml(step.action) : ''}</div>`;
+        if (step.think) {
+          html += `<div class="ta-think">${escapeHtml(step.think.substring(0, 400))}${step.think.length > 400 ? '...' : ''}</div>`;
+        }
+        if (step.patience !== null) {
+          const spClass = step.patience > 60 ? 'ta-patience-high' : step.patience > 30 ? 'ta-patience-med' : 'ta-patience-low';
+          html += `<span class="ta-patience ${spClass}"><span class="ta-patience-bar"><span class="ta-patience-fill" style="width:${step.patience}%"></span></span> ${step.patience}%</span>`;
+        }
+        if (step.escape) {
+          html += `<div class="ta-callout ta-callout-confusion"><strong>CLI Escape</strong> — ${escapeHtml(step.escape)}</div>`;
+        }
+        if (step.contextLoss) {
+          html += `<div class="ta-callout ta-callout-expected"><strong>Context Loss</strong> — ${escapeHtml(step.contextLoss)}</div>`;
+        }
+        html += `</div>`;
+      }
+      html += `</details>`;
+    }
+  }
+
+  // Annotated screenshots from Zack's output
+  const extScreensDir = path.join(extDir, 'screenshots');
+  if (fs.existsSync(extScreensDir)) {
+    const extScreenshots = fs.readdirSync(extScreensDir).filter(f => f.endsWith('.png')).sort();
+    if (extScreenshots.length) {
+      html += `<details><summary>Screenshots (${extScreenshots.length})</summary>`;
+      html += `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:0.75rem;margin:0.75rem 0">`;
+      for (const file of extScreenshots) {
+        const data = fs.readFileSync(path.join(extScreensDir, file));
+        const src = 'data:image/png;base64,' + data.toString('base64');
+        const label = file.replace('.png', '').replace(/-/g, ' ').replace(/_/g, ' ');
+        html += `<div style="text-align:center"><img src="${src}" alt="${escapeHtml(label)}" style="width:100%;border-radius:0.375rem;border:1px solid var(--border)"><p class="small muted" style="margin:0.25rem 0">${escapeHtml(label)}</p></div>`;
+      }
+      html += `</div></details>`;
+    }
+  }
+
+  return html;
+}
+
+function parseTaExternalSteps(md) {
+  const steps = [];
+  const stepRegex = /^STEP\s+(\d+):\s*$/gm;
+  let match;
+  const positions = [];
+
+  while ((match = stepRegex.exec(md)) !== null) {
+    positions.push({ index: match.index, num: match[1], fullMatch: match[0] });
+  }
+
+  for (let i = 0; i < positions.length; i++) {
+    const start = positions[i].index + positions[i].fullMatch.length;
+    const end = i + 1 < positions.length ? positions[i + 1].index : md.length;
+    const body = md.slice(start, end).trim();
+
+    const thinkMatch = body.match(/\*\*What I'm thinking\*\*:\s*([\s\S]*?)(?=\n-\s+\*\*|\n\nSTEP|\n\n---|\n\[CLI|\n\[CONTEXT|$)/);
+    const actionMatch = body.match(/\*\*What I'll try\*\*:\s*(.*)/);
+    const patMatch = body.match(/\*\*Patience\*\*:\s*(\d+)%/);
+
+    let escape = null;
+    const escapeMatch = body.match(/\[CLI ESCAPE\]:\s*(.*)/);
+    if (escapeMatch) escape = escapeMatch[1].trim();
+
+    let contextLoss = null;
+    const clMatch = body.match(/\[CONTEXT LOSS\]:\s*(.*)/);
+    if (clMatch) contextLoss = clMatch[1].trim();
+
+    // Also check for escape/context loss between this step and the next
+    if (i + 1 < positions.length) {
+      const between = md.slice(start, positions[i + 1].index);
+      const betweenEscape = between.match(/\[CLI ESCAPE\]:\s*(.*)/);
+      if (betweenEscape && !escape) escape = betweenEscape[1].trim();
+      const betweenCl = between.match(/\[CONTEXT LOSS\]:\s*(.*)/);
+      if (betweenCl && !contextLoss) contextLoss = betweenCl[1].trim();
+    }
+
+    steps.push({
+      num: positions[i].num,
+      action: actionMatch ? actionMatch[1].trim() : '',
+      think: thinkMatch ? thinkMatch[1].trim() : '',
+      patience: patMatch ? parseInt(patMatch[1], 10) : null,
+      escape,
+      contextLoss
+    });
+  }
+
+  return steps;
 }
 
 function buildTokens() {
@@ -563,16 +850,27 @@ function buildTokens() {
   const jiraUrl = `https://issues.redhat.com/browse/${protoId}`;
   const prototypeUrl = journeyLog ? journeyLog.prototype_url || '#' : '#';
 
-  // ---- AC Table Rows ----
-  const acTableRows = csvRows.map(r => {
+  // ---- AC Table Rows (split by source) ----
+  const jiraRows = csvRows.filter(r => (r.source || '').toLowerCase() !== 'inferred');
+  const inferredRows = csvRows.filter(r => (r.source || '').toLowerCase() === 'inferred');
+
+  const acTableRowsJira = jiraRows.map(r => {
     const id = escapeHtml(r.criterion_id);
-    const story = escapeHtml(r.story_id);
     const criterion = escapeHtml(r.criterion_text);
-    const tier = escapeHtml(r.tier);
     const verdict = badgeHtml(r.verdict);
-    const rationale = escapeHtml(r.rationale);
-    return `<tr><td><strong>${id}</strong></td><td>${story}</td><td>${criterion}</td><td>${tier}</td><td>${verdict}</td><td class="small">${rationale}</td></tr>`;
+    const evidence = escapeHtml(r.rationale || r.evidence || '');
+    return `<tr><td><strong>${id}</strong></td><td>${criterion}</td><td>${verdict}</td><td class="small">${evidence}</td></tr>`;
   }).join('\n');
+
+  const acTableRowsInferred = inferredRows.map(r => {
+    const id = escapeHtml(r.criterion_id);
+    const criterion = escapeHtml(r.criterion_text);
+    const verdict = badgeHtml(r.verdict);
+    const evidence = escapeHtml(r.rationale || r.evidence || '');
+    return `<tr><td><strong>${id}</strong></td><td>${criterion}</td><td>${verdict}</td><td class="small">${evidence}</td></tr>`;
+  }).join('\n');
+
+  const acJiraCount = jiraRows.length;
 
   // ---- Breadcrumb ----
   let breadcrumbHtml = '';
@@ -920,7 +1218,10 @@ function buildTokens() {
     '{{FLAGGED_COUNT}}': String(flaggedCount),
     '{{JOURNEY_RATIO}}': journeyRatio,
     '{{BREADCRUMB_HTML}}': breadcrumbHtml,
-    '{{AC_TABLE_ROWS}}': acTableRows,
+    '{{AC_TABLE_ROWS_JIRA}}': acTableRowsJira,
+    '{{AC_TABLE_ROWS_INFERRED}}': acTableRowsInferred,
+    '{{AC_JIRA_COUNT}}': String(acJiraCount),
+    '{{INFERRED_CHECKS_DISPLAY}}': inferredRows.length ? '' : 'display:none',
     '{{METHODOLOGY_HTML}}': methodologyHtml,
     '{{USABILITY_TABLE}}': usabilityTable,
     '{{PERSONA_SENSITIVITY}}': personaSensitivity,
@@ -941,7 +1242,11 @@ function buildTokens() {
     '{{DELTAS_TAB_DISPLAY}}': fs.existsSync(path.join(absArtifacts, 'mr-delta.json')) ? '' : 'display:none',
     '{{PERSONA_SELECTION_HTML}}': buildPersonaSelectionHtml(),
     '{{PERSONA_PROFILES_HTML}}': buildPersonaProfilesHtml(),
-    '{{CODE_DELTAS_HTML}}': buildCodeDeltasHtml()
+    '{{CODE_DELTAS_HTML}}': buildCodeDeltasHtml(),
+    '{{EXPLORATION_HTML}}': buildExplorationHtml(),
+    '{{EXPLORATION_DISPLAY}}': (readJsonOr(path.join(absArtifacts, 'journey-log.json'), {}).exploration || []).length ? '' : 'display:none',
+    '{{EXTERNAL_USABILITY_HTML}}': buildExternalUsabilityHtml(),
+    '{{EXTERNAL_USABILITY_DISPLAY}}': fs.existsSync(path.join(absArtifacts, 'zack-skill-output')) ? '' : 'display:none'
   };
 }
 

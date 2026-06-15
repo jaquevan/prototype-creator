@@ -162,16 +162,44 @@ details[open] summary::before{transform:rotate(90deg)}
 /* Code diff styling */
 .diff-block{font-family:var(--font-mono);font-size:0.7rem;line-height:1.5;border-radius:0.375rem;overflow:hidden;margin:0.5rem 0;border:1px solid var(--border)}
 .diff-block pre{margin:0;padding:0.75rem;overflow-x:auto;background:var(--bg)}
-.diff-line{display:block;padding:0 0.5rem;min-height:1.2em}
+.diff-line{display:block;padding:0.05rem 0.5rem;min-height:1.2em}
 .diff-line-add{background:rgba(22,163,74,0.08);color:#16a34a}
 .diff-line-del{background:rgba(220,38,38,0.06);color:#dc2626}
 .diff-line-context{color:var(--text2)}
 .diff-line-header{color:var(--accent);font-weight:500;background:rgba(0,102,204,0.04)}
-.diff-file-header{background:var(--bg2);padding:0.4rem 0.75rem;font-size:0.75rem;font-weight:500;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center}
-.diff-file-header code{font-size:0.7rem}
-.diff-impact{font-size:0.7rem;padding:0.15rem 0.5rem;border-radius:0.25rem;font-weight:500}
-.diff-impact-critical{background:rgba(220,38,38,0.08);color:var(--status-danger)}
-.diff-impact-info{background:rgba(0,102,204,0.06);color:var(--accent)}
+
+/* Delta summary */
+.delta-summary{background:var(--bg2);border:1px solid var(--border);border-radius:0.5rem;padding:1rem 1.25rem;margin-bottom:1rem}
+.delta-summary-row{display:flex;gap:1.5rem;flex-wrap:wrap}
+.delta-stat{display:flex;flex-direction:column;align-items:center;min-width:48px}
+.delta-stat-n{font-family:var(--font-heading);font-size:1.25rem;font-weight:700;line-height:1.2}
+.delta-stat-l{font-size:0.65rem;color:var(--text2);text-transform:uppercase;letter-spacing:0.04em}
+
+/* Delta routes */
+.delta-routes{display:flex;gap:0.4rem;flex-wrap:wrap;margin:0.75rem 0}
+.delta-route{display:inline-block;font-size:0.7rem;padding:0.2rem 0.55rem;background:rgba(0,102,204,0.06);border:1px solid rgba(0,102,204,0.15);border-radius:0.25rem;color:var(--accent);font-family:var(--font-mono)}
+
+/* Delta file cards */
+.delta-group-heading{font-size:0.8rem;font-weight:600;text-transform:uppercase;letter-spacing:0.04em;color:var(--text2);margin:1.5rem 0 0.5rem;padding-bottom:0.35rem;border-bottom:1px solid var(--border)}
+.delta-file-card{border:1px solid var(--border);border-radius:0.375rem;padding:0.65rem 0.85rem;margin:0.4rem 0;transition:border-color 0.15s}
+.delta-file-card:hover{border-color:color-mix(in srgb,var(--border) 50%,var(--text) 50%)}
+.delta-file-critical{border-left:3px solid var(--status-danger)}
+.delta-file-high{border-left:3px solid var(--status-warning)}
+.delta-file-medium{border-left:3px solid var(--status-success)}
+.delta-file-low{border-left:3px solid var(--border)}
+.delta-file-head{display:flex;justify-content:space-between;align-items:center;gap:0.5rem;flex-wrap:wrap}
+.delta-file-name{font-size:0.75rem;font-weight:500;background:none;padding:0;word-break:break-all}
+.delta-file-reason{font-size:0.75rem;color:var(--text2);margin:0.25rem 0 0;line-height:1.4}
+.delta-file-reason-critical{font-size:0.75rem;color:var(--status-danger);font-weight:500;margin:0.25rem 0 0;line-height:1.4}
+.delta-score-impact{font-size:0.7rem;color:var(--status-danger);margin:0.2rem 0 0;padding:0.3rem 0.55rem;background:rgba(220,38,38,0.04);border-radius:0.25rem;display:inline-block}
+
+/* Delta tags */
+.delta-tags{display:flex;gap:0.3rem;flex-shrink:0}
+.delta-tag{display:inline-block;font-size:0.6rem;font-weight:600;text-transform:uppercase;letter-spacing:0.03em;padding:0.1rem 0.4rem;border-radius:0.2rem}
+.delta-tag-add{background:rgba(22,163,74,0.1);color:var(--status-success)}
+.delta-tag-mod{background:rgba(217,119,6,0.1);color:var(--status-warning)}
+.delta-tag-critical{background:rgba(220,38,38,0.1);color:var(--status-danger)}
+.delta-tag-high{background:rgba(217,119,6,0.1);color:var(--status-warning)}
 
 /* Section icons */
 .section-icon{display:inline-block;width:16px;height:16px;vertical-align:-2px;margin-right:0.4rem;opacity:0.6}
@@ -316,16 +344,31 @@ details[open] summary .section-icon{opacity:0.8}
       </div>
     </details>
 
-    <!-- AC Results -->
-    <h2 id="ac-results">Acceptance Criteria Results</h2>
+    <!-- AC Results: Jira ACs -->
+    <h2 id="ac-results">Acceptance Criteria</h2>
+    <p class="small muted" style="margin:-0.5rem 0 1rem">Source: <a href="{{JIRA_URL}}" target="_blank">{{PROTOTYPE_ID}}</a> — {{AC_JIRA_COUNT}} criteria extracted verbatim from ticket</p>
     <table class="tbl">
       <thead>
-        <tr><th>ID</th><th>Story</th><th>Criterion</th><th>Tier</th><th>Verdict</th><th>Rationale</th></tr>
+        <tr><th style="width:3.5rem">ID</th><th>Acceptance Criterion</th><th style="width:5.5rem">Verdict</th><th>Evidence</th></tr>
       </thead>
       <tbody>
-        {{AC_TABLE_ROWS}}
+        {{AC_TABLE_ROWS_JIRA}}
       </tbody>
     </table>
+
+    <!-- AC Results: Evaluator Checks -->
+    <div id="evaluator-checks" style="{{INFERRED_CHECKS_DISPLAY}}">
+      <h3 style="margin-top:1.5rem;color:var(--text2)">Evaluator Checks</h3>
+      <p class="small muted" style="margin:-0.25rem 0 0.75rem">Inferred from MR delta analysis — not in the Jira ticket</p>
+      <table class="tbl" style="opacity:0.85">
+        <thead>
+          <tr><th style="width:3.5rem">ID</th><th>Check</th><th style="width:5.5rem">Verdict</th><th>Evidence</th></tr>
+        </thead>
+        <tbody>
+          {{AC_TABLE_ROWS_INFERRED}}
+        </tbody>
+      </table>
+    </div>
 
     <!-- Usability Dimensions -->
     <h2 id="usability-dimensions">Usability Dimension Scores (INF)</h2>
@@ -385,6 +428,20 @@ details[open] summary .section-icon{opacity:0.8}
       {{PERSONA_PROFILES_HTML}}
 
       {{THINK_ALOUD_NARRATIVES}}
+
+      <!-- Exploratory Navigation (from unified Playwright session Phase 2) -->
+      <div id="exploration-section" style="{{EXPLORATION_DISPLAY}}">
+        <h2 style="margin-top:2rem;padding-top:1.5rem;border-top:2px solid var(--border)">Exploratory Navigation</h2>
+        <p class="small muted" style="margin-bottom:1rem">Pages and paths discovered beyond the prescribed AC journeys. Captured in Phase 2 of the unified Playwright session — same browser, same state.</p>
+        {{EXPLORATION_HTML}}
+      </div>
+
+      <!-- External Usability (Zack's skill output) -->
+      <div id="external-usability" style="{{EXTERNAL_USABILITY_DISPLAY}}">
+        <h2 style="margin-top:2rem;padding-top:1.5rem;border-top:2px solid var(--border)">External Usability Evaluation</h2>
+        <p class="small muted" style="margin-bottom:1rem">Independent evaluation from <a href="https://gitlab.cee.redhat.com/zbodnar/automated-usability-testing" target="_blank">automated-usability-testing</a>. Uses the same 7-dimension rubric with a full exploratory think-aloud protocol — the persona wanders freely rather than following prescribed journeys.</p>
+        {{EXTERNAL_USABILITY_HTML}}
+      </div>
     </div>
 
     <!-- Tab: Code Deltas -->

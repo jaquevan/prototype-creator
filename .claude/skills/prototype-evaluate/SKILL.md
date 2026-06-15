@@ -82,14 +82,16 @@ This is intentionally simple. No scoring rubric, no weighted judges, no eval har
 
 ## Inputs
 
-| Input | Example | Required | Default |
-|-------|---------|----------|---------|
-| Jira story key | `RHAISTRAT-1536` | Yes | — |
-| Prototype URL | `http://localhost:3000` or `https://deploy-preview-42.app.dev` | Yes | — |
-| `--depth` | `quick` or `thorough` | No | `quick` |
-| `--post-to-jira` | flag | No | Off |
-| `--feed-to-refine` | flag | No | Off |
-| `--usability` | `deep` or `thorough` | No | Off (inference-only via Step 3b) |
+
+| Input              | Example                                                        | Required | Default                          |
+| ------------------ | -------------------------------------------------------------- | -------- | -------------------------------- |
+| Jira story key     | `RHAISTRAT-1536`                                               | Yes      | —                                |
+| Prototype URL      | `http://localhost:3000` or `https://deploy-preview-42.app.dev` | Yes      | —                                |
+| `--depth`          | `quick` or `thorough`                                          | No       | `quick`                          |
+| `--post-to-jira`   | flag                                                           | No       | Off (not yet implemented)        |
+| `--feed-to-refine` | flag                                                           | No       | Off                              |
+| `--usability`      | `deep` or `thorough`                                           | No       | Off (inference-only via Step 3b) |
+
 
 Parse from `$ARGUMENTS`. Accept formats like:
 
@@ -105,18 +107,20 @@ Parse from `$ARGUMENTS`. Accept formats like:
 
 Controls how deep usability testing goes. Step 3b (inference-based scoring) always runs when `.context/usability-testing/` is available. The `--usability` flag adds Step 3c (think-aloud):
 
-| Value | Step 3b (inference) | Step 3c (think-aloud) | Report |
-|-------|--------------------|-----------------------|--------|
-| *(not set)* | Runs | Skipped | Quick dimension scores only |
-| `deep` | Runs | 1-2 personas | Both layers + comparison section |
-| `thorough` | Runs | 3 personas | Both layers + full comparison |
+
+| Value       | Step 3b (inference) | Step 3c (think-aloud) | Report                           |
+| ----------- | ------------------- | --------------------- | -------------------------------- |
+| *(not set)* | Runs                | Skipped               | Quick dimension scores only      |
+| `deep`      | Runs                | 1-2 personas          | Both layers + comparison section |
+| `thorough`  | Runs                | 3 personas            | Both layers + full comparison    |
+
 
 ### Depth Flag
 
 Controls how deep the Playwright persona journey walkthroughs go:
 
-- **`--depth=quick`** (default) — verify each journey's flow is navigable. Click through to the target view/form, confirm it renders with expected elements. No data entry, no form submission. Faster, good for CI or quick checks.
-- **`--depth=thorough`** — full end-to-end walkthrough. Fill forms with realistic test data from the RFE domain, submit, and verify results appear in the UI. Tests error states. Slower but catches more issues. Best for pre-merge evaluation.
+- `**--depth=quick*`* (default) — verify each journey's flow is navigable. Click through to the target view/form, confirm it renders with expected elements. No data entry, no form submission. Faster, good for CI or quick checks.
+- `**--depth=thorough**` — full end-to-end walkthrough. Fill forms with realistic test data from the RFE domain, submit, and verify results appear in the UI. Tests error states. Slower but catches more issues. Best for pre-merge evaluation.
 
 ## Step 0b: Extract MR Deltas (when workspace is available)
 
@@ -182,7 +186,7 @@ Write to `.artifacts/<KEY>/mr-delta.json`:
 
 - **Step 1a**: If an AC mentions a feature, check whether related files appear in the delta. If they don't, note "this feature was not part of this MR."
 - **Step 2**: Check changed files FIRST for AC evidence. If new pages were added but nav wasn't updated, flag nav registration gap BEFORE Playwright even runs.
-- **Step 3**: When Zack's skill runs and the persona gets stuck, use the delta as a "colleague hint" — provide the new route URL so the persona can continue. Score both the unassisted attempt and the assisted continuation.
+- **Step 3**: When a Playwright journey gets stuck (persona can't find a page), use the delta as a "colleague hint" — provide the new route URL so the journey can continue with `navigate-assisted`. Score both the unassisted attempt and the assisted continuation.
 - **Step 4**: Report includes a "What Changed" section showing the delta summary.
 
 ## Step 1: Load the Jira Story and Extract Context
@@ -204,13 +208,15 @@ python3 scripts/fetch_rfe.py <KEY> --fields summary,description,acceptance_crite
 **CRITICAL: Use the STRAT's acceptance criteria EXACTLY as written. Do not rephrase, merge, split, synthesize, or generate new criteria. Every criterion in the report must be traceable to a specific line in the Jira ticket.**
 
 Look for acceptance criteria in the Jira ticket description under:
+
 - An explicit "Acceptance Criteria" heading (most common)
 - Given/When/Then blocks
 - Checkbox lists (`- [ ] ...`)
 - Numbered requirements under a "Requirements" or "Definition of Done" heading
 
 **Extraction rules:**
-1. Copy each criterion verbatim from the ticket. Do NOT paraphrase.
+
+1. Copy each criterion verbatim from the ticket. Do NOT paraphrase, shorten, or reword.
 2. If the ticket uses Given/When/Then format, each Given/When/Then block is ONE criterion.
 3. If the ticket uses bullet points or numbered items, each bullet/number is ONE criterion.
 4. Number them AC-1, AC-2, etc. in the order they appear in the ticket.
@@ -219,6 +225,13 @@ Look for acceptance criteria in the Jira ticket description under:
 7. Do NOT generate criteria from the usability personas or user stories — those feed into Steps 3b/3c, not into AC extraction.
 
 **Verification step:** After extracting, list all criteria and confirm each one appears word-for-word (or near-verbatim) in the Jira ticket. If a criterion doesn't match, remove it.
+
+**ID and source rules for the CSV:**
+
+- Jira-sourced criteria use `criterion_id` = `AC-1`, `AC-2`, etc. and `source` = `jira`.
+- Evaluator-inferred checks (nav reachability, feature flag verification) use a different prefix: `NAV-1`, `FLAG-1`, `EVAL-1`, etc. and `source` = `inferred`. These are NEVER `source: jira`.
+- The `criterion_text` for Jira ACs must be the verbatim ticket text. The render script displays this in the "Acceptance Criterion" column — if it doesn't match the ticket, reviewers will notice.
+- The report template splits Jira ACs and evaluator checks into separate tables. This split depends on the `source` field being correct.
 
 **Also look for "High Level Requirements"** — some STRAT tickets have both "Acceptance Criteria" and "High Level Requirements" sections. Use the Acceptance Criteria section. The HLRs are broader user stories that inform journeys (Step 1c) but are NOT individual testable criteria.
 
@@ -262,6 +275,7 @@ AC-5: "Translate k8s terms to user-friendly concepts"
 ```
 
 If a criterion has no matching reference, note `→ No reference available`. This directly informs the tier classification:
+
 - Has a reference URL the evaluator can fetch → Tier 2 (attempt comparison)
 - Has a doc reference but no fetchable URL → Tier 2 (FLAG with pointer for human)
 - No reference at all for a cross-system criterion → Tier 2 (FLAG, cannot verify)
@@ -295,14 +309,17 @@ The RFE (source feature request) is the primary source of *what* users need and 
 Personas don't always come from user story format. Extract them from wherever the RFE names its target users:
 
 **If the RFE has explicit user stories** ("As a [role], I want [goal]"):
+
 - Each story maps directly to a persona + goal + journey.
 
 **If the RFE has a structured format** (Problem Statement, Target Audience, Proposed Solution):
+
 - **Persona** → extract from "Affected Customers" or "Target Audience" (e.g., "Data Science Platform Administrators and Lead Data Scientists who are not necessarily Kubernetes experts")
 - **Goal** → derive from the Problem Statement + Proposed Solution (e.g., "create custom roles via a visual UI without writing YAML")
 - **Journey** → derive from the Acceptance Criteria + Proposed Solution (each AC that describes a user action becomes a journey step)
 
 **If the RFE is minimal** (just acceptance criteria, no structured sections):
+
 - **Persona** → default to a generic "primary user" based on the feature domain
 - **Goal** → infer from what the acceptance criteria collectively describe
 - **Journey** → each AC that describes a user action becomes a journey step
@@ -310,6 +327,7 @@ Personas don't always come from user story format. Extract them from wherever th
 #### Example: Structured RFE (no user stories)
 
 Given an RFE with:
+
 - Target Audience: "Data Science Platform Administrators who are not K8s experts"
 - Problem Statement: "Creating custom roles requires manual YAML..."
 - Proposed Solution: "Implement a Role Creation UI within the RHOAI dashboard"
@@ -317,6 +335,7 @@ Given an RFE with:
 - AC-2: "Ability to select API groups, resources, and verbs without manual typing"
 
 Extract:
+
 ```
 Persona: Data Science Platform Administrator (non-K8s expert)
 Goal: Create a custom role with granular permissions using a visual UI
@@ -352,6 +371,7 @@ AC-1: "Form-based UI for registering providers"
 ```
 
 **Use this map in three places:**
+
 1. **In the AC verdict rationale** (Step 2): When a criterion fails because a decision explicitly de-scoped it, note this: "Decision 4 explicitly de-scoped this for low fidelity." This prevents false alarms — a deliberate de-scope is different from a missing feature.
 2. **In the journey narration** (Step 4 report): Under each journey step, reference the decision that informed the expected UI path (e.g., "This modal form was chosen in Decision 3 over a wizard pattern").
 3. **In the refinement suggestions** (Step 7, if `--feed-to-refine`): Include the decision context so `prototype-refine` knows whether a failure is something to fix or something that was deliberately excluded.
@@ -359,6 +379,7 @@ AC-1: "Form-based UI for registering providers"
 If `decisions.json` does not exist, proceed without it — the eval works fine without decision context, it just can't distinguish deliberate de-scopes from bugs.
 
 **In summary:**
+
 - **RFE** (via `rfe-snapshot.md` or linked Jira ticket) → tells you *what* the user wants to do, *who* they are, and *why* (personas + goals + problem context)
 - **Strategy brief** (`.artifacts/<KEY>/decisions/strategy-brief.md`) → tells you *how* it should be built (expected UI patterns, component choices, flow decisions)
 - **decisions.json** (`.artifacts/<KEY>/decisions/decisions.json`) → tells you *why* specific choices were made and whether failures are deliberate de-scopes
@@ -396,7 +417,7 @@ Journey 2: "Register an External Model"
 
 In `--depth=quick` mode, journeys stop after verifying the flow *exists* and is navigable (steps 1-3 above). In `--depth=thorough` mode, journeys complete the full interaction including data entry, submission, and result verification.
 
-If no strategy brief exists, derive expected paths from the user stories alone using reasonable UI patterns (forms for creation, tables for listing, detail views for inspection).
+If no strategy brief exists, derive expaected paths from the user stories alone using reasonable UI patterns (forms for creation, tables for listing, detail views for inspection).
 
 Store the journey definitions internally — they are used in Step 3 (Playwright) and in the report's path comparison section.
 
@@ -409,6 +430,7 @@ Build the SDLC breadcrumb for the report header. The breadcrumb traces the pipel
 #### Extract links from Jira
 
 From the Jira issue fetched in Step 1, extract:
+
 - **Source RFE**: Look in `issuelinks` for a `clones` relationship to an RHAIRFE-* ticket. Use the key and build the URL: `https://issues.redhat.com/browse/<RFE-KEY>`
 - **STRAT**: The ticket being evaluated. URL: `https://issues.redhat.com/browse/<KEY>`
 
@@ -418,23 +440,17 @@ The prototype may have been submitted as a GitLab merge request. Search for it i
 
 1. **Jira remote links**: Check `getJiraIssueRemoteIssueLinks` for GitLab MR URLs.
 2. **Workspace git remote**: If the eval is running against a `--workspace`, read the git remote URL and branch:
-   ```bash
+  ```bash
    cd <workspace-path> && git remote get-url origin
    cd <workspace-path> && git branch --show-current
-   ```
+  ```
    Construct the prototype repo URL from the remote (e.g., `https://gitlab.cee.redhat.com/uxd/prototypes/rhoai/-/tree/<branch>`).
 3. **GitLab MR search**: If a workspace remote was found, check for open MRs matching the branch or STRAT key. The MR list URL follows the pattern:
-   ```
+  ```
    https://<gitlab-host>/<group>/<repo>/-/merge_requests?search=<KEY>
-   ```
+  ```
    For the RHOAI prototype repo specifically:
-   ```
-   https://gitlab.cee.redhat.com/uxd/prototypes/rhoai/-/merge_requests
-   ```
    If the eval has shell access and `git` auth to the GitLab host, it can query the API:
-   ```bash
-   curl -s "https://gitlab.cee.redhat.com/api/v4/projects/<project-id>/merge_requests?source_branch=<branch>&state=opened" --header "PRIVATE-TOKEN: $GITLAB_TOKEN"
-   ```
    If an MR is found, use its URL in the breadcrumb. If not, link to the branch directly.
 
 #### Build the breadcrumb data
@@ -462,21 +478,25 @@ Not all acceptance criteria are equally checkable. Before judging, classify each
 
 **Tier 1: Self-evident from the prototype**
 Criteria about UI elements, forms, components, or flows that exist (or don't) in the source code.
+
 > Example: "A form-based UI in RHOAI for defining custom roles"
 > → Grep for form elements, check if they exist. PASS or FAIL.
 
 **Tier 2: Requires external reference material**
 Criteria that reference another product, system, or standard that must be compared against.
+
 > Example: "The interface should align with the ACM role creation UI"
 > → Check Supporting Documentation for a reference URL. If found, fetch and compare. If not, FLAG.
 
 **Tier 3: Requires runtime/backend verification**
 Criteria about validation logic, API behavior, or backend state that cannot be proven from UI source alone.
+
 > Example: "The UI must validate inputs to ensure the resulting RBAC is valid"
 > → Split: "validation UI exists" (checkable) + "validation logic is correct" (FLAG).
 
 **Tier 4: Subjective/interpretive**
 Criteria about readability, user-friendliness, or qualitative characteristics.
+
 > Example: "Kubernetes technical terms should be translated into user-friendly concepts"
 > → Scan for raw k8s terms in the UI, note specific instances, provide evidence, FLAG for human judgment on whether the translations are adequate.
 
@@ -487,9 +507,9 @@ For each criterion:
 1. **Classify** — which tier is this?
 2. **Tier 1** → evaluate immediately from prototype source. Verdict: PASS or FAIL.
 3. **Tier 2** → check Supporting Documentation for reference material.
-   - Reference URL found? → fetch it (if accessible), compare structure/patterns, provide a tentative assessment + FLAG for human confirmation.
-   - Reference in a linked Jira ticket? → use `searchJiraIssuesUsingJql` to pull it.
-   - No reference anywhere? → FLAG with reason: "Cannot access [X] to verify. Needs human comparison."
+  - Reference URL found? → fetch it (if accessible), compare structure/patterns, provide a tentative assessment + FLAG for human confirmation.
+  - Reference in a linked Jira ticket? → use `searchJiraIssuesUsingJql` to pull it.
+  - No reference anywhere? → FLAG with reason: "Cannot access [X] to verify. Needs human comparison."
 4. **Tier 3** → evaluate what's observable in the UI (does the validation UI exist? are error messages present?). FLAG the parts that require runtime verification.
 5. **Tier 4** → provide concrete evidence (list of raw terms found, specific UI text), state your observation, FLAG for human judgment.
 
@@ -523,34 +543,6 @@ If the prototype is only accessible via URL (no local source), state what you ca
 
 Run each persona journey defined in Step 1c as a Playwright walkthrough — clicking through the UI step-by-step, never shortcutting via direct URL navigation.
 
-### Preferred: Delegate to Zack's Usability Skill
-
-When `.context/usability-testing/` is bootstrapped, prefer running the walkthrough using the [automated-usability-testing](https://gitlab.cee.redhat.com/zbodnar/automated-usability-testing) protocol. Zack's skill already handles Playwright navigation, screenshot capture at decision points, annotated screenshots, and think-aloud traces. Use his Phase 1 (Actor) protocol from `.context/usability-testing/prompts/evaluate-flow.md` for the persona walkthrough.
-
-**How delegation works:** Run Zack's Phase 1 protocol as the persona navigating the prototype. If the persona gets stuck (can't find a page, nav dead end), check the MR delta data from Step 0b. If the delta shows a new route that the persona couldn't reach:
-
-1. **Record the unassisted result** — the persona's honest experience (FAIL at step N, patience at X%)
-2. **Provide an MR delta hint** — like a colleague saying "oh, it's at this URL" based on the new routes in the MR
-3. **Continue the journey assisted** — navigate to the hinted URL and complete the remaining steps
-4. **Record the assisted result** — whether the feature WORKS once found
-
-This produces two scores per journey:
-- **Unassisted**: the real usability result (can users find this?)
-- **Assisted**: the functionality result (does it work once found?)
-- **Discoverability gap**: the delta between them — feature exists but is orphaned
-
-```
-Journey: Browse Agent Catalog
-  Unassisted: FAIL at step 2 (can't find in nav) — patience: 45%
-  MR delta hint: "New page at /ai-hub/agents/catalog (from AgentCatalog.tsx in MR !175)"
-  Assisted: PASS (6/6 steps once pointed to the page)
-  Gap: Discoverability — feature is orphaned from navigation
-```
-
-### Fallback: Self-Generated Playwright Script
-
-If `.context/usability-testing/` is not available, generate a `journey-test.mjs` script as before. The Playwright honesty rules below still apply to the generated script.
-
 ### Setup
 
 If Playwright is not installed in the workspace:
@@ -565,8 +557,8 @@ npx playwright install chromium
 
 The `--depth` flag controls how far each journey goes:
 
-- **`--depth=quick`** (default) — verify the flow exists and is navigable. Click through to the target view/form and confirm it renders. No data entry, no submission.
-- **`--depth=thorough`** — full end-to-end walkthrough. Fill forms with realistic test data, submit, and verify the result appears in the UI (e.g., new item in table).
+- `**--depth=quick**` (default) — verify the flow exists and is navigable. Click through to the target view/form and confirm it renders. No data entry, no submission.
+- `**--depth=thorough**` — full end-to-end walkthrough. Fill forms with realistic test data, submit, and verify the result appears in the UI (e.g., new item in table).
 
 ### Journey Execution
 
@@ -643,17 +635,37 @@ Generate the script at `.artifacts/<KEY>/journey-test.mjs` and run it:
 node .artifacts/<KEY>/journey-test.mjs
 ```
 
-The script walks through each journey sequentially:
+The script has two phases in a **single Playwright browser session**:
+
+**Phase 1 — Prescribed Journeys** (always runs):
 
 1. Start at the prototype URL (this is the ONLY acceptable use of `page.goto` — the initial entry point)
 2. For each journey step: locate the target element via UI clicks, log the result
 3. If a step fails (element not found, timeout): mark result as `"FAIL"`, run `page.goto` ONLY as a diagnostic (record `url_fallback: "reachable"` or `"unreachable"`), then move to next journey
 4. **NEVER mark a step PASS if it required `page.goto` to reach.** A step that needed direct URL navigation is ALWAYS a FAIL — the page is orphaned.
-5. After all journeys: output the full log as JSON
+
+**Phase 2 — Exploratory Navigation** (runs when `--usability=deep|thorough` or `.context/usability-testing/` is present):
+
+After all prescribed journeys complete, the **same browser session** continues with an exploratory phase. This eliminates the need for Zack's skill (or Step 3c) to launch a separate Playwright session.
+
+1. Return to the prototype entry URL (`page.goto` is allowed here — exploration starts from home)
+2. For each selected persona, plan 3–5 exploration paths that prescribed journeys did NOT cover:
+  - Pages visible in the sidebar that no prescribed journey visited
+  - Settings, admin, or configuration areas relevant to the feature
+  - Related features the persona would naturally discover while pursuing their goal
+  - Pages flagged in `mr-delta.json` that no prescribed journey tested
+3. For each exploration step, capture a screenshot and log what the persona would see and do
+4. Use the same screenshot naming: `explore-<persona>-step-<N>.png`
+5. Log exploration steps to `journey-log.json` under the `exploration` key (see Output below)
+
+**Why one session matters:** Two separate Playwright sessions can see different page states (cached data, feature flags, session state). Running both phases in one session guarantees they see identical state. It also halves the browser startup overhead and produces a consistent screenshot set.
+
+After both phases: output the unified log as JSON
 
 ### Quick Mode Behavior
 
 In `--depth=quick`, each journey verifies:
+
 - Can the user navigate to the target view? (click path exists)
 - Does the target view render the expected elements? (form fields, table, detail panel)
 - Stop before data entry — no filling forms, no submitting
@@ -661,7 +673,8 @@ In `--depth=quick`, each journey verifies:
 ### Thorough Mode Behavior
 
 In `--depth=thorough`, each journey additionally:
-- Fills form fields with realistic test data derived from the RFE domain (e.g., provider name: "OpenAI", endpoint: "https://api.openai.com/v1")
+
+- Fills form fields with realistic test data derived from the RFE domain (e.g., provider name: "OpenAI", endpoint: "[https://api.openai.com/v1](https://api.openai.com/v1)")
 - Submits the form
 - Verifies the result appears in the UI (new row in table, updated status, confirmation message)
 - Tests error states if the journey involves validation (submit empty form, check error messages)
@@ -671,6 +684,7 @@ In `--depth=thorough`, each journey additionally:
 **Journey PASS** — all steps completed successfully. The persona can achieve their goal via the expected click path.
 
 **Journey FAIL** — one or more steps could not be completed. Log which step failed and why:
+
 - Element not found → feature not implemented or navigation broken
 - Timeout → page unresponsive or SPA routing issue
 - URL fallback succeeded → page exists but is orphaned (critical usability failure)
@@ -679,13 +693,15 @@ In `--depth=thorough`, each journey additionally:
 
 ### Severity Levels
 
-| Result | Severity | Report Treatment |
-|--------|----------|-----------------|
-| All steps pass via click | None | Journey PASS |
-| Steps pass but slow (>3s per step) | Warning | Note in report |
-| Step fails — element not found | High | Journey FAIL, link to relevant AC |
-| Step reachable ONLY via URL | Critical | Journey FAIL, orphaned page |
-| Step causes crash/error | Critical | Journey FAIL, broken flow |
+
+| Result                             | Severity | Report Treatment                  |
+| ---------------------------------- | -------- | --------------------------------- |
+| All steps pass via click           | None     | Journey PASS                      |
+| Steps pass but slow (>3s per step) | Warning  | Note in report                    |
+| Step fails — element not found     | High     | Journey FAIL, link to relevant AC |
+| Step reachable ONLY via URL        | Critical | Journey FAIL, orphaned page       |
+| Step causes crash/error            | Critical | Journey FAIL, broken flow         |
+
 
 ### Output
 
@@ -712,9 +728,32 @@ Save the full journey log to `.artifacts/<KEY>/journey-log.json`.
         { "step": 2, "action": "click", "target": "Tab > External providers", "result": "success", "timestamp_ms": 3102, "screenshot": "screenshots/journey-1-step-2.png", "narration": "Tab loaded with providers table visible" }
       ]
     }
+  ],
+  "exploration": [
+    {
+      "persona": "deena-junior",
+      "persona_name": "Deena - Junior Data Scientist",
+      "goal": "Register an external model provider so the team can start using it",
+      "paths_planned": 4,
+      "paths_covered": ["Settings > Model catalog settings", "Gen AI studio > AI asset endpoints", "Models > Registry > Register model"],
+      "prescribed_gap": "Prescribed journeys only tested the External Providers tab. This exploration covers the 3 other UI sections a real user would discover.",
+      "steps": [
+        {
+          "step": 1,
+          "action": "click",
+          "target": "Sidebar > Settings > Model catalog settings",
+          "result": "success",
+          "screenshot": "screenshots/explore-deena-junior-step-1.png",
+          "narration": "Navigated to Model catalog settings. Found 'Add a source' button and existing sources (Hugging Face, YAML).",
+          "persona_reaction": "This looks like where I'd add a provider — but only Hugging Face and YAML are options?"
+        }
+      ]
+    }
   ]
 }
 ```
+
+The `exploration` array is populated by Phase 2 of the unified Playwright script. Each entry represents one persona's exploratory navigation. The `prescribed_gap` field explains WHY this exploration was needed — what the prescribed journeys didn't cover.
 
 ### Error Handling
 
@@ -735,25 +774,36 @@ Read persona YAML files from `.context/usability-testing/personas/`. Each person
 
 Select 2-3 personas relevant to the RFE's target audience (extracted in Step 1c). Match based on domain knowledge alignment:
 
-| RFE Target Audience | Recommended Personas |
-|---------------------|---------------------|
-| Data scientists, ML practitioners | `deena-junior.yaml`, `deena-senior.yaml` |
-| AI/ML engineers, developers | `alex-junior.yaml`, `alex-senior.yaml` |
-| MLOps, platform operators | `maude-experienced.yaml`, `maude-junior.yaml` |
-| Platform admins, infrastructure | `paula-platform-engineer.yaml` |
-| Accessibility-sensitive flows | `sam-accessibility.yaml` |
-| Regulated/air-gapped environments | `raj-regulated.yaml` |
+
+| RFE Target Audience               | Recommended Personas                          |
+| --------------------------------- | --------------------------------------------- |
+| Data scientists, ML practitioners | `deena-junior.yaml`, `deena-senior.yaml`      |
+| AI/ML engineers, developers       | `alex-junior.yaml`, `alex-senior.yaml`        |
+| MLOps, platform operators         | `maude-experienced.yaml`, `maude-junior.yaml` |
+| Platform admins, infrastructure   | `paula-platform-engineer.yaml`                |
+| Accessibility-sensitive flows     | `sam-accessibility.yaml`                      |
+| Regulated/air-gapped environments | `raj-regulated.yaml`                          |
+
 
 If the RFE's target audience doesn't clearly match any persona, default to a junior and senior variant of the closest match (e.g., `deena-junior.yaml` + `deena-senior.yaml`).
 
 **Where to find the target audience:** Look in the Jira ticket for:
+
 - "Affected Customers/Partners & Scope" section — this names the target users explicitly
 - "Target Audience" field — e.g., "Data Science Platform Administrators who are not necessarily Kubernetes experts"
 - High Level Requirements "As a [role]..." — the role names the persona type
 
 **Always pick one junior + one senior** when possible. Junior personas surface friction that seniors tolerate. The gap between their scores is the most actionable signal.
 
-**REQUIRED: Log the selection reasoning** to journey-log.json under `usability_dimensions.persona_selection`. This MUST be written for every eval run:
+**REQUIRED: Log the selection reasoning** to journey-log.json under `usability_dimensions.persona_selection`. This MUST be written for every eval run — not optional, not "if time permits." The render script reads this block to populate the "Why These Personas Were Selected" card in the Personas tab.
+
+**How to populate it:** Use the persona and journey data extracted in Step 1c. Specifically:
+
+1. Read the `target_audience_text` from the RFE's "Affected Customers/Partners & Scope" section (extracted in Step 1c).
+2. If Step 1c found the target audience in `rfe-snapshot.md`, set `target_audience_source` to that file path and section.
+3. If Step 1c found it in the Jira ticket directly, set `target_audience_source` to the ticket key + field name.
+4. Map the extracted audience to persona YAML files using the table in 3b.1 above.
+5. Log which personas were considered but rejected and why — this helps reviewers understand whether the right users were tested.
 
 ```json
 {
@@ -773,19 +823,32 @@ If the RFE's target audience doesn't clearly match any persona, default to a jun
 
 If the Jira ticket has NO affected customers section, note `"target_audience_source": "not found in ticket — defaulting to closest match"`.
 
+**Verification:** After building the journey-log.json, confirm that `usability_dimensions.persona_selection` is present and non-empty. If it's missing, the Personas tab will show a "selection reasoning was not logged" warning instead of the actual reasoning.
+
 ### 3b.2: Apply Persona Constraints to Journey Evidence
 
 For each selected persona, re-evaluate the journey log from Step 3 through that persona's lens. Do NOT re-run Playwright — use the existing journey steps as evidence.
+
+**CRITICAL — Assisted navigation does NOT count as usability evidence:**
+Steps marked with `url_fallback`, `navigate-assisted`, or any direct URL navigation are **FAIL evidence** for usability scoring — even if the page loaded successfully after the assist. The usability score must reflect what a real user would experience via normal UI navigation (sidebar clicks, breadcrumbs, links). Rationale: a page that exists at a URL but has no sidebar link is unreachable to a real user. Scoring it as functional because the evaluator used a URL shortcut inflates scores and hides the real friction.
+
+When a journey step required assisted navigation:
+
+- The dimension most affected is **Workflow Continuity** — score it as if the step failed (the user cannot reach the feature)
+- **Mental Model Fidelity** is also affected — the user has no UI cue pointing them to this feature
+- The `navigate-assisted` step's downstream results (e.g., "30 cards found after URL navigation") are valid for AC verdicts (the feature exists) but NOT for usability dimension scoring (the feature is undiscoverable)
+
+This prevents the score inflation seen in RHAISTRAT-1740 (7.5→13 between runs where the only difference was finding an alternate URL path).
 
 For each journey step, assess:
 
 1. **Comprehension**: Would this persona understand the UI elements shown? Check the persona's `domain_knowledge` map — if a field/label/term maps to a knowledge area rated `none` or `minimal`, the persona is confused.
 2. **Patience drain**: Apply the persona's patience model to the journey:
-   - Start at 100%
-   - Deduct per confusion event: High patience -5%, Medium -10%, Low -15%
-   - Deduct per dead end: High -10%, Medium -20%, Low -30%
-   - Recover per successful sub-task: High +10%, Medium +5%, Low +5%
-   - If patience hits 0%, the persona abandons — record which step and why.
+  - Start at 100%
+  - Deduct per confusion event: High patience -5%, Medium -10%, Low -15%
+  - Deduct per dead end: High -10%, Medium -20%, Low -30%
+  - Recover per successful sub-task: High +10%, Medium +5%, Low +5%
+  - If patience hits 0%, the persona abandons — record which step and why.
 3. **Knowledge gaps**: Note specific moments where the persona's constraints would cause confusion, wrong assumptions, or inability to proceed. Reference the `constraints` list from the persona YAML.
 
 Produce a per-persona journey overlay:
@@ -813,23 +876,33 @@ Read the rubric from `.context/usability-testing/prompts/evaluate-flow.md`. Scor
 
 The 7 dimensions:
 
-| # | Dimension | What It Measures |
-|---|-----------|-----------------|
-| 1 | Workflow Continuity & Integrity | Can the user complete the flow without infrastructure cliffs? |
-| 2 | Cross-Persona Context & Handoffs | Is context preserved across roles and workflow stages? |
-| 3 | Scalability & Progressive Complexity | Does it serve both novices and experts? |
-| 4 | System Status, Observability & Trust | Does the UI explain what's happening during waits and failures? |
-| 5 | Technical Abstraction & Signal-to-Noise | Relevant information or infrastructure detail leaks? |
-| 6 | Mental Model Fidelity | Does the UI speak the user's language or the system's? |
-| 7 | Accessibility & Inclusion | Keyboard nav, screen readers, constrained environments? |
+
+| #   | Dimension                               | What It Measures                                                |
+| --- | --------------------------------------- | --------------------------------------------------------------- |
+| 1   | Workflow Continuity & Integrity         | Can the user complete the flow without infrastructure cliffs?   |
+| 2   | Cross-Persona Context & Handoffs        | Is context preserved across roles and workflow stages?          |
+| 3   | Scalability & Progressive Complexity    | Does it serve both novices and experts?                         |
+| 4   | System Status, Observability & Trust    | Does the UI explain what's happening during waits and failures? |
+| 5   | Technical Abstraction & Signal-to-Noise | Relevant information or infrastructure detail leaks?            |
+| 6   | Mental Model Fidelity                   | Does the UI speak the user's language or the system's?          |
+| 7   | Accessibility & Inclusion               | Keyboard nav, screen readers, constrained environments?         |
+
 
 Scale: 0 = Broken, 1 = Fragmented, 2 = Functional, 3 = Seamless.
 
+**Score stabilization rules (prevents run-to-run inflation):**
+
+1. **Assisted navigation caps the score.** If ANY journey step in the evidence chain for a dimension required `url_fallback` or `navigate-assisted`, that dimension CANNOT score above 1 for the affected persona. The feature exists but is undiscoverable — that's "Fragmented" at best, never "Functional" or "Seamless."
+2. **Use the strictest interpretation.** If a persona can reach a feature via two paths — one that works (alternate path) and one that fails (expected nav) — score based on the expected path. The expected path is what a real user would try first (sidebar nav, breadcrumbs, obvious links). Alternate paths found by the evaluator are diagnostic, not evidence of good usability.
+3. **Journey count must be deterministic.** The number of journeys is defined by Step 1c's extraction from the RFE. Do not add or remove journeys between runs unless the RFE acceptance criteria changed. Non-deterministic journey generation causes composite score swings.
+
 For each dimension, provide:
+
 - **Score** (0-3)
 - **Confidence** (High / Medium / Low) — High means a structural blocker was directly observed; Medium means friction consistent with persona profile; Low means logical inference from persona constraints
 - **Evidence** — cite specific journey step numbers and persona confusion events
 - **Key finding** — one sentence
+- **Assisted navigation impact** — if any step in the evidence chain used `navigate-assisted`, note which step and how it capped the score
 
 When scoring, compare across the selected personas. A dimension that scores 2 for `alex-senior` but 0 for `deena-junior` reveals a persona-sensitive gap — flag it.
 
@@ -863,15 +936,18 @@ The `composite_score` per dimension is the average across evaluated personas. Th
 
 ## Step 3c: Think-Aloud Usability (Optional — `--usability=deep|thorough`)
 
-This step runs Zack Bodnar's full dual-phase usability evaluation: the agent role-plays as a persona navigating the prototype, then scores the experience. It produces richer diagnostic evidence than Step 3b's inference — surfacing false confidence, silent errors, wrong mental models, and cumulative frustration that per-step analysis misses.
+This step produces a first-person think-aloud narrative from the persona's perspective, using the evidence captured in Step 3 (both prescribed journeys AND exploratory navigation from the unified Playwright session). It uses Zack Bodnar's dual-phase protocol from [automated-usability-testing](https://gitlab.cee.redhat.com/zbodnar/automated-usability-testing).
 
 **Only run if `--usability=deep` or `--usability=thorough` is passed AND `.context/usability-testing/` is bootstrapped.** If neither flag is present, skip entirely. Step 3b (inference) still runs regardless.
+
+**IMPORTANT: No additional Playwright session.** Step 3c does NOT launch a browser. It reads the screenshots, journey steps, and exploration steps already captured by Step 3's unified Playwright script. The think-aloud narrative is written OVER this existing evidence — the AI role-plays the persona reacting to what the screenshots show.
 
 ### Why Both Layers Exist
 
 Step 3b (inference) is fast — good for CI, regression testing, quick triage. It correctly identifies structural blockers.
 
 Step 3c (think-aloud) is slow but reveals causality:
+
 - **False confidence**: persona completes a step but doesn't know if data is correct ("completed but wrong" is worse than "visibly failed")
 - **Guess-and-pray pattern**: low-patience personas submit blindly rather than seeking help, creating silent errors
 - **Wrong mental models**: persona expects X but UI offers Y — actionable design feedback inference can't surface
@@ -880,12 +956,23 @@ Step 3c (think-aloud) is slow but reveals causality:
 
 ### Persona Selection
 
-| Flag | Personas |
-|------|----------|
-| `--usability=deep` | 1-2 personas — pick the most friction-revealing pair (e.g., one junior + one senior) |
+
+| Flag                   | Personas                                                                                                                   |
+| ---------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `--usability=deep`     | 1-2 personas — pick the most friction-revealing pair (e.g., one junior + one senior)                                       |
 | `--usability=thorough` | 3 personas — junior, senior, and a cross-domain persona (e.g., `deena-junior` + `alex-senior` + `paula-platform-engineer`) |
 
+
 Use the same persona selection logic as Step 3b.1 — match based on the RFE's target audience.
+
+### Evidence Sources (from Step 3's unified Playwright session)
+
+The think-aloud narrative draws from two evidence pools already captured:
+
+1. **Prescribed journey evidence** — `journey-log.json > journeys[]` — the AC-driven click paths with screenshots showing what the persona would see at each step
+2. **Exploration evidence** — `journey-log.json > exploration[]` — the freeform navigation captured in Phase 2 of the Playwright script, covering pages the prescribed journeys didn't visit
+
+Both pools share the same `screenshots/` directory. Read the screenshots to describe what the persona sees; read the step data to understand what happened.
 
 ### Phase 1: The Actor
 
@@ -893,31 +980,30 @@ Read the Phase 1 protocol from `.context/usability-testing/prompts/evaluate-flow
 
 1. **Load the persona YAML.** Adopt their identity — their knowledge is your knowledge, their gaps are your gaps.
 2. **Do NOT read the rubric.** Phase 1 is blind to the scoring criteria. You are a user trying to complete a task, not an analyst.
-3. **Navigate step by step** using the journey definitions from Step 1c as a guide. At each step, produce a think-aloud log entry:
+3. **Walk through the evidence** from journey-log.json — prescribed journeys first, then exploration steps. For each step where a screenshot exists, read the screenshot and produce a think-aloud entry from the persona's perspective:
 
 ```
 STEP [n]:
-- What I see: [describe from the persona's perspective, not an analyst's]
+- What I see: [describe from the persona's perspective based on the screenshot, not an analyst's]
 - What I'm thinking: [first person, in-character internal monologue]
-- What I'll try: [what action and why]
+- What I'll try: [what action and why — informed by what actually happened in the journey step]
 - Confidence: [high/low/none — does the persona believe they're doing the right thing?]
 - Response strategy: [if confused: help-seeking / guess-and-continue / abandon]
 - Patience: [X% — track as depleting resource per persona's behavioral_attributes]
 ```
 
-4. **Track patience** using the persona's model:
-   - High patience: -5% per confusion, -10% per dead end, +10% per success
-   - Medium patience: -10% per confusion, -20% per dead end, +5% per success
-   - Low patience: -15% per confusion, -30% per dead end, +5% per success
-   - At 0%: persona abandons. Log why and stop.
+1. **Track patience** using the persona's model:
+  - High patience: -5% per confusion, -10% per dead end, +10% per success
+  - Medium patience: -10% per confusion, -20% per dead end, +5% per success
+  - Low patience: -15% per confusion, -30% per dead end, +5% per success
+  - At 0%: persona abandons. Log why and stop.
+2. **Log special events:**
+  - `[CLI ESCAPE]`: Persona would leave the UI (open terminal, ask colleague, check docs)
+  - `[CONTEXT LOSS]`: Navigating between pages caused loss of context
+  - `[EXPECTED vs ACTUAL]`: Persona expected to find X but UI showed Y — capture both
+  - `[MISSING FEEDBACK]`: A step succeeded but the UI gave no positive confirmation
+3. **At the end**, summarize:
 
-5. **Log special events:**
-   - `[CLI ESCAPE]`: Persona would leave the UI (open terminal, ask colleague, check docs)
-   - `[CONTEXT LOSS]`: Navigating between pages caused loss of context
-   - `[EXPECTED vs ACTUAL]`: Persona expected to find X but UI showed Y — capture both
-   - `[MISSING FEEDBACK]`: A step succeeded but the UI gave no positive confirmation
-
-6. **At the end**, summarize:
 ```
 NAVIGATION COMPLETE:
 - Outcome: [Completed / Completed with low confidence / Abandoned at step N]
@@ -934,15 +1020,16 @@ After Phase 1 is complete for a persona, switch roles to Senior UX Researcher. R
 
 1. **Run Target Audience Alignment Check** — is this persona a plausible user of this feature? Note any expertise mismatch and its confidence impact.
 2. **Score all 7 dimensions** (0-3) using the Phase 1 trace as evidence. For each:
-   - Score + Confidence (High/Medium/Low)
-   - Key finding (one sentence)
-   - Evidence (cite specific STEP numbers and quotes from Phase 1)
+  - Score + Confidence (High/Medium/Low)
+  - Key finding (one sentence)
+  - Evidence (cite specific STEP numbers and quotes from Phase 1)
 3. **Map findings to JTBD** from the persona YAML.
 4. **Note "Expected vs Actual" moments** — these are the highest-value design insights.
 
 ### Output
 
 Write per-persona think-aloud files:
+
 - `.artifacts/<KEY>/usability-thinkaloud-<persona-id>.md` — the full Phase 1 trace + Phase 2 scores
 
 Add to `journey-log.json` under `usability_dimensions.think_aloud`:
@@ -977,9 +1064,9 @@ Add to `journey-log.json` under `usability_dimensions.think_aloud`:
 }
 ```
 
-## Step 4: Write the Report
+## Step 4: Write the Summary Report
 
-Write the evaluation report to `.artifacts/<KEY>/evaluation-report.md`:
+Write a concise summary to `.artifacts/<KEY>/evaluation-report.md`. This is a lightweight reference — the canonical report with full screenshots, journeys, and usability analysis is the HTML output from Step 4b.
 
 ```markdown
 # Prototype Evaluation: <KEY>
@@ -990,409 +1077,41 @@ Write the evaluation report to `.artifacts/<KEY>/evaluation-report.md`:
 **Criteria found**: <N>
 **Depth**: <quick|thorough>
 
----
-
-## How This Evaluation Was Conducted
-
-This report was produced by `prototype-evaluate`, an automated skill that checks whether a prototype satisfies its Jira story's acceptance criteria and whether real users can navigate the flows.
-
-**What happened, step by step:**
-
-1. **Fetched the Jira story** (`<KEY>`) and extracted <N> acceptance criteria, along with any supporting documentation (architecture docs, reference UIs, UX research) linked in the ticket.
-2. **Classified each criterion** into tiers based on how it can be verified:
-   - *Tier 1 (self-evident)* — checkable directly from the prototype source code
-   - *Tier 2 (external reference)* — requires comparison against another system or document
-   - *Tier 3 (runtime)* — requires a running backend to verify completely
-   - *Tier 4 (subjective)* — requires human judgment on quality or adequacy
-3. **Evaluated each criterion** against the prototype, producing a PASS, FAIL, or FLAGGED verdict with specific evidence.
-4. **Extracted personas and goals** from the RFE and strategy brief (if available) to define click-through journeys a real user would follow.
-5. **Ran Playwright walkthroughs** for each journey — a headless browser clicked through the prototype step by step, following the exact path a user would take. Screenshots were captured at key moments.
-6. *(If usability testing context was available)* **Scored 7 usability dimensions** using Zack Bodnar's [automated-usability-testing](https://gitlab.cee.redhat.com/zbodnar/automated-usability-testing) framework — persona knowledge constraints, patience models, and a 7-dimension rubric applied to the journey evidence from step 5.
-7. **Compiled this report** with all verdicts, journey logs, screenshots, and items flagged for human review.
-
-**Where the data comes from — and which tool produced it:**
-
-| Report Section | Data Source | Tool / Skill |
-|----------------|------------|--------------|
-| Acceptance criteria (AC-1, AC-2, ...) | Jira ticket `<KEY>` | `prototype-evaluate` (this skill) via Atlassian MCP |
-| Tier classification & verdicts | Prototype source code analysis | `prototype-evaluate` (this skill) |
-| Persona definitions & goals | RFE snapshot or linked RFE ticket | `prototype-evaluate`, reading from `prototype-create` artifacts |
-| Expected UI paths | Strategy brief decisions | `prototype-evaluate`, reading from [decision-kit](https://github.com/jnemargut/decision-kit) artifacts |
-| Journey walkthroughs & screenshots | Live prototype at `<URL>` | `prototype-evaluate` via Playwright |
-| Usability dimension scores (0-3) | Persona YAML files + 7-dimension rubric | [automated-usability-testing](https://gitlab.cee.redhat.com/zbodnar/automated-usability-testing) by Zack Bodnar |
-| Patience tracking & confusion events | Persona behavioral constraints | [automated-usability-testing](https://gitlab.cee.redhat.com/zbodnar/automated-usability-testing) by Zack Bodnar |
-| Persona sensitivity analysis | Cross-persona score comparison | [automated-usability-testing](https://gitlab.cee.redhat.com/zbodnar/automated-usability-testing) by Zack Bodnar |
-
-**Journey source**: <State one of the following based on how journeys were defined in Step 1c>
-- "Extracted from explicit user stories in the RFE" — the RFE had formal "As a [role], I want [goal]" stories
-- "Derived from acceptance criteria and proposed solution" — the RFE had a structured format but no formal user stories; journeys were inferred from the ACs and solution description
-- "Inferred from prototype UI affordances" — no RFE or user stories were available; journeys were constructed from what the prototype's UI offers (forms, tables, navigation)
-- "Cross-referenced with strategy brief decisions" — append this if `.artifacts/<KEY>/decisions/strategy-brief.md` was available and used to inform the expected UI paths
-
-This transparency helps reviewers judge how much to trust journey verdicts. Journeys extracted from explicit user stories are higher confidence than those inferred from UI affordances alone.
+Full methodology and evidence: see `evaluation-report.html`
 
 ---
 
-## Summary
+## Results
 
 | Verdict | Count |
 |---------|-------|
 | PASS    | <n>   |
 | FAIL    | <n>   |
 | FLAGGED | <n>   |
+| Journeys | <n>/<N> completed |
+| Usability | <X>/21 (if Step 3b ran) |
 
-## Criterion-to-Reference Map
+## Acceptance Criteria
 
-| Criterion | Reference | Type | Fetchable |
-|-----------|-----------|------|-----------|
-| AC-1 | (none — self-evident) | — | — |
-| AC-2 | odh-dashboard.md | Architecture doc | No (pointer only) |
-| AC-3 | https://rhoai-0024f5.pages.redhat.com/settings/user-management/roles/create | Reference UI | Yes |
-| AC-4 | kube-auth-proxy.md, odh-dashboard.md | Architecture doc | No (pointer only) |
-| AC-5 | Role Management Prototype Research Findings | UX Research | No (pointer only) |
+| ID | Criterion (verbatim from Jira) | Verdict |
+|----|-------------------------------|---------|
+| AC-1 | <verbatim text> | PASS / FAIL / FLAGGED |
+| AC-2 | <verbatim text> | PASS / FAIL / FLAGGED |
 
-(If no supporting documentation section in ticket: "No supporting documentation found. Cross-system criteria flagged without reference.")
+## Evaluator Checks (inferred — not from Jira)
 
-## Acceptance Criteria Results
-
-### AC-1: <criterion text>
-**Tier**: 1 (self-evident)
-**Verdict**: PASS | FAIL | FLAGGED
-**Rationale**: <1–3 sentences explaining why, with specific evidence>
-**Evidence**: <file:line, element, or URL observed>
-
-### AC-2: <criterion text>
-**Tier**: 2 (requires external reference)
-**Verdict**: FLAGGED
-**Rationale**: <what was found, what couldn't be verified>
-**Reference checked**: <URL or "none available">
-**Human action needed**: <specific ask — e.g., "compare layout with ACM role creation page">
-
-### AC-3: <criterion text>
-**Tier**: 3 (requires runtime verification)
-**Verdict**: FLAGGED
-**Observable**: <what IS checkable — e.g., "validation error messages exist in the form">
-**Not verifiable**: <what requires runtime — e.g., "RBAC correctness depends on backend">
-
-### AC-4: <criterion text>
-**Tier**: 4 (subjective)
-**Verdict**: FLAGGED
-**Observations**: <concrete evidence — e.g., "Found raw terms: apiGroups, ClusterRole, verbs in dropdown labels">
-**Question for reviewer**: <specific judgment call — e.g., "Are these translations adequate for RHOAI users?">
-
-...
-
-## Persona Journeys
-
-Each journey below simulates a real user clicking through the prototype to accomplish a goal. The persona and goal come from the RFE's user stories; the expected click path comes from the strategy brief decisions (if available) or standard UI patterns. Playwright automates the browser — every click, every form fill, every verification happens via visible UI elements, never by navigating directly to a URL.
-
-Screenshots are captured at key moments: when a new view loads, when a form opens, when a form is filled, and when something fails. Below each screenshot, a narration explains what the evaluator observed, where the evidence came from, and what it means for the acceptance criteria.
-
-### Journey 1: <journey title>
-
-**Persona**: <role from user story>
-**Goal**: <what this persona is trying to accomplish, in plain language>
-**Source**: Story <N> + Decision <N> (<decision summary>)
-**Why this journey**: <1 sentence — which user story or AC does this journey exercise?>
-**Verdict**: PASS | FAIL | PARTIAL (<steps completed>/<steps expected>)
-
----
-
-**Step 1 — Navigate to entry point**
-
-| Action | Target | Result | Time |
-|--------|--------|--------|------|
-| navigate | /ai-hub/models | success | 0ms |
-
-> *Starting point for this journey. The persona opens the AI Hub models page, which is the top-level entry for all model management tasks. This is the expected landing based on the prototype's navigation structure.*
-
----
-
-**Step 2 — Select the target tab**
-
-| Action | Target | Result | Time |
-|--------|--------|--------|------|
-| click | Tab > External providers | success | 3102ms |
-
-![Step 2: External providers tab](screenshots/journey-1-step-2.png)
-
-> *The persona clicks the "External providers" tab. This tab exists because Decision 3 in the strategy brief chose a tab-based layout for separating provider management from model deployments. The tab loaded in 3.1 seconds — within acceptable range. The providers table is now visible with column headers and an action button.*
-
----
-
-**Step 3 — Initiate the creation flow**
-
-| Action | Target | Result | Time |
-|--------|--------|--------|------|
-| click | Button > Register provider | success | 5204ms |
-
-![Step 3: Register provider modal opened](screenshots/journey-1-step-3.png)
-
-> *The "Register provider" button opened a modal form (per Decision 3: "Creation Flow: modal form"). The form contains fields for name, endpoint, authentication type, and secret. This satisfies AC-1 ("a form-based UI for registering providers"). All form fields have visible labels.*
-
----
-
-**Step 4 — Fill the form** *(thorough mode only)*
-
-| Action | Target | Result | Time |
-|--------|--------|--------|------|
-| fill | Form fields (name, endpoint, auth, secret) | success | 7830ms |
-
-![Step 4: Form filled](screenshots/journey-1-step-4.png)
-
-> *Test data used: name="OpenAI", endpoint="https://api.openai.com/v1", auth type="API Key", secret="sk-test-xxx". These values are derived from the RFE domain (external AI model providers). All fields accepted input without validation errors. The "Register" button became enabled after all required fields were filled.*
-
----
-
-**Step 5 — Submit**
-
-| Action | Target | Result | Time |
-|--------|--------|--------|------|
-| click | Button > Register | success | 8901ms |
-
-> *Form submitted successfully. The modal closed and the page refreshed. No error messages appeared.*
-
----
-
-**Step 6 — Verify the result**
-
-| Action | Target | Result | Time |
-|--------|--------|--------|------|
-| verify | New provider in table | success | 10205ms |
-
-![Step 6: Provider appears in table](screenshots/journey-1-step-6.png)
-
-> *The new provider "OpenAI" now appears in the providers table. This confirms the full create flow works end-to-end: navigate → open form → fill → submit → verify. Satisfies AC-1 and AC-3.*
-
----
-
-### Journey 2: <journey title>
-
-**Persona**: <role>
-**Goal**: <what this persona is trying to accomplish>
-**Source**: Story <N> + Decision <N>
-**Why this journey**: <which user story or AC this exercises>
-**Verdict**: FAIL (step <N> blocked)
-
----
-
-**Step 1 — Navigate to entry point**
-
-| Action | Target | Result | Time |
-|--------|--------|--------|------|
-| navigate | /ai-hub/models | success | 0ms |
-
-> *Same entry point as Journey 1. The persona starts at the AI Hub models page.*
-
----
-
-**Step 2 — Select the target tab**
-
-| Action | Target | Result | Time |
-|--------|--------|--------|------|
-| click | Tab > Deployments | success | 3050ms |
-
-![Step 2: Deployments tab](screenshots/journey-2-step-2.png)
-
-> *The "Deployments" tab loaded successfully, showing the deployments list view.*
-
----
-
-**Step 3 — Initiate the creation flow**
-
-| Action | Target | Result | Time |
-|--------|--------|--------|------|
-| click | Button > Register external model | success | 5100ms |
-
-![Step 3: Register model modal](screenshots/journey-2-step-3.png)
-
-> *The registration modal opened. Basic form fields are visible (name, provider, API format). However, the form does not include the multi-provider weight fields expected by AC-7.*
-
----
-
-**Step 4 — BLOCKED**
-
-| Action | Target | Result | Time |
-|--------|--------|--------|------|
-| fill | Multi-provider weights | BLOCKED | — |
-
-![Step 4: BLOCKED — no weight fields found](screenshots/journey-2-step-4-FAIL.png)
-
-> *The journey could not continue. The multi-provider routing weight fields described in AC-7 ("ability to configure weighted routing across multiple providers") are not present in the form. The Playwright script searched for weight/percentage inputs and found none. This is a missing feature, not a navigation issue — the form exists but is incomplete.*
->
-> **Linked acceptance criterion**: AC-7 (multi-provider routing not implemented)
-> **Impact**: The persona cannot complete the task of configuring multi-provider routing through the UI.
-
----
-
-...
-
-## Path Comparison (Expected vs Actual)
-
-| Journey | Persona | Expected Steps | Actual Steps | Match | Drift Notes |
-|---------|---------|---------------|--------------|-------|-------------|
-| Register Provider | Model Deployer | 6 | 6 | 100% | — |
-| Register Model | Model Deployer | 5 | 4 (blocked) | 80% | Missing: multi-provider weight fields |
-| View/Manage Models | Model Deployer | 4 | 4 | 100% | — |
-| Enable for MaaS | Model Deployer | 3 | 1 (blocked) | 33% | Missing: MaaS action in kebab menu |
-| View Provider Details | Model Deployer | 3 | 2 (partial) | 67% | Detail view shows "out of scope" modal |
-
-## Usability Dimension Scores
-
-> **Powered by [automated-usability-testing](https://gitlab.cee.redhat.com/zbodnar/automated-usability-testing)** (Zack Bodnar)
-> This section uses persona-based usability evaluation — a separate methodology from the acceptance criteria verdicts above. The 7 dimensions below come from Zack Bodnar's usability rubric, scored by applying JTBD-grounded persona constraints (knowledge gaps, patience models, behavioral attributes) to the Playwright journey evidence captured in Step 3. The personas, rubric, and scoring criteria are maintained in the [automated-usability-testing repo](https://gitlab.cee.redhat.com/zbodnar/automated-usability-testing) and vendored into this project at `.context/usability-testing/`.
-
-(If Step 3b did not run, replace this entire section with: "Usability dimension scoring skipped. The automated-usability-testing context is not bootstrapped. Run `make context` to enable persona-based usability scoring powered by [automated-usability-testing](https://gitlab.cee.redhat.com/zbodnar/automated-usability-testing).")
-
-**Personas evaluated**: <persona-1 name>, <persona-2 name>
-**Overall usability score**: <X>/21
-
-| Dimension | <Persona 1> | <Persona 2> | Composite | Confidence | Key Finding |
-|-----------|-------------|-------------|-----------|------------|-------------|
-| Workflow Continuity | X/3 | X/3 | X/3 | High/Med/Low | <one sentence> |
-| Cross-Persona Handoffs | X/3 | X/3 | X/3 | High/Med/Low | <one sentence> |
-| Scalability & Complexity | X/3 | X/3 | X/3 | High/Med/Low | <one sentence> |
-| System Status & Trust | X/3 | X/3 | X/3 | High/Med/Low | <one sentence> |
-| Technical Abstraction | X/3 | X/3 | X/3 | High/Med/Low | <one sentence> |
-| Mental Model Fidelity | X/3 | X/3 | X/3 | High/Med/Low | <one sentence> |
-| Accessibility & Inclusion | X/3 | X/3 | X/3 | High/Med/Low | <one sentence> |
-
-### Persona Sensitivity
-
-(Dimensions where scores diverge by 2+ points across personas — these indicate the UI serves one user type but fails another.)
-
-- **<Dimension>**: <Persona A> scored X/3 vs <Persona B> scored Y/3 — <why the gap exists>
-
-### Persona Patience Tracking
-
-| Persona | Journey | Patience Start | Patience End | Abandoned | Confusion Events | Key Friction Point |
-|---------|---------|---------------|-------------|-----------|-----------------|-------------------|
-| <persona-1> | Journey 1 | 100% | X% | Yes/No | N | <what caused the most drain> |
-| <persona-2> | Journey 1 | 100% | X% | Yes/No | N | <what caused the most drain> |
-
-### Usability Findings
-
-**Critical (dimensions scored 0-1):**
-- **<Dimension>** (<persona>): <what was broken and which journey step, citing evidence>
-
-**Moderate (dimensions scored 2):**
-- **<Dimension>** (<persona>): <friction observed and workaround taken>
-
-**Strengths (dimensions scored 3):**
-- **<Dimension>**: <what the UI did well>
-
-### Think-Aloud Narratives (Step 3c — only if `--usability=deep|thorough`)
-
-Include this section only when Step 3c ran. If skipped, omit entirely (don't show a placeholder).
-
-For each persona that went through the think-aloud:
-
-#### <Persona Name> — Think-Aloud Trace
-
-**Outcome**: Completed / Completed with low confidence / Abandoned at step N
-**Final patience**: X% | **Confusion events**: N | **CLI escapes**: N
-**Response strategy**: N guess-and-continue, N help-seeking, N abandon
-
-<details>
-<summary>Full think-aloud trace (N steps)</summary>
-
-**Step 1 — <action>**
-
-*What I see:* <persona's description of the screen>
-
-*What I'm thinking:* <first person internal monologue>
-
-*Confidence:* high / low / none
-*Patience:* X% <direction arrow>
-
-(If confusion event:)
-> **Confusion** — <what triggered it>. Response: <guess-and-continue / help-seeking / abandon>
-
-(If expected vs actual mismatch:)
-> **Expected vs Actual** — Persona expected: <X>. UI showed: <Y>. Impact: <what this meant for navigation>
-
-(If missing positive feedback:)
-> **Missing feedback** — <step succeeded but no confirmation shown>
-
-**Step 2 — <action>**
-...
-
-</details>
-
-#### Think-Aloud Dimension Scores
-
-| Dimension | Inference (3b) | Think-Aloud (3c) | Delta | What Think-Aloud Surfaced |
-|-----------|---------------|-------------------|-------|--------------------------|
-| <dimension> | X/3 | X/3 | 0 or +/-N | <what the narrative revealed that inference missed, or "Agreement"> |
-
-#### Key Diagnostic Insights (from think-aloud only)
-
-These findings are not visible from inference-based scoring alone:
-
-- **<Finding type>**: <specific insight with step citation>
-
-Types to look for:
-- **False confidence**: persona completed a step but doesn't know if data is correct
-- **Guess-and-pray**: persona submitted uncertain data rather than seeking help
-- **Wrong mental model**: persona expected X but UI organized around Y
-- **Missing positive feedback**: success with no confirmation erodes trust
-- **Cumulative frustration**: stress built across steps beyond what per-step analysis shows
-
-## Flagged for Human Review
-
-Items below need human judgment. Each includes why it was flagged and what action is needed.
-
-| # | Criterion | Tier | Why Flagged | Action Needed |
-|---|-----------|------|-------------|---------------|
-| AC-3 | ACM consistency | 2 | Reference UI found but comparison is subjective | Compare prototype layout with ACM reference |
-| AC-4 | RBAC validation | 3 | Validation UI exists but correctness requires runtime | Verify validation rules against cluster behavior |
-| AC-5 | Readability | 4 | Found 3 raw k8s terms in UI | Judge if translations are user-friendly enough |
-
-These flagged items do not block the evaluation. Review them asynchronously and update verdicts when ready.
-
----
+| ID | Check | Verdict |
+|----|-------|---------|
+| NAV-1 | <description> | PASS / FAIL |
 
 ## Conclusion
 
-### Overall Assessment
+<2-3 sentences: what worked, what's broken, what needs human review>
 
-<2-3 sentences summarizing the prototype's readiness. State clearly: does it satisfy the acceptance criteria? Can users navigate the flows? What is the single biggest gap?>
-
-### By the Numbers
-
-| Metric | Value |
-|--------|-------|
-| Acceptance criteria evaluated | <N> |
-| PASS | <n> |
-| FAIL | <n> |
-| FLAGGED (needs human review) | <n> |
-| Journeys attempted | <N> |
-| Journeys completed | <n>/<N> |
-| Path match (avg across journeys) | <X%> |
-| Usability score (if Step 3b ran) | <X>/21 |
-
-### What Worked
-
-<Bulleted list of 2-4 things the prototype does well — cite specific ACs that passed and journeys that completed cleanly. Be concrete: "AC-1 PASS — the role creation form exists and is functional" not "the form works.">
-
-### What Needs Attention
-
-<Bulleted list of 2-4 things that need fixing before this prototype is ready, ordered by severity. For each item, reference the specific AC or journey that surfaced it, and state what action is needed.>
-
-- **[FAIL] AC-7**: Multi-provider routing weights — form exists but is missing weight configuration fields. Needs implementation.
-- **[Journey 4 blocked]**: MaaS enablement — no action available in the kebab menu. The flow is unreachable.
-- **[FLAGGED] AC-3**: ACM consistency — layout appears similar but needs human side-by-side comparison with the reference UI.
-
-### Recommended Next Steps
-
-1. <Most critical action — what to fix first and why>
-2. <Second priority — what to address next>
-3. <If FLAGGED items exist: "Review the <N> flagged items in the Human Review section above — these require human judgment before verdicts can be finalized.">
-
----
-
-*Report generated by `prototype-evaluate` ([prototype-creator](https://github.com/jwforres/prototype-creator)). Acceptance criteria sourced from Jira `<KEY>`. Journey evidence captured via Playwright against `<URL>`. Usability dimension scoring (when present) powered by [automated-usability-testing](https://gitlab.cee.redhat.com/zbodnar/automated-usability-testing) by Zack Bodnar — personas, rubric, and patience models are maintained in that repo and vendored into `.context/usability-testing/`.*
+Full report: `evaluation-report.html`
 ```
+
+**Keep it short.** The markdown file is a summary only — no methodology section, no inline screenshots, no journey narratives. All of that lives in the HTML report.
 
 ## Step 4b: Generate HTML Report
 
@@ -1439,18 +1158,20 @@ This CSV is the **primary machine-readable output** of the evaluation. It is des
 
 ### CSV Schema
 
-| Column | Type | Description |
-|--------|------|-------------|
-| `prototype_id` | string | The Jira key being evaluated (e.g., `RHAISTRAT-1536`). Enables stacking CSVs from multiple runs. |
-| `story_id` | string | Which user story this criterion belongs to (e.g., `story-1`, `story-2`). Groups criteria by story for per-story coverage analysis. Use `nav` for navigation checks, `general` for criteria not tied to a specific story. |
-| `source` | string | Where the criterion came from: `jira` (extracted from ticket), `rfe` (from linked RFE), `inferred` (derived from prototype analysis), or `strategy-brief` (from decision artifacts). |
-| `criterion_id` | string | Unique ID within this evaluation (e.g., `AC-1`, `NAV-1`). |
-| `criterion_text` | string | The acceptance criterion as a testable statement. |
-| `tier` | int/string | Evaluation tier: `1` (self-evident), `2` (external ref), `3` (runtime), `4` (subjective), `nav` (navigation check). |
-| `verdict` | string | `PASS`, `FAIL`, or `FLAGGED`. |
-| `rationale` | string | Why this verdict was reached, with specific evidence. |
-| `reference_used` | string | URL or doc name checked for Tier 2 criteria. Empty if not applicable. |
-| `human_action` | string | What a human reviewer needs to do for FLAGGED items. Empty if not applicable. |
+
+| Column           | Type       | Description                                                                                                                                                                                                              |
+| ---------------- | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `prototype_id`   | string     | The Jira key being evaluated (e.g., `RHAISTRAT-1536`). Enables stacking CSVs from multiple runs.                                                                                                                         |
+| `story_id`       | string     | Which user story this criterion belongs to (e.g., `story-1`, `story-2`). Groups criteria by story for per-story coverage analysis. Use `nav` for navigation checks, `general` for criteria not tied to a specific story. |
+| `source`         | string     | Where the criterion came from: `jira` (extracted from ticket), `rfe` (from linked RFE), `inferred` (derived from prototype analysis), or `strategy-brief` (from decision artifacts).                                     |
+| `criterion_id`   | string     | Unique ID within this evaluation (e.g., `AC-1`, `NAV-1`).                                                                                                                                                                |
+| `criterion_text` | string     | The acceptance criterion — verbatim Jira text for `source: jira`, evaluator description for `source: inferred`.                                                                                                          |
+| `tier`           | int/string | Evaluation tier: `1` (self-evident), `2` (external ref), `3` (runtime), `4` (subjective), `nav` (navigation check).                                                                                                      |
+| `verdict`        | string     | `PASS`, `FAIL`, or `FLAGGED`.                                                                                                                                                                                            |
+| `rationale`      | string     | Why this verdict was reached, with specific evidence. (Displayed as "Evidence" in the report.)                                                                                                                           |
+| `reference_used` | string     | URL or doc name checked for Tier 2 criteria. Empty if not applicable.                                                                                                                                                    |
+| `human_action`   | string     | What a human reviewer needs to do for FLAGGED items. Empty if not applicable.                                                                                                                                            |
+
 
 ### Example
 
@@ -1536,7 +1257,7 @@ If Step 3b was skipped, add:
 Usability Dimensions:  skipped (run `make context` to bootstrap)
 ```
 
-### Step 7: Refinement Suggestions (`--feed-to-refine`)
+## Step 7: Refinement Suggestions (`--feed-to-refine`)
 
 Only run this step if `--feed-to-refine` is passed. This outputs a structured JSON artifact that `prototype-refine` can consume to automatically address evaluation failures.
 
@@ -1596,6 +1317,7 @@ Write to `.artifacts/<KEY>/refinement-suggestions.json`:
 ```
 
 **Rules for generating suggestions:**
+
 - Only include criteria with verdict FAIL (not FLAGGED — those need human judgment, not auto-fix)
 - Only include journey failures (not passes or partials)
 - Only include usability issues with scores 0-1 (critical/broken) from Step 3b, if it ran
@@ -1603,21 +1325,19 @@ Write to `.artifacts/<KEY>/refinement-suggestions.json`:
 - The `where` field should point to the specific file or component where the fix would go
 - If `--feed-to-refine` is not passed, skip this step entirely
 
-### Step 8: Post to Jira (`--post-to-jira`)
-
-See the "Post-Evaluation Feedback to Jira" section under Future Improvements for the full specification. Only run if `--post-to-jira` is passed.
-
 ### Output Artifacts
 
-| File | Contents |
-|------|----------|
-| `.artifacts/<KEY>/evaluation-report.md` | Full report with criteria verdicts, collapsible journey logs, path comparison, and usability dimension scores |
-| `.artifacts/<KEY>/evaluation-report.html` | Self-contained HTML report with embedded screenshots (shareable as a single file) |
-| `.artifacts/<KEY>/evaluation-report.csv` | Machine-readable CSV with per-criterion results (primary structured output) |
-| `.artifacts/<KEY>/usability-dimensions.csv` | Per-persona usability dimension scores (only if Step 3b ran) |
-| `.artifacts/<KEY>/journey-log.json` | Raw Playwright step log with usability dimension overlays — every action, target, result, and timestamp |
-| `.artifacts/<KEY>/journey-test.mjs` | The generated Playwright script (kept for re-runs and debugging) |
-| `.artifacts/<KEY>/refinement-suggestions.json` | Structured suggestions for prototype-refine (only if `--feed-to-refine`) |
+
+| File                                           | Contents                                                                                                      |
+| ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `.artifacts/<KEY>/evaluation-report.md`        | Full report with criteria verdicts, collapsible journey logs, path comparison, and usability dimension scores |
+| `.artifacts/<KEY>/evaluation-report.html`      | Self-contained HTML report with embedded screenshots (shareable as a single file)                             |
+| `.artifacts/<KEY>/evaluation-report.csv`       | Machine-readable CSV with per-criterion results (primary structured output)                                   |
+| `.artifacts/<KEY>/usability-dimensions.csv`    | Per-persona usability dimension scores (only if Step 3b ran)                                                  |
+| `.artifacts/<KEY>/journey-log.json`            | Raw Playwright step log with usability dimension overlays — every action, target, result, and timestamp       |
+| `.artifacts/<KEY>/journey-test.mjs`            | The generated Playwright script (kept for re-runs and debugging)                                              |
+| `.artifacts/<KEY>/refinement-suggestions.json` | Structured suggestions for prototype-refine (only if `--feed-to-refine`)                                      |
+
 
 ## Step 6b: Log Run
 
@@ -1628,10 +1348,12 @@ node scripts/log-run.js .artifacts/<KEY>/ --note="description of this run"
 ```
 
 This reads the eval artifacts and:
+
 1. Appends a summary row to `.artifacts/runs/run-log.csv` (pass/fail counts, usability score, skill version, etc.)
 2. Archives key artifacts (CSV, JSON, HTML) to `.artifacts/runs/<KEY>/<run-id>/`
 
 To compare runs:
+
 ```bash
 node scripts/compare-runs.js RHAISTRAT-1740
 ```
@@ -1656,167 +1378,5 @@ If the user says something like "evaluate my prototype" or "check if the prototy
 > 2. The prototype URL (e.g., `http://localhost:3000`)
 >
 > Which story should I check the prototype against?
-
-## Future Improvements (not yet wired up)
-
-These capabilities are planned but not currently active.
-
-### Playwright Fuzzy Matching
-
-Currently, Playwright journey steps require exact button text or selector matches. If a button says "Register a provider" but the journey expects "Register provider", the step fails. Future improvement: add fuzzy text matching to the journey script so Playwright can infer the correct element when the text is close but not exact. Approaches:
-- Use `page.getByRole('button', { name: /register.*provider/i })` with regex patterns derived from the journey definition
-- Fall back to `page.locator('text=...')` with a similarity threshold
-- Log the fuzzy match so the report shows what was expected vs. what was found
-
-### MR Delta Prioritization
-
-When a GitLab/GitHub MR is linked to the Jira ticket being evaluated, the eval should prioritize the files changed in that MR rather than scanning the entire prototype codebase. This focuses the evaluation on what's new or changed, reducing noise from pre-existing code. Requires:
-- Detecting linked MRs from the Jira ticket (via `getJiraIssueRemoteIssueLinks` or issue links)
-- Fetching the MR diff (via GitLab API or `gh` CLI)
-- Scoping the AC evaluation to the changed files first, then falling back to full codebase scan for criteria that can't be resolved from the diff alone
-
-### Future Tools
-
-### Outcome Tracing (Jira/Confluence)
-
-<!-- mcp__atlassian__getJiraIssueRemoteIssueLinks -->
-<!-- mcp__atlassian__getConfluencePage -->
-
-- `getJiraIssueRemoteIssueLinks` — follow links between stories → epics → initiatives/outcomes. Enables evaluating whether the prototype serves the *strategic* goal, not just the acceptance criteria.
-- `getConfluencePage` — pull Outcome definitions, strategy docs, or design specs stored in Confluence. Useful when "what good looks like" is documented outside Jira.
-
-### Post-Evaluation Feedback to Jira (`--post-to-jira`)
-
-When the `--post-to-jira` flag is passed, post a structured evaluation summary as a comment on the Jira ticket after the report is generated. This lets PMs see results without leaving the ticket.
-
-**This is opt-in.** Never post to Jira unless the user explicitly passes `--post-to-jira`. The comment is additive (a new comment, not an edit to the ticket description).
-
-**How to post:**
-
-```
-mcp__atlassian__addCommentToJiraIssue(issueIdOrKey: "<KEY>", body: "<comment body>")
-```
-
-**Comment format:**
-
-```markdown
-## Prototype Evaluation: <KEY>
-
-| Verdict | Count |
-|---------|-------|
-| PASS | <n> |
-| FAIL | <n> |
-| FLAGGED | <n> |
-
-### Delta from Acceptance Criteria
-
-**Passing** (<n>/<total>):
-- AC-1: Form-based UI for defining custom roles
-- AC-2: Provider-specific configuration fields
-- ...
-
-**Failing** (<n>):
-- AC-7: Multi-provider routing with weights — only single provider selection, no weight fields
-- AC-14: Filter/sort by model type, status, provider — only name search exists
-
-**Flagged for human review** (<n>):
-- AC-3: Credentials never inlined — UI uses secretRef but backend enforcement unverifiable
-- AC-4: Provider namespace scoping — K8s enforcement unverifiable from UI
-
-### Journey Results
-- Journey 1 (Register Provider): PASS (6/6 steps)
-- Journey 2 (Register Model): FAIL — blocked at step 2
-
-Full report: `.artifacts/<KEY>/evaluation-report.html`
-```
-
-**Parse `--post-to-jira` from `$ARGUMENTS`.** Accept formats like:
-- `/prototype-evaluate RHAISTRAT-1536 http://localhost:4200 --post-to-jira`
-- `/prototype-evaluate RHAISTRAT-1536 http://localhost:4200 --depth=thorough --post-to-jira`
-
-**Error handling:** If the Jira comment fails (auth error, network issue), log a warning and continue — do not fail the evaluation. The report is still written locally regardless.
-
-### MR/PR Review Comments (CodeRabbit-style)
-
-<!-- gh pr comment / GitLab MR note API -->
-<!-- COMMENTED OUT — not wired up yet. Requires: gh CLI auth or GitLab API token -->
-
-**What this would look like in practice:**
-
-When a prototype MR is opened, the evaluation runs and posts directly on the merge request — the same way CodeRabbit posts code quality comments. Reviewers see findings in their normal review flow without opening a separate report.
-
-**Summary comment** (posted at the top of the MR):
-
-```markdown
-## 🔍 Prototype Evaluation: RHAISTRAT-1536
-
-| Verdict | Count |
-|---------|-------|
-| ✅ PASS | 3 |
-| ❌ FAIL | 1 |
-| ⚠️ FLAGGED | 2 |
-
-### Failures
-- **AC-2**: Granular selection — no multi-select for API groups found
-- **NAV-2**: /roles/create/advanced — only reachable via URL, not clicks
-
-### Flagged for Human Review
-- **AC-3**: ACM consistency — reference UI compared, layout similar but needs confirmation
-- **AC-5**: Readability — found raw terms `apiGroups`, `ClusterRole` in dropdowns
-
-📄 Full report: `.artifacts/RHAISTRAT-1536/evaluation-report.md`
-```
-
-**Inline file comments** (posted on specific lines in changed files):
-
-```
-// On src/pages/roles/Create.tsx, line 42:
-⚠️ AC-4 (FLAGGED): Form validation UI present (error states visible) but RBAC
-correctness cannot be verified from UI alone. Needs runtime verification.
-```
-
-```
-// On src/pages/roles/Create.tsx, line 87:
-❌ AC-2 (FAIL): Expected multi-select dropdowns for API groups, resources, and verbs.
-Only a single text input found here. Acceptance criterion requires granular selection
-"without manual typing."
-```
-
-**Review threads** — FLAGGED items are posted as "pending" review threads that stay open until a human resolves them. This prevents accidental merge of prototypes with unverified criteria.
-
-**How it would run:**
-
-```bash
-# In CI (GitLab or GitHub Actions):
-# 1. Evaluation runs as part of the MR pipeline
-# 2. Results posted via API:
-gh pr comment $PR_NUMBER --body "$(cat .artifacts/<KEY>/evaluation-report.md)"
-
-# For inline comments on specific files:
-gh api repos/{owner}/{repo}/pulls/{pr}/comments \
-  --field body="❌ AC-2: No multi-select found" \
-  --field path="src/pages/roles/Create.tsx" \
-  --field line=87
-```
-
-**Progress indicator** (like CodeRabbit's "working" comment):
-
-When triggered, the first thing posted is a status comment so reviewers know it's running:
-
-```markdown
-## 🔍 Prototype Evaluation: In Progress...
-
-Evaluating prototype against 5 acceptance criteria from RHAISTRAT-1536.
-
-- [x] Fetched Jira story
-- [x] Extracted 5 acceptance criteria
-- [x] Mapped supporting documentation
-- [ ] Evaluating criteria (3/5 complete)
-- [ ] Running navigation reachability test
-
-⏱️ Started 30s ago
-```
-
-This comment is **updated in place** as the evaluation progresses (edit the same comment, don't post new ones). When done, it's replaced with the final summary.
 
 $ARGUMENTS
