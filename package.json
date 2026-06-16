@@ -1,0 +1,29 @@
+{
+  "name": "prototype-creator",
+  "version": "1.0.0",
+  "description": "Takes RFE user stories and produces rapid prototypes that make the proposed experience tangible before engineering commits. Sits between [rfe-creator](https://github.com/jwforres/rfe-creator) (upstream — the **WHAT**) and [strat-creator](https://github.com/ederign/strat-creator) (downstream — the **HOW**). prototype-creator is the **SHOW** — making the vision concrete through clickable prototypes so teams can see, critique, and decide before a single line of production code is written. Integrates with [decision-kit](https://github.com/jnemargut/decision-kit) to surface design decisions at every meaningful junction and keep humans in the loop.",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs",
+    "test": "tests"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/andybraren/prototype-creator.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/andybraren/prototype-creator/issues"
+  },
+  "homepage": "https://github.com/andybraren/prototype-creator#readme",
+  "dependencies": {
+    "@playwright/test": "^1.61.0",
+    "googleapis": "^173.0.0"
+  }
+}

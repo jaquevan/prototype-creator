@@ -9,6 +9,40 @@ allowed-tools: Read, Write, Edit, Glob, Grep, Bash, AskUserQuestion, mcp__atlass
 
 Evaluate a running prototype against its Jira story's acceptance criteria. Produces a per-criterion verdict (PASS / FAIL / FLAGGED) with rationale, plus a navigation reachability check via Playwright.
 
+## Prerequisites — Read This First
+
+Before running an eval, ensure the required context directories are bootstrapped. These provide the personas, usability rubric, and design guidelines that Steps 3b, 3c, and 3e depend on. **If these are missing, usability scoring and consistency checking will be skipped and the report will be incomplete.**
+
+Run from the project root (`/Users/ejaquez/Desktop/prototype-creator`):
+
+```bash
+make context
+```
+
+Or bootstrap individually:
+
+```bash
+bash scripts/bootstrap-usability-testing.sh   # → .context/usability-testing/
+bash scripts/bootstrap-consistency-checker.sh  # → .context/consistency-checker/
+```
+
+**Verify before running the eval:**
+
+| Directory | What it provides | Steps that use it |
+|-----------|-----------------|-------------------|
+| `.context/usability-testing/personas/` | Persona YAML files (deena-junior, alex-senior, etc.) | Step 3b (usability scoring), Step 3c (think-aloud) |
+| `.context/usability-testing/prompts/evaluate-flow.md` | 7-dimension rubric and scoring protocol | Step 3b, Step 3c |
+| `.context/consistency-checker/guidelines/` | PatternFly/RHOAI design guideline markdown files | Step 3e (consistency check) |
+| `.context/consistency-checker/scripts/analyze.py` | Grep-based source code analysis engine | Step 3e |
+
+**These paths are relative to the project root**, not the artifacts directory. The project root is the directory containing this SKILL.md file's parent `.claude/` directory.
+
+If running as a subagent or in a fresh context window: verify `.context/` exists at the project root before starting. If it doesn't, run `make context` first (requires VPN for GitLab repos).
+
+**External repos these bootstrap from:**
+- [automated-usability-testing](https://gitlab.cee.redhat.com/zbodnar/automated-usability-testing) by Zack Bodnar — personas, rubric, think-aloud protocol
+- [consistency-checker](https://gitlab.cee.redhat.com/bmorley/consistency-checker) by Beau Morley — PatternFly design guidelines and automated checks
+
 ## Usage
 
 ```
@@ -603,7 +637,16 @@ Capture screenshots at **key moments only** (not every single action):
 - **Step failure** — captures exactly what the user sees when something breaks
 - **Verify steps** — MUST screenshot AFTER scrolling the target element into view
 
-Save screenshots to `.artifacts/<KEY>/screenshots/journey-<N>-step-<N>.png` (e.g., `screenshots/journey-1-step-2.png`).
+Save screenshots to `.artifacts/<KEY>/screenshots/journey-<N>-step-<N>.png` (e.g., `screenshots/journey-1-step-2.png`). Use sub-step numbering (3b, 2b) when a verify step follows the main step on the same page.
+
+**Narrations must be written for designers, not developers.** The narration field on each step appears in the report and is read by non-technical reviewers. Rules:
+
+- Describe what a reviewer SEES, not DOM internals. Say "Catalog shows 30 starter kit cards but none have descriptions" not "Found 30 card elements total in DOM. Descriptions present: false."
+- When capturing a click, note WHAT was clicked — the visible text of the element. Say `Clicked "Customer Support Agent" starter kit` not "Clicked on a starter kit card."
+- Avoid character counts, boolean checks, and CSS selector language in narrations. Those belong in the journey-log.json data fields, not the human-facing narration.
+- If a verify step finds missing content, explain the impact: "Detail page is mostly empty — a user can't evaluate this kit before deploying" not "Detail page has 118 chars of content."
+
+**Scroll screenshots must be distinct.** Before capturing a scroll-verify screenshot, check if the page is actually scrollable (`document.body.scrollHeight > window.innerHeight`). If not, merge the verify into the previous step as a sub-step (2b, 3b) rather than producing a duplicate screenshot. When scrolling, scroll to a specific element (`lastCard.scrollIntoViewIfNeeded()`) rather than a pixel offset — this ensures the screenshot shows different content.
 
 **Scroll before verify screenshots.** When a verify step checks a specific element on the page (e.g., a tools section, a deployment requirements panel, a specific form field), the generated script MUST scroll that element into the viewport before taking the screenshot:
 
@@ -992,12 +1035,14 @@ STEP [n]:
 - Patience: [X% — track as depleting resource per persona's behavioral_attributes]
 ```
 
-1. **Track patience** using the persona's model:
-  - High patience: -5% per confusion, -10% per dead end, +10% per success
-  - Medium patience: -10% per confusion, -20% per dead end, +5% per success
-  - Low patience: -15% per confusion, -30% per dead end, +5% per success
-  - At 0%: persona abandons. Log why and stop.
-2. **Log special events:**
+4. **Continue narrating after assisted navigation.** When a journey step is marked `navigate-assisted`, the persona does NOT stop. The think-aloud continues from the assisted page. The persona notes the assist ("Someone told me the URL. I'm now looking at the page, but I would never have found this on my own.") then evaluates what they see — the content, layout, and information scent. This is critical because the assisted pages are where consistency violations and design issues actually live. Without continuing, we get no annotations on the most important screens.
+
+5. **Track patience** using the persona's model:
+   - High patience: -5% per confusion, -10% per dead end, +10% per success
+   - Medium patience: -10% per confusion, -20% per dead end, +5% per success
+   - Low patience: -15% per confusion, -30% per dead end, +5% per success
+   - At 0%: persona abandons. Log why and stop.
+6. **Log special events:**
   - `[CLI ESCAPE]`: Persona would leave the UI (open terminal, ask colleague, check docs)
   - `[CONTEXT LOSS]`: Navigating between pages caused loss of context
   - `[EXPECTED vs ACTUAL]`: Persona expected to find X but UI showed Y — capture both
@@ -1239,48 +1284,103 @@ If you need to update the HTML after the eval (e.g., to add AI insights or fix d
 
 ## Step 5: CSV Export
 
-Write a machine-readable CSV alongside the report at `.artifacts/<KEY>/evaluation-report.csv`.
+Write a single CSV at `.artifacts/<KEY>/evaluation-report.csv` containing three sections. This CSV is the **primary machine-readable output** — it drives the creator-evaluator loop, the ground truth comparison, and the run tracker. The schema is a contract.
 
-This CSV is the **primary machine-readable output** of the evaluation. It is designed to be consumed by downstream tools (strat-creator, QE pipelines, batch comparison scripts) and by models that work better with structured data than prose reports. The schema is a contract — columns should not be renamed or removed without updating downstream consumers.
+The three sections are separated by a blank line and a comment row starting with `#`. Consumers that don't understand comments can ignore lines starting with `#`.
 
-### CSV Schema
-
-
-| Column           | Type       | Description                                                                                                                                                                                                              |
-| ---------------- | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `prototype_id`   | string     | The Jira key being evaluated (e.g., `RHAISTRAT-1536`). Enables stacking CSVs from multiple runs.                                                                                                                         |
-| `story_id`       | string     | Which user story this criterion belongs to (e.g., `story-1`, `story-2`). Groups criteria by story for per-story coverage analysis. Use `nav` for navigation checks, `general` for criteria not tied to a specific story. |
-| `source`         | string     | Where the criterion came from: `jira` (extracted from ticket), `rfe` (from linked RFE), `inferred` (derived from prototype analysis), or `strategy-brief` (from decision artifacts).                                     |
-| `criterion_id`   | string     | Unique ID within this evaluation (e.g., `AC-1`, `NAV-1`).                                                                                                                                                                |
-| `criterion_text` | string     | The acceptance criterion — verbatim Jira text for `source: jira`, evaluator description for `source: inferred`.                                                                                                          |
-| `tier`           | int/string | Evaluation tier: `1` (self-evident), `2` (external ref), `3` (runtime), `4` (subjective), `nav` (navigation check).                                                                                                      |
-| `verdict`        | string     | `PASS`, `FAIL`, or `FLAGGED`.                                                                                                                                                                                            |
-| `rationale`      | string     | Why this verdict was reached, with specific evidence. (Displayed as "Evidence" in the report.)                                                                                                                           |
-| `reference_used` | string     | URL or doc name checked for Tier 2 criteria. Empty if not applicable.                                                                                                                                                    |
-| `human_action`   | string     | What a human reviewer needs to do for FLAGGED items. Empty if not applicable.                                                                                                                                            |
-| `consistency_violations` | string | Comma-separated guideline IDs from Step 3e that flagged violations on pages related to this criterion. Empty if Step 3e didn't run or no violations found. Appended at end to avoid breaking existing consumers.         |
-
-
-### Example
+### Section 1: Acceptance Criteria
 
 ```csv
-prototype_id,story_id,source,criterion_id,criterion_text,tier,verdict,rationale,reference_used,human_action
-RHAISTRAT-1536,story-1,jira,AC-1,"Form to create ExternalProvider with endpoint URL, auth mechanism, and secret reference",1,PASS,"RegisterProviderModal.tsx has all required form fields",,
-RHAISTRAT-1536,story-1,jira,AC-2,"Provider-specific configuration fields (Vertex project/location, Bedrock region)",1,PASS,"Optional config key/value section with domain-relevant placeholders",,
-RHAISTRAT-1536,story-1,jira,AC-3,"Credentials never inlined — only secretRef allowed",3,FLAGGED,"UI uses secretRef but backend enforcement unverifiable",,"Verify server rejects inlined credentials"
-RHAISTRAT-1536,story-2,jira,AC-7,"Multi-provider routing with weights (80% primary, 20% failover)",1,FAIL,"Only single provider selection — no weight fields",,
-RHAISTRAT-1536,nav,inferred,NAV-1,"Register Provider journey (6 steps)",nav,PASS,"Full end-to-end flow completed",,
-RHAISTRAT-1536,nav,inferred,NAV-2,"Register External Model journey (step 2 blocked)",nav,FAIL,"Register external model button not found",,
+# ACCEPTANCE CRITERIA
+prototype_id,source,criterion_id,criterion_text,verdict,evidence,fix_action,fix_file,consistency_violations
 ```
 
-If Step 3b ran, append a second CSV at `.artifacts/<KEY>/usability-dimensions.csv`:
+| Column | Description |
+|--------|-------------|
+| `prototype_id` | Jira key (e.g., `RHAISTRAT-1740`) |
+| `source` | `jira` (from ticket) or `inferred` (evaluator-added, e.g. NAV checks) |
+| `criterion_id` | `AC-1`, `AC-2` for Jira ACs; `NAV-1`, `FLAG-1` for inferred |
+| `criterion_text` | Verbatim Jira text for `jira` source. Evaluator description for `inferred`. |
+| `verdict` | `PASS`, `FAIL`, or `FLAGGED` |
+| `evidence` | Why this verdict — specific observations, journey step references, file evidence |
+| `fix_action` | One-sentence instruction for prototype-creator. What to do. Only for FAIL/FLAGGED. Empty for PASS. |
+| `fix_file` | The specific file to modify. Gives prototype-creator a starting point. Empty for PASS. |
+| `consistency_violations` | Semicolon-separated guideline IDs from Step 3e affecting this criterion's pages. Empty if none. |
+
+### Section 2: Usability Dimensions
 
 ```csv
-dimension_id,dimension_name,persona_id,persona_name,score,confidence,finding,patience_end,abandoned,confusion_events
-workflow_continuity,"Workflow Continuity & Integrity",deena-junior,"Deena - Junior Data Scientist",1,High,"User hit K8s configuration wall at step 4",55,false,2
-workflow_continuity,"Workflow Continuity & Integrity",deena-senior,"Deena - Senior Data Scientist",2,Medium,"Completed with friction — recognized terms but couldn't act",75,false,1
-cross_persona_handoffs,"Cross-Persona Context & Handoffs",deena-junior,"Deena - Junior Data Scientist",2,Medium,"Context preserved within flow but no cross-role visibility",55,false,0
+# USABILITY DIMENSIONS
+dimension_id,dimension_name,persona,score,confidence,finding,assisted_nav_impact,fix_priority
 ```
+
+| Column | Description |
+|--------|-------------|
+| `dimension_id` | e.g., `workflow_continuity`, `mental_model_fidelity` |
+| `dimension_name` | Human-readable name |
+| `persona` | Persona ID (e.g., `deena-senior`) |
+| `score` | 0-3 |
+| `confidence` | `High`, `Medium`, `Low` |
+| `finding` | One-sentence finding |
+| `assisted_nav_impact` | If score was capped by navigate-assisted, explain why. Empty otherwise. |
+| `fix_priority` | `P0` (score 0-1, loop must fix), `P1` (score 2, should fix), `P2` (score 3, no action) |
+
+### Section 3: Manual Review Baseline
+
+```csv
+# MANUAL REVIEW BASELINE
+jira_key,designer_lofi_verdict,designer_hifi_verdict,automated_verdict,verdicts_agree,source_mr,deployed_prototype,designer_evaluation
+```
+
+| Column | Description |
+|--------|-------------|
+| `jira_key` | STRAT ticket key |
+| `designer_lofi_verdict` | UX designer's lo-fi verdict from the [Google Sheet](https://docs.google.com/spreadsheets/d/1pVpmc4RKLwM-fLAH8mR2uj2hlWX30TGiot8kpg5ETEo): `Pass`, `Pass (barely)`, `Fail`, `Fail (path not findable)`, `N/A` |
+| `designer_hifi_verdict` | UX designer's hi-fi verdict: `Pass`, `Fail`, `IDK`, `IDK (probably not)`, `N/A` |
+| `automated_verdict` | Our eval's equivalent verdict: `Pass`, `Fail`, `Fail (nav)`, `Mixed` |
+| `verdicts_agree` | `Yes` or `No` — does our automated verdict match the designer's lo-fi? |
+| `source_mr` | GitLab MR link — the agent can inspect the code diff |
+| `deployed_prototype` | Deploy preview URL — the agent can navigate to it |
+| `designer_evaluation` | Full text of the designer's evaluation from the Google Sheet — untruncated. The agent should read this to understand the human's judgment and calibrate. |
+
+Only populated if `scripts/compare-ground-truth.js` has a manual evaluation for this prototype. If no baseline exists, include the section header with no data rows. These reviews calibrate the automated eval — in the future the loop runs without manual review.
+
+### Full Example
+
+```csv
+# ACCEPTANCE CRITERIA
+prototype_id,source,criterion_id,criterion_text,verdict,evidence,fix_action,fix_file,consistency_violations
+RHAISTRAT-1740,jira,AC-1,"AI engineers can browse a catalog of agent starter kits",FLAGGED,"Page exists but sidebar nav not updated","Add Agent Catalog link to AppLayout.tsx sidebar nav",AppLayout/AppLayout.tsx,icon-style-consistency;nav-item-structure
+RHAISTRAT-1740,jira,AC-3,"Deploy agent from catalog",PASS,"Full 6-step deploy flow completed",,,
+RHAISTRAT-1740,inferred,NAV-1,"Agent Catalog reachable via sidebar",FAIL,"No sidebar link","Add NavItem for Agent Catalog under AI hub",AppLayout/AppLayout.tsx,
+
+# USABILITY DIMENSIONS
+dimension_id,dimension_name,persona,score,confidence,finding,assisted_nav_impact,fix_priority
+workflow_continuity,Workflow Continuity,deena-senior,1,High,"Cannot find Agent Catalog in sidebar",Capped at 1/3 — navigate-assisted at step 2,P0
+mental_model_fidelity,Mental Model Fidelity,alex-senior,1,High,"Expects Agents in sidebar under AI Hub",Capped at 1/3,P0
+accessibility_inclusion,Accessibility,deena-senior,2,Low,"PatternFly baseline",,P1
+
+# MANUAL REVIEW BASELINE
+jira_key,designer_lofi_verdict,designer_hifi_verdict,automated_verdict,verdicts_agree,source_mr,deployed_prototype,designer_evaluation
+RHAISTRAT-1740,"Fail (path not findable)",Fail,"Fail (nav)",Yes,https://gitlab.cee.redhat.com/uxd/prototypes/rhoai/-/merge_requests/175,https://rhoai-5171de.pages.redhat.com/mr-175/,"Agent Catalog not accessible from left nav. Page design barely okay for lo-fi. Not ready for implementation."
+```
+
+### How Prototype-Creator Reads This (Loop Contract)
+
+When prototype-creator receives this CSV as input for a fix iteration:
+
+1. **Read Section 1** — scan for `verdict=FAIL` rows. Each has `fix_action` (what to do) + `fix_file` (where). Apply these fixes.
+2. **Skip `verdict=FLAGGED`** rows — these need human judgment, not auto-fix.
+3. **Read `consistency_violations`** column — batch these PatternFly fixes (swap icons, move CTAs).
+4. **Read Section 2** — scan for `fix_priority=P0`. These are structural blockers (nav broken, mental model mismatch). Cross-reference with Section 1's FAIL rows to find the root cause.
+5. **Ignore Section 3** — that's for humans and the run tracker.
+
+### Loop Exit Condition
+
+After fixes are applied and the eval re-runs, exit when:
+- All Section 1 Jira ACs (`source=jira`) are PASS (no FAIL remaining; FLAGGED is OK)
+- Section 2 average composite score >= 2/3 per dimension (14/21 overall)
+- No `fix_priority=P0` rows remain in Section 2
 
 ## Step 6: Print Summary
 
@@ -1448,6 +1548,18 @@ node scripts/compare-runs.js RHAISTRAT-1740
 ```
 
 Shows verdict count deltas, journey changes, usability score changes, and per-criterion verdict changes between runs.
+
+### Sync to Google Sheet (optional)
+
+After logging, sync the eval results to the team's [Prototype Creator Evaluation](https://docs.google.com/spreadsheets/d/1pVpmc4RKLwM-fLAH8mR2uj2hlWX30TGiot8kpg5ETEo) Google Sheet so designers can see automated verdicts alongside their manual reviews:
+
+```bash
+node scripts/sync-sheet.js
+```
+
+This writes four columns (Automated Lo-fi, Usability Score, Verdicts Agree, Last Eval Date) for each STRAT that has an eval CSV in `.artifacts/`. Requires Google Sheets API auth — see `scripts/sync-sheet.js` header for setup.
+
+Skip this step if Google Sheets auth is not configured — it's not required for the eval to complete.
 
 ## Error Handling
 

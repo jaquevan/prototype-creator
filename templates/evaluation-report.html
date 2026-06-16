@@ -53,21 +53,48 @@ details[open] summary::before{transform:rotate(90deg)}
 .stat-n{font-family:var(--font-heading);font-size:1.5rem;font-weight:700}
 .stat-l{font-size:0.7rem;color:var(--text2);text-transform:uppercase;letter-spacing:0.04em}
 
-/* Modal */
-.modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);z-index:1000;align-items:center;justify-content:center;padding:2rem}
+/* Modal — split view */
+.modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);z-index:1000;align-items:center;justify-content:center;padding:1rem}
 .modal-overlay.active{display:flex}
-.modal-content{background:var(--bg);border-radius:0.75rem;max-width:88vw;max-height:88vh;overflow:auto;padding:2rem;position:relative;box-shadow:0 25px 50px -12px rgba(0,0,0,0.25)}
-.modal-content img{max-width:100%;max-height:65vh;border-radius:0.5rem;display:block;margin:0 auto 1rem}
-.modal-narration{font-size:0.8125rem;color:var(--text2);line-height:1.6;padding:0.75rem 0;border-top:1px solid var(--border)}
-.modal-close{position:absolute;top:1rem;right:1rem;background:var(--bg2);border:1px solid var(--border);color:var(--text);width:2rem;height:2rem;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:1.125rem;cursor:pointer;transition:background 0.15s}
-.modal-close:hover{background:var(--border)}
-.modal-nav{display:flex;justify-content:space-between;align-items:center;margin-top:0.75rem;padding-top:0.75rem;border-top:1px solid var(--border)}
-.modal-nav button{background:var(--bg2);border:1px solid var(--border);color:var(--text);padding:0.35rem 0.75rem;border-radius:0.375rem;cursor:pointer;font-family:var(--font-body);font-size:0.8125rem}
-.modal-nav button:hover{background:var(--border)}
-.modal-nav button:disabled{opacity:0.3;cursor:default}
-.modal-counter{font-size:0.75rem;color:var(--text2);font-family:var(--font-mono)}
-.modal-download{position:absolute;top:1rem;right:3.5rem;background:var(--bg2);border:1px solid var(--border);color:var(--text);width:2rem;height:2rem;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:0.875rem;cursor:pointer;transition:background 0.15s;text-decoration:none}
-.modal-download:hover{background:var(--border);text-decoration:none}
+.modal-content{background:var(--bg);border-radius:0.75rem;width:90vw;height:88vh;display:flex;overflow:hidden;position:relative;box-shadow:0 25px 50px -12px rgba(0,0,0,0.25)}
+.modal-img-pane{flex:0 0 70%;display:flex;flex-direction:column;background:#0a0a0a;position:relative}
+.modal-img-pane img{flex:1;width:100%;height:0;min-height:0;object-fit:contain;padding:0.5rem}
+.modal-nav{display:flex;justify-content:space-between;align-items:center;padding:0.5rem 1rem;background:rgba(0,0,0,0.3)}
+.modal-nav button{background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);color:#fff;padding:0.3rem 0.7rem;border-radius:0.375rem;cursor:pointer;font-family:var(--font-body);font-size:0.8125rem}
+.modal-nav button:hover{background:rgba(255,255,255,0.2)}
+.modal-nav button:disabled{opacity:0.25;cursor:default}
+.modal-counter{font-size:0.75rem;color:rgba(255,255,255,0.6);font-family:var(--font-mono)}
+.modal-ctx-pane{flex:0 0 30%;overflow-y:auto;padding:1.25rem;border-left:1px solid var(--border)}
+.modal-ctx-header{margin:0 0 0.75rem}
+.modal-ctx-header h3{font-size:0.9375rem;margin:0 0 0.15rem}
+.modal-ctx-header p{margin:0;font-size:0.75rem;color:var(--text2)}
+.modal-ctx-section{margin:0.75rem 0 0;padding:0.75rem 0 0;border-top:1px solid var(--border)}
+.modal-ctx-section h4{font-size:0.7rem;text-transform:uppercase;letter-spacing:0.04em;color:var(--text2);margin:0 0 0.5rem;font-weight:600}
+.modal-ctx-violation{padding:0.45rem 0;margin:0 0 0.5rem;font-size:0.75rem;border-bottom:1px solid var(--border)}
+.modal-ctx-violation:last-child{border-bottom:none;margin-bottom:0}
+.modal-ctx-violation-error .mcv-sev{color:var(--status-danger);font-weight:600;font-size:0.65rem;text-transform:uppercase}
+.modal-ctx-violation-warning .mcv-sev{color:var(--status-warning);font-weight:600;font-size:0.65rem;text-transform:uppercase}
+.modal-ctx-section details summary{list-style:none;display:flex;align-items:center;gap:0.35rem;cursor:pointer;user-select:none}
+.modal-ctx-section details summary::before{content:'';display:inline-block;width:0;height:0;border-left:4px solid transparent;border-right:4px solid transparent;border-top:5px solid var(--text2);transition:transform 0.15s;flex-shrink:0}
+.modal-ctx-section details:not([open]) summary::before{transform:rotate(-90deg)}
+.modal-ctx-section details summary::-webkit-details-marker{display:none}
+.modal-ctx-section details summary h4{margin:0}
+.modal-ctx-violation strong{font-size:0.75rem;display:block;margin-bottom:0.15rem}
+.modal-ctx-violation .mcv-hint{font-size:0.65rem;color:var(--accent);margin:0.05rem 0 0.15rem;font-style:italic}
+.modal-ctx-violation .mcv-code{font-family:var(--font-mono);font-size:0.7rem;line-height:1.4;margin:0.2rem 0 0.3rem;padding:0.3rem 0.45rem;background:var(--bg2);border-radius:0.25rem;border:1px solid var(--border);white-space:pre-wrap;word-break:break-all;color:var(--text);overflow-x:auto}
+.modal-ctx-violation .mcv-fix{font-size:0.7rem;color:var(--accent);margin:0.15rem 0;font-weight:500}
+.modal-ctx-violation .mcv-file{font-size:0.65rem;color:var(--text2);font-family:var(--font-mono);margin:0.1rem 0}
+.modal-ctx-violation a{font-size:0.65rem;color:var(--accent)}
+.modal-ctx-persona{font-size:0.875rem;line-height:1.6;color:var(--text);padding:0.5rem 0;border-radius:0}
+.modal-ctx-persona strong{font-weight:700}
+.modal-ctx-impact{font-size:0.75rem;margin:0.25rem 0;display:flex;justify-content:space-between;align-items:center;padding:0.2rem 0}
+.modal-ctx-impact-score{font-weight:600;font-family:var(--font-mono);font-size:0.8rem}
+.modal-actions{display:flex;gap:0.5rem;position:absolute;top:0.75rem;right:0.75rem;z-index:2}
+.modal-actions button{background:var(--bg2);border:1px solid var(--border);color:var(--text);width:2rem;height:2rem;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:0.875rem;cursor:pointer;transition:background 0.15s}
+.modal-actions button:hover{background:var(--border)}
+.modal-toast{position:absolute;bottom:4rem;right:1.5rem;background:var(--text);color:var(--bg);padding:0.35rem 0.75rem;border-radius:0.375rem;font-size:0.75rem;opacity:0;transition:opacity 0.3s;pointer-events:none}
+.modal-toast.show{opacity:1}
+@media(max-width:1200px){.modal-content{flex-direction:column;height:92vh}.modal-img-pane{flex:0 0 55%}.modal-ctx-pane{flex:1;border-left:none;border-top:1px solid var(--border)}}
 
 /* Split layout */
 .split{display:flex;height:calc(100vh - 56px)}
@@ -130,6 +157,42 @@ details[open] summary::before{transform:rotate(90deg)}
 .ta-confidence-high{color:var(--status-success)}
 .ta-confidence-low{color:var(--status-warning)}
 .ta-confidence-none{color:var(--status-danger)}
+
+/* Screenshot cards with annotations */
+.screenshot-card{margin:0.6rem 0 1rem;border:1px solid var(--border);border-radius:0.5rem;overflow:hidden;background:var(--bg2)}
+.screenshot-card .screenshot{margin:0}
+.screenshot-card .screenshot img{border-radius:0;border:none;border-bottom:1px solid var(--border)}
+.screenshot-card .narration{padding:0.5rem 0.75rem;margin:0;border-left:none;font-size:0.8rem}
+.screenshot-annotations{display:flex;flex-wrap:wrap;gap:0.3rem;padding:0.35rem 0.75rem;border-top:1px solid var(--border)}
+.sa-item{display:inline-block;position:relative}
+.sa-tag{display:inline-flex;align-items:center;gap:0.25rem;font-size:0.6rem;font-weight:500;padding:0.15rem 0.45rem;border-radius:0.2rem;text-transform:uppercase;letter-spacing:0.02em;cursor:pointer;border:none;font-family:var(--font-body);transition:opacity 0.15s}
+.sa-tag:hover{opacity:0.8}
+.sa-error{background:rgba(220,38,38,0.08);color:var(--status-danger)}
+.sa-warning{background:rgba(217,119,6,0.08);color:var(--status-warning)}
+.sa-more{background:var(--bg);color:var(--text2);border:1px solid var(--border);cursor:default}
+.sa-shell-toggle{margin:0.2rem 0.75rem 0.3rem;font-size:0.7rem}
+.sa-shell-toggle summary{cursor:pointer;list-style:none;user-select:none;color:var(--text2)}
+.sa-shell-toggle summary::-webkit-details-marker{display:none}
+.sa-detail{margin:0}
+.sa-detail[open] .sa-detail-body{display:block}
+.sa-detail-body{display:none;background:var(--bg);border:1px solid var(--border);border-radius:0.375rem;padding:0.55rem 0.7rem;margin:0.3rem 0 0.2rem;font-size:0.75rem;line-height:1.5;box-shadow:0 2px 8px rgba(0,0,0,0.06)}
+.sa-location{font-family:var(--font-mono);font-size:0.8rem;font-weight:500;color:var(--text);margin:0 0 0.35rem;padding:0.3rem 0.5rem;background:var(--bg2);border-radius:0.25rem;border-left:3px solid var(--accent)}
+.sa-location code{font-size:0.8rem;background:none;padding:0}
+.sa-fix{margin:0 0 0.3rem;color:var(--text);padding:0.3rem 0.5rem;background:rgba(0,102,204,0.04);border-radius:0.25rem;font-size:0.75rem}
+.sa-doc-link{font-size:0.7rem;color:var(--accent);text-decoration:none;display:inline-block}
+.sa-doc-link:hover{text-decoration:underline}
+
+/* Path comparison legend */
+.path-legend{margin:0.5rem 0 1.5rem}
+.path-legend summary{cursor:pointer;list-style:none;user-select:none}
+.path-legend summary::before{content:'▶';display:inline-block;margin-right:0.4rem;font-size:0.6rem;transition:transform 0.2s}
+.path-legend[open] summary::before{transform:rotate(90deg)}
+.path-legend-dl{display:grid;grid-template-columns:auto 1fr;gap:0.3rem 0.75rem;margin:0;font-size:0.75rem}
+.path-legend-dl dt{font-weight:600;color:var(--text);white-space:nowrap}
+.path-legend-dl dd{margin:0;color:var(--text2);line-height:1.5}
+.screenshot-persona{padding:0.55rem 0.75rem;border-top:1px solid var(--border);font-size:0.8125rem;color:var(--text);line-height:1.6;background:rgba(0,102,204,0.04);border-left:3px solid var(--accent)}
+.screenshot-persona strong{font-weight:700;font-size:0.8125rem}
+.screenshot-persona em{font-style:italic;color:var(--text)}
 
 /* Journey dividers */
 .journey-divider{border-top:2px solid var(--border);margin:2rem 0;padding-top:1.5rem}
@@ -231,8 +294,20 @@ details[open] summary .section-icon{opacity:0.8}
 .consistency-finding-head{display:flex;justify-content:space-between;align-items:center;gap:0.5rem;flex-wrap:wrap}
 .consistency-finding-head code{font-size:0.75rem;font-weight:500;background:none;padding:0}
 .consistency-guideline{font-size:0.75rem;color:var(--text2);margin:0.2rem 0 0}
-.consistency-suggestion{font-size:0.75rem;color:var(--accent);margin:0.2rem 0 0}
+.consistency-suggestion{font-size:0.75rem;color:var(--text);margin:0.35rem 0 0;padding:0.35rem 0.55rem;background:rgba(0,102,204,0.04);border-radius:0.25rem;line-height:1.5}
+.consistency-suggestion a{font-weight:500}
+.consistency-files{margin:0.35rem 0 0;padding:0;font-size:0.7rem}
+.consistency-file-row{padding:0.15rem 0;font-family:var(--font-mono);color:var(--text2)}
+.consistency-file-row code{font-size:0.7rem;background:none;padding:0}
 .consistency-seen-on{font-size:0.7rem;color:var(--text2);margin-top:0.2rem}
+
+/* CSV Preview */
+.csv-preview{background:var(--bg2);border-bottom:1px solid var(--border);padding:0.75rem 2rem;max-height:40vh;overflow:auto}
+.csv-table-wrap{overflow-x:auto}
+.csv-table-wrap table{border-collapse:collapse;font-size:0.7rem;font-family:var(--font-mono);width:100%}
+.csv-table-wrap th{background:var(--bg);font-weight:600;position:sticky;top:0;text-align:left;padding:0.3rem 0.5rem;border-bottom:2px solid var(--border);font-size:0.65rem;text-transform:uppercase;letter-spacing:0.03em;color:var(--text2);white-space:nowrap}
+.csv-table-wrap td{padding:0.25rem 0.5rem;border-bottom:1px solid var(--border);max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.csv-table-wrap tr:hover td{background:rgba(0,102,204,0.03)}
 
 /* Utility */
 .max-w{max-width:64rem}
@@ -263,6 +338,7 @@ details[open] summary .section-icon{opacity:0.8}
   <div class="header-actions">
     <button onclick="downloadHTML()">↓ HTML</button>
     <button onclick="downloadCSV()">↓ CSV</button>
+    <button onclick="toggleCsvPreview()">CSV Preview</button>
     <button class="header-toggle" id="detailsToggle" onclick="toggleDetails()" aria-label="Toggle details">Details ▶</button>
   </div>
 </div>
@@ -278,6 +354,15 @@ details[open] summary .section-icon{opacity:0.8}
     <div class="meta-item"><div class="meta-label">Journeys</div><div class="meta-value">{{JOURNEY_SUMMARY}}</div></div>
     <div class="meta-item"><div class="meta-label">Gaps</div><div class="meta-value">{{GAPS_SUMMARY}}</div></div>
   </div>
+</div>
+
+<!-- CSV Preview (collapsible) -->
+<div class="csv-preview" id="csvPreview" style="display:none">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.5rem">
+    <p style="margin:0;font-size:0.75rem;color:var(--text2)">evaluation-report.csv · <code style="font-size:0.7rem">{{ARTIFACTS_PATH}}/evaluation-report.csv</code></p>
+    <button onclick="toggleCsvPreview()" style="background:none;border:none;cursor:pointer;color:var(--text2);font-size:0.8rem">Close</button>
+  </div>
+  <div class="csv-table-wrap" id="csvTableWrap"></div>
 </div>
 
 <!-- Split Pane -->
@@ -420,7 +505,6 @@ details[open] summary .section-icon{opacity:0.8}
     <div class="panel-tabs">
       <button class="panel-tab active" onclick="switchTab('journeys')">Journeys</button>
       <button class="panel-tab" onclick="switchTab('personas')" style="{{PERSONAS_TAB_DISPLAY}}">Personas & Think-Aloud</button>
-      <button class="panel-tab" onclick="switchTab('deltas')" style="{{DELTAS_TAB_DISPLAY}}">Code Deltas</button>
       <button class="panel-tab" onclick="switchTab('consistency')" style="{{CONSISTENCY_TAB_DISPLAY}}">Consistency</button>
     </div>
 
@@ -444,25 +528,12 @@ details[open] summary .section-icon{opacity:0.8}
 
       {{THINK_ALOUD_NARRATIVES}}
 
-      <!-- Exploratory Navigation (from unified Playwright session Phase 2) -->
-      <div id="exploration-section" style="{{EXPLORATION_DISPLAY}}">
-        <h2 style="margin-top:2rem;padding-top:1.5rem;border-top:2px solid var(--border)">Exploratory Navigation</h2>
-        <p class="small muted" style="margin-bottom:1rem">Pages and paths discovered beyond the prescribed AC journeys. Captured in Phase 2 of the unified Playwright session — same browser, same state.</p>
-        {{EXPLORATION_HTML}}
-      </div>
-
       <!-- External Usability (Zack's skill output) -->
       <div id="external-usability" style="{{EXTERNAL_USABILITY_DISPLAY}}">
         <h2 style="margin-top:2rem;padding-top:1.5rem;border-top:2px solid var(--border)">External Usability Evaluation</h2>
         <p class="small muted" style="margin-bottom:1rem">Independent evaluation from <a href="https://gitlab.cee.redhat.com/zbodnar/automated-usability-testing" target="_blank">automated-usability-testing</a>. Uses the same 7-dimension rubric with a full exploratory think-aloud protocol — the persona wanders freely rather than following prescribed journeys.</p>
         {{EXTERNAL_USABILITY_HTML}}
       </div>
-    </div>
-
-    <!-- Tab: Code Deltas -->
-    <div class="panel-content" id="panel-deltas">
-      <h2>Code Deltas</h2>
-      {{CODE_DELTAS_HTML}}
     </div>
 
     <!-- Tab: Consistency -->
@@ -481,17 +552,26 @@ details[open] summary .section-icon{opacity:0.8}
   Report by prototype-evaluate. Usability scoring powered by <a href="https://gitlab.cee.redhat.com/zbodnar/automated-usability-testing">automated-usability-testing</a>.
 </div>
 
-<!-- Screenshot Modal -->
+<!-- Screenshot Modal — split view -->
 <div class="modal-overlay" id="screenshotModal">
   <div class="modal-content">
-    <button class="modal-close" onclick="closeModal()">×</button>
-    <a class="modal-download" id="modalDownload" download title="Download screenshot">↓</a>
-    <img id="modalImg" src="" alt="Screenshot">
-    <div class="modal-narration" id="modalNarration"></div>
-    <div class="modal-nav">
-      <button id="modalPrev" onclick="modalNavigate(-1)">← Previous</button>
-      <span class="modal-counter" id="modalCounter"></span>
-      <button id="modalNext" onclick="modalNavigate(1)">Next →</button>
+    <div class="modal-actions">
+      <button onclick="copyComposite()" title="Copy screenshot with context"><svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 010 1.5h-1.5a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-1.5a.75.75 0 011.5 0v1.5A1.75 1.75 0 019.25 16h-7.5A1.75 1.75 0 010 14.25v-7.5z"/><path d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0114.25 11h-7.5A1.75 1.75 0 015 9.25v-7.5zm1.75-.25a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-7.5a.25.25 0 00-.25-.25h-7.5z"/></svg></button>
+      <button onclick="closeModal()" title="Close">×</button>
+    </div>
+    <div class="modal-toast" id="modalToast">Copied to clipboard</div>
+
+    <div class="modal-img-pane">
+      <img id="modalImg" src="" alt="Screenshot">
+      <div class="modal-nav">
+        <button id="modalPrev" onclick="modalNavigate(-1)">← Previous</button>
+        <span class="modal-counter" id="modalCounter"></span>
+        <button id="modalNext" onclick="modalNavigate(1)">Next →</button>
+      </div>
+    </div>
+
+    <div class="modal-ctx-pane" id="modalCtx">
+      <!-- populated by JS -->
     </div>
   </div>
 </div>
@@ -525,6 +605,66 @@ function toggleDetails() {
   var toggle = document.getElementById('detailsToggle');
   var isOpen = details.classList.toggle('open');
   toggle.textContent = isOpen ? 'Details ▼' : 'Details ▶';
+}
+
+var csvPreviewBuilt = false;
+function toggleCsvPreview() {
+  var el = document.getElementById('csvPreview');
+  var visible = el.style.display !== 'none';
+  el.style.display = visible ? 'none' : 'block';
+  if (!visible && !csvPreviewBuilt) {
+    csvPreviewBuilt = true;
+    var lines = csvData.trim().split('\n');
+    if (lines.length < 2) { document.getElementById('csvTableWrap').innerHTML = '<p class="muted small">No CSV data.</p>'; return; }
+
+    var html = '';
+    var currentHeaders = null;
+    var sectionColors = { 'ACCEPTANCE': '#0066cc', 'USABILITY': '#16a34a', 'GROUND': '#d97706' };
+
+    for (var r = 0; r < lines.length; r++) {
+      var line = lines[r].trim();
+      if (!line) continue;
+
+      if (line.startsWith('#')) {
+        if (currentHeaders) html += '</tbody></table>';
+        var sectionName = line.replace(/^#\s*/, '');
+        var sColor = '#6b7280';
+        for (var sk in sectionColors) { if (sectionName.toUpperCase().indexOf(sk) >= 0) { sColor = sectionColors[sk]; break; } }
+        html += '<div class="csv-section-header" style="border-left:3px solid ' + sColor + ';padding:0.4rem 0.6rem;margin:1rem 0 0.5rem;font-size:0.7rem;font-weight:600;text-transform:uppercase;letter-spacing:0.03em;color:' + sColor + '">' + sectionName + '</div>';
+        currentHeaders = null;
+        continue;
+      }
+
+      if (!currentHeaders) {
+        currentHeaders = line.split(',');
+        html += '<table><thead><tr>';
+        for (var i = 0; i < currentHeaders.length; i++) html += '<th>' + currentHeaders[i] + '</th>';
+        html += '</tr></thead><tbody>';
+        continue;
+      }
+
+      var cells = line.match(/(".*?"|[^,]*)/g) || [];
+      html += '<tr>';
+      for (var c = 0; c < currentHeaders.length; c++) {
+        var val = (cells[c] || '').replace(/^"|"$/g, '');
+        var cls = '';
+        if (val === 'PASS') cls = ' style="color:var(--status-success);font-weight:600"';
+        else if (val === 'FAIL') cls = ' style="color:var(--status-danger);font-weight:600"';
+        else if (val === 'FLAGGED') cls = ' style="color:var(--status-warning);font-weight:600"';
+        else if (val === 'P0') cls = ' style="color:var(--status-danger);font-weight:600"';
+        else if (val === 'P1') cls = ' style="color:var(--status-warning);font-weight:600"';
+        else if (val === 'P2') cls = ' style="color:var(--status-success)"';
+        else if (/^[0-3]$/.test(val)) {
+          var sc = parseInt(val);
+          cls = ' style="font-weight:600;color:' + (sc <= 1 ? 'var(--status-danger)' : sc === 2 ? 'var(--status-warning)' : 'var(--status-success)') + '"';
+        }
+        html += '<td' + cls + '>' + val + '</td>';
+      }
+      html += '</tr>';
+    }
+    if (currentHeaders) html += '</tbody></table>';
+    document.getElementById('csvTableWrap').innerHTML = html;
+  }
 }
 
 function switchTab(tab) {
@@ -584,17 +724,219 @@ function closeModal() {
   document.getElementById('screenshotModal').classList.remove('active');
 }
 
+function boldKeys(text) {
+  return escH(text)
+    .replace(/\b(FAIL|PASS|FLAGGED|ASSISTED)\b/g, '<strong>$1</strong>')
+    .replace(/\b(Step\s+\d+(\.\d+)?)\b/g, '<strong>$1</strong>')
+    .replace(/\b(navigate-assisted|url_fallback|navigate|verify|verify-scroll|click|fill)\b/g, '<strong>$1</strong>')
+    .replace(/(feature exists|orphaned|NOT updated|not found|sidebar nav|missing)/gi, '<strong>$1</strong>');
+}
+
 function renderModal() {
   var s = screenshotData[currentScreenshotIdx];
   if (!s) return;
   document.getElementById('modalImg').src = s.src;
-  document.getElementById('modalNarration').textContent = s.narration || '';
   document.getElementById('modalCounter').textContent = (currentScreenshotIdx + 1) + ' / ' + screenshotData.length;
   document.getElementById('modalPrev').disabled = currentScreenshotIdx === 0;
   document.getElementById('modalNext').disabled = currentScreenshotIdx === screenshotData.length - 1;
-  var dl = document.getElementById('modalDownload');
-  dl.href = s.src;
-  dl.download = s.filename || 'screenshot.png';
+
+  var ctx = document.getElementById('modalCtx');
+  var st = s.step;
+  var html = '';
+
+  if (st) {
+    // Journey color bar — always visible
+    var jColor = st.journeyColor || 'var(--accent)';
+    html += '<div class="modal-journey-bar" style="border-top:3px solid ' + jColor + ';padding:0.5rem 0 0.35rem">';
+    html += '<p style="margin:0;font-size:0.65rem;text-transform:uppercase;letter-spacing:0.04em;font-weight:600;color:' + jColor + '">' + escH(st.journeyTitle) + '</p>';
+    html += '<p style="margin:0;font-size:0.65rem;color:var(--text2)">' + escH(st.persona) + '</p>';
+    html += '</div>';
+
+    // Journey banner on first step or journey transition
+    var prevSs = currentScreenshotIdx > 0 ? screenshotData[currentScreenshotIdx - 1] : null;
+    var prevJourney = prevSs && prevSs.step ? prevSs.step.journeyTitle : null;
+    if (st.journeyTitle !== prevJourney) {
+      html += '<div class="modal-journey-banner" style="border-left:4px solid ' + jColor + ';background:color-mix(in srgb, ' + jColor + ' 6%, var(--bg));padding:0.6rem 0.75rem;margin:0.5rem 0;border-radius:0.25rem">';
+      html += '<p style="margin:0;font-size:0.8125rem;font-weight:700;color:' + jColor + '">' + escH(st.journeyTitle) + '</p>';
+      html += '<p style="margin:0.1rem 0 0;font-size:0.7rem;color:var(--text2)">' + escH(st.persona) + (st.journeySource ? ' · ' + escH(st.journeySource) : '') + '</p>';
+      html += '</div>';
+    }
+
+    html += '<div class="modal-ctx-header">';
+    html += '<h3><strong>Step ' + st.stepNum + '</strong> — ' + escH(st.action) + '</h3>';
+    html += '<p><code>' + escH(st.target) + '</code> · ' + (st.verdict === 'PASS' ? '<span class="badge badge-pass">PASS</span>' : '<span class="badge badge-fail">FAIL</span>') + '</p>';
+    html += '</div>';
+
+    if (s.narration) {
+      html += '<p style="font-size:0.8rem;color:var(--text2);line-height:1.55;margin:0.5rem 0">' + boldKeys(s.narration) + '</p>';
+    }
+
+    if (st.error) {
+      html += '<div class="ta-callout ta-callout-confusion" style="margin:0.5rem 0"><strong>Error:</strong> ' + boldKeys(st.error) + '</div>';
+    }
+    if (st.rootCause) {
+      html += '<div class="ta-callout ta-callout-expected" style="margin:0.5rem 0"><strong>Root cause:</strong> ' + boldKeys(st.rootCause) + '</div>';
+    }
+
+    // 1. Persona (top)
+    if (st.personaReaction) {
+      html += '<div class="modal-ctx-section"><h4>Persona</h4>';
+      html += '<div class="modal-ctx-persona"><strong>' + escH(st.personaReaction.name) + ':</strong> "' + escH(st.personaReaction.text) + '"</div>';
+      html += '</div>';
+    }
+
+    // 2. Score Impact
+    if (st.scoreImpacts && st.scoreImpacts.length) {
+      html += '<div class="modal-ctx-section"><h4>Score Impact</h4>';
+      for (var j = 0; j < st.scoreImpacts.length; j++) {
+        var si = st.scoreImpacts[j];
+        html += '<div class="modal-ctx-impact"><span>' + escH(si.dim) + '</span>';
+        if (si.score !== null) html += '<span class="modal-ctx-impact-score" style="color:' + (si.score <= 1 ? 'var(--status-danger)' : 'var(--status-warning)') + '">' + si.score + '/3</span>';
+        html += '</div>';
+        if (si.note) html += '<p style="font-size:0.7rem;color:var(--text2);margin:0 0 0.35rem">' + escH(si.note) + '</p>';
+      }
+      html += '</div>';
+    }
+
+    // 3. Violations — page-specific open, shell collapsed
+    function renderViolationList(violations) {
+      var out = '';
+      var sorted = violations.slice().sort(function(a, b) {
+        var ord = { error: 0, warning: 1, info: 2 };
+        return (ord[a.severity] || 2) - (ord[b.severity] || 2);
+      });
+      for (var i = 0; i < sorted.length; i++) {
+        var v = sorted[i];
+        var cls = v.severity === 'error' ? 'modal-ctx-violation-error' : 'modal-ctx-violation-warning';
+        var visualHint = getVisualHint(v.file, v.category);
+        out += '<div class="modal-ctx-violation ' + cls + '">';
+        out += '<span class="mcv-sev">' + escH(v.severity) + '</span> ';
+        out += '<strong>' + escH(v.title) + '</strong>';
+        if (visualHint) out += '<p class="mcv-hint">' + escH(visualHint) + '</p>';
+        if (v.description) out += '<pre class="mcv-code">' + escH(v.description) + '</pre>';
+        if (v.suggestion) out += '<p class="mcv-fix">' + escH(v.suggestion) + '</p>';
+        out += '<p class="mcv-file">' + escH(v.file) + (v.line ? ':' + v.line : '');
+        if (v.pfDocUrl) out += ' · <a href="' + escH(v.pfDocUrl) + '" target="_blank">docs</a>';
+        out += '</p>';
+        out += '</div>';
+      }
+      return out;
+    }
+
+    var pageViolations = st.violations || [];
+    var shellViolations = st.shellViolations || [];
+
+    if (pageViolations.length) {
+      var errCount = pageViolations.filter(function(v) { return v.severity === 'error'; }).length;
+      var warnCount = pageViolations.length - errCount;
+      var countLabel = (errCount ? errCount + ' error' + (errCount > 1 ? 's' : '') : '') + (errCount && warnCount ? ', ' : '') + (warnCount ? warnCount + ' warning' + (warnCount > 1 ? 's' : '') : '');
+
+      html += '<div class="modal-ctx-section">';
+      html += '<details open><summary style="cursor:pointer;user-select:none"><h4 style="display:inline">Page Violations</h4> <span style="font-size:0.7rem;color:var(--text2)">' + countLabel + '</span></summary>';
+      html += renderViolationList(pageViolations);
+      html += '</details></div>';
+    }
+
+    if (shellViolations.length) {
+      html += '<div class="modal-ctx-section">';
+      html += '<details><summary style="cursor:pointer;user-select:none"><h4 style="display:inline;color:var(--text2)">Global Shell Issues</h4> <span style="font-size:0.7rem;color:var(--text2)">' + shellViolations.length + ' (AppLayout, nav, flags)</span></summary>';
+      html += renderViolationList(shellViolations);
+      html += '</details></div>';
+    }
+  } else {
+    if (s.narration) html += '<p style="font-size:0.8125rem;color:var(--text2);line-height:1.6;padding:0.75rem 0">' + boldKeys(s.narration) + '</p>';
+  }
+
+  ctx.innerHTML = html;
+}
+
+function escH(str) { return String(str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+function getVisualHint(file, category) {
+  if (!file) return '';
+  var f = file.toLowerCase();
+  if (f.includes('applayout')) return 'Visible in the sidebar and page header area';
+  if (f.includes('featureflags')) return 'Visible in the feature flags toggle panel (top banner)';
+  if (f.includes('agentcatalog') && !f.includes('details') && !f.includes('deploy')) return 'Visible in the agent catalog card grid';
+  if (f.includes('agentcatalogdetails')) return 'Visible on the agent detail/deploy page';
+  if (f.includes('agentdeployments')) return 'Visible in the agent deployments list';
+  if (f.includes('deployments')) return 'Visible in the model deployments table area';
+  if (f.includes('contextpanel')) return 'Visible in the right-side context panel';
+  if (f.includes('routes')) return 'Affects page routing — not directly visible but controls navigation';
+  if (f.includes('playground')) return 'Visible in the Gen AI Studio playground';
+  if (f.includes('promptengineering')) return 'Visible in the prompt engineering view';
+  if (f.includes('settings')) return 'Visible in the Settings area';
+  if (category === 'navigation') return 'Affects the left sidebar navigation';
+  if (category === 'icons') return 'Look for icons that appear filled instead of outlined, or wrong color';
+  if (category === 'tables') return 'Affects table layout, pagination, or column headers';
+  if (category === 'labels') return 'Affects status labels or badges';
+  if (category === 'buttons') return 'Affects button placement or CTA positioning';
+  return '';
+}
+
+var artifactsPath = '{{ARTIFACTS_PATH}}';
+
+function copyContext() {
+  var s = screenshotData[currentScreenshotIdx];
+  if (!s) return;
+  var st = s.step;
+  var ssPath = artifactsPath + '/screenshots/' + (s.filename || 'unknown');
+  var md = '## Screenshot\n\nFile: `' + ssPath + '`\n\n';
+  if (st) {
+    md += '**Step ' + st.stepNum + '** — ' + st.action + ' → ' + st.target + ' — **' + st.verdict + '**\n\n';
+    if (s.narration) md += s.narration + '\n\n';
+    if (st.error) md += '**Error:** ' + st.error + '\n';
+    if (st.rootCause) md += '**Root cause:** ' + st.rootCause + '\n\n';
+    function mdViolations(list) {
+      var out = '';
+      for (var i = 0; i < list.length; i++) {
+        var v = list[i];
+        out += '- **' + v.title + '** (' + v.severity + ')\n';
+        if (v.description) out += '  ```\n  ' + v.description + '\n  ```\n';
+        if (v.suggestion) out += '  Fix: ' + v.suggestion + '\n';
+        out += '  Location: `' + v.file + (v.line ? ':' + v.line : '') + '`';
+        if (v.pfDocUrl) out += ' · ' + v.pfDocUrl;
+        out += '\n';
+      }
+      return out;
+    }
+    if (st.violations && st.violations.length) {
+      md += '### Page Violations\n';
+      md += mdViolations(st.violations);
+      md += '\n';
+    }
+    if (st.shellViolations && st.shellViolations.length) {
+      md += '### Global Shell Issues\n';
+      md += mdViolations(st.shellViolations);
+      md += '\n';
+    }
+    if (st.personaReaction) {
+      md += '### Persona Reaction\n';
+      md += '**' + st.personaReaction.name + ':** "' + st.personaReaction.text + '"\n\n';
+    }
+    if (st.scoreImpacts && st.scoreImpacts.length) {
+      md += '### Score Impact\n';
+      for (var j = 0; j < st.scoreImpacts.length; j++) {
+        var si = st.scoreImpacts[j];
+        md += '- ' + si.dim + (si.score !== null ? ': ' + si.score + '/3' : '') + (si.note ? ' (' + si.note + ')' : '') + '\n';
+      }
+    }
+  } else {
+    if (s.narration) md += s.narration + '\n';
+  }
+  var toastEl = document.getElementById('modalToast');
+  function showToast(msg) {
+    toastEl.textContent = msg;
+    toastEl.classList.add('show');
+    setTimeout(function() { toastEl.classList.remove('show'); }, 2000);
+  }
+
+  // fallback: just copy text
+  navigator.clipboard.writeText(md).then(function() { showToast('Context text copied'); });
+}
+
+function copyComposite() {
+  copyContext();
 }
 
 function modalNavigate(dir) {

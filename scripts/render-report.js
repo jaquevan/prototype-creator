@@ -55,15 +55,24 @@ function extractPrototypeId() {
 
 function parseCsv(raw) {
   if (!raw) return [];
-  const lines = raw.trim().split('\n');
+  // Only parse the first section (AC rows). Stop at the next # comment or blank line after data.
+  const lines = raw.trim().split('\n').filter(l => !l.startsWith('#'));
   if (lines.length < 2) return [];
   const headers = parseCSVLine(lines[0]);
-  return lines.slice(1).map(line => {
+  const rows = [];
+  for (let i = 1; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (!line) continue;
+    // Detect section boundary: if headers change (new section has different columns)
     const vals = parseCSVLine(line);
+    if (vals.length >= 2 && !headers.includes(vals[0]) && /^[a-z_]+$/.test(vals[0]) && vals[0].includes('_') && !vals[0].startsWith('RHAISTRAT')) {
+      break; // Hit the usability dimensions section (dimension_id format)
+    }
     const obj = {};
-    headers.forEach((h, i) => { obj[h] = vals[i] || ''; });
-    return obj;
-  });
+    headers.forEach((h, idx) => { obj[h] = vals[idx] || ''; });
+    rows.push(obj);
+  }
+  return rows;
 }
 
 function parseCSVLine(line) {
@@ -556,87 +565,117 @@ function buildConsistencyHtml() {
   if (!report) return '<p class="muted small">No consistency data. Run with `.context/consistency-checker/` bootstrapped to enable.</p>';
 
   const summary = report.summary || {};
+  const srcMode = report.source_mode;
+  const violations = (srcMode && srcMode.violations) || [];
   let html = '';
 
   // Summary stats
   html += `<div class="consistency-summary">`;
   html += `<div class="consistency-stat"><span class="consistency-stat-n">${summary.total_guidelines_checked || 0}</span><span class="consistency-stat-l">Checked</span></div>`;
-  if (summary.violations) html += `<div class="consistency-stat"><span class="consistency-stat-n" style="color:var(--status-danger)">${summary.violations}</span><span class="consistency-stat-l">Violations</span></div>`;
+  if (summary.violations) html += `<div class="consistency-stat"><span class="consistency-stat-n" style="color:var(--status-danger)">${summary.violations}</span><span class="consistency-stat-l">Errors</span></div>`;
   if (summary.warnings) html += `<div class="consistency-stat"><span class="consistency-stat-n" style="color:var(--status-warning)">${summary.warnings}</span><span class="consistency-stat-l">Warnings</span></div>`;
   html += `<div class="consistency-stat"><span class="consistency-stat-n" style="color:var(--status-success)">${summary.passes || 0}</span><span class="consistency-stat-l">Passes</span></div>`;
   html += `</div>`;
 
-  if (report.guidelines_version) {
-    html += `<p class="small muted">Guidelines version: <code>${escapeHtml(report.guidelines_version)}</code></p>`;
+  if (!violations.length) {
+    html += `<p class="muted small">No violations found in MR-scoped files.</p>`;
+    return html;
   }
 
-  // Source code violations
-  const srcMode = report.source_mode;
-  if (srcMode && srcMode.ran && srcMode.violations && srcMode.violations.length) {
-    html += `<h3>Source Code Violations</h3>`;
-    html += `<p class="small muted" style="margin:-0.25rem 0 0.5rem">Grep-based checks against prototype source files</p>`;
-
-    const sorted = [...srcMode.violations].sort((a, b) => (a.severity === 'error' ? 0 : 1) - (b.severity === 'error' ? 0 : 1));
-    for (const v of sorted) {
-      const sevClass = v.severity === 'error' ? 'consistency-finding-error' : 'consistency-finding-warning';
-      const sevTag = v.severity === 'error'
-        ? '<span class="delta-tag delta-tag-critical">error</span>'
-        : '<span class="delta-tag delta-tag-high">warning</span>';
-
-      html += `<div class="consistency-finding ${sevClass}">`;
-      html += `<div class="consistency-finding-head">`;
-      html += `<code>${escapeHtml(v.file || '')}${v.line ? ':' + v.line : ''}</code>`;
-      html += `<span class="delta-tags">${sevTag}<span class="delta-tag delta-tag-mod">${escapeHtml(v.category || '')}</span></span>`;
-      html += `</div>`;
-      html += `<p class="consistency-guideline"><strong>${escapeHtml(v.guideline_title || v.guideline_id)}</strong> — ${escapeHtml(v.description)}</p>`;
-      if (v.suggestion) html += `<p class="consistency-suggestion">${escapeHtml(v.suggestion)}</p>`;
-      html += `</div>`;
-    }
-  } else if (srcMode && srcMode.ran) {
-    html += `<h3>Source Code</h3><p class="small muted">No source code violations found.</p>`;
+  // ---- Quick Fixes (ranked by impact) ----
+  const byGuideline = {};
+  for (const v of violations) {
+    const k = v.guideline_id;
+    if (!byGuideline[k]) byGuideline[k] = { ...v, count: 0, files: new Set() };
+    byGuideline[k].count++;
+    byGuideline[k].files.add(v.file);
   }
 
-  // Visual mode findings
-  const visMode = report.visual_mode;
-  if (visMode && visMode.ran && visMode.findings && visMode.findings.length) {
-    html += `<h3>Visual Findings</h3>`;
-    html += `<p class="small muted" style="margin:-0.25rem 0 0.5rem">${visMode.screenshots_checked || 0} screenshots analyzed against design guidelines</p>`;
+  const quickFixes = Object.values(byGuideline)
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 5);
 
-    const sorted = [...visMode.findings].sort((a, b) => (a.severity === 'error' ? 0 : 1) - (b.severity === 'error' ? 0 : 1));
-    for (const f of sorted) {
-      const sevClass = f.severity === 'error' ? 'consistency-finding-error' : 'consistency-finding-warning';
-      const sevTag = f.severity === 'error'
-        ? '<span class="delta-tag delta-tag-critical">violation</span>'
-        : '<span class="delta-tag delta-tag-high">warning</span>';
+  html += `<h3>Quick Fixes</h3>`;
+  html += `<p class="small muted" style="margin:-0.25rem 0 0.5rem">Ranked by number of violations eliminated</p>`;
 
-      html += `<div class="consistency-finding ${sevClass}">`;
+  for (const qf of quickFixes) {
+    const sevTag = qf.severity === 'error'
+      ? '<span class="delta-tag delta-tag-critical">error</span>'
+      : '<span class="delta-tag delta-tag-high">warning</span>';
+
+    html += `<div class="consistency-finding consistency-finding-${qf.severity === 'error' ? 'error' : 'warning'}">`;
+    html += `<div class="consistency-finding-head">`;
+    html += `<strong style="font-size:0.8125rem">${escapeHtml(qf.guideline_title)}</strong>`;
+    html += `<span class="delta-tags">${sevTag}<span class="delta-tag delta-tag-mod">${qf.count} hits</span></span>`;
+    html += `</div>`;
+    if (qf.suggestion) {
+      html += `<p class="consistency-suggestion">${escapeHtml(qf.suggestion)}`;
+      if (qf.pf_doc_url) html += ` <a href="${escapeHtml(qf.pf_doc_url)}" target="_blank" style="font-size:0.7rem;margin-left:0.3rem">PatternFly docs &rarr;</a>`;
+      html += `</p>`;
+    }
+    html += `<p class="consistency-guideline">${qf.files.size} file${qf.files.size > 1 ? 's' : ''}: ${[...qf.files].slice(0, 3).map(f => '<code>' + escapeHtml(f.replace('src/app/', '').replace('src/', '')) + '</code>').join(', ')}${qf.files.size > 3 ? ' +' + (qf.files.size - 3) + ' more' : ''}</p>`;
+    html += `</div>`;
+  }
+
+  // ---- By Page/Component ----
+  const byPage = {};
+  for (const v of violations) {
+    const dir = (v.file || '').replace(/\/[^/]+$/, '').replace('src/app/', '').replace('src/', '');
+    const page = dir || 'root';
+    if (!byPage[page]) byPage[page] = [];
+    byPage[page].push(v);
+  }
+
+  const pages = Object.entries(byPage).sort((a, b) => b[1].length - a[1].length);
+
+  html += `<h3 style="margin-top:1.5rem">By Page</h3>`;
+  html += `<p class="small muted" style="margin:-0.25rem 0 0.5rem">Violations grouped by component area</p>`;
+
+  for (const [page, pvs] of pages) {
+    const errorCount = pvs.filter(v => v.severity === 'error').length;
+    const warnCount = pvs.filter(v => v.severity === 'warning').length;
+    const label = page.replace(/\//g, ' / ');
+    const badge = errorCount
+      ? `<span class="delta-tag delta-tag-critical">${errorCount} error${errorCount > 1 ? 's' : ''}</span>`
+      : '';
+    const warnBadge = warnCount
+      ? `<span class="delta-tag delta-tag-high">${warnCount} warn</span>`
+      : '';
+
+    html += `<details><summary style="font-size:0.8125rem;font-weight:500;padding:0.4rem 0"><code>${escapeHtml(label)}</code> ${badge}${warnBadge}</summary>`;
+
+    // Deduplicate by guideline within this page
+    const seen = new Set();
+    for (const v of pvs) {
+      const k = v.guideline_id;
+      if (seen.has(k)) continue;
+      seen.add(k);
+
+      const sameGuideline = pvs.filter(x => x.guideline_id === k);
+      const sevCls = v.severity === 'error' ? 'consistency-finding-error' : 'consistency-finding-warning';
+
+      html += `<div class="consistency-finding ${sevCls}" style="margin-left:0.5rem">`;
       html += `<div class="consistency-finding-head">`;
-      html += `<code>${escapeHtml(f.guideline_title || f.guideline_id)}</code>`;
-      html += `<span class="delta-tags">${sevTag}<span class="delta-tag delta-tag-mod">${escapeHtml(f.category || '')}</span></span>`;
+      html += `<span style="font-size:0.75rem;font-weight:500">${escapeHtml(v.guideline_title)}</span>`;
+      html += `<span class="delta-tags"><span class="delta-tag delta-tag-mod">${sameGuideline.length} hit${sameGuideline.length > 1 ? 's' : ''}</span></span>`;
       html += `</div>`;
-      html += `<p class="consistency-guideline">${escapeHtml(f.description)}</p>`;
-      if (f.suggestion) html += `<p class="consistency-suggestion">${escapeHtml(f.suggestion)}</p>`;
-
-      // Screenshot thumbnail
-      const ssFile = f.screenshot ? path.basename(f.screenshot) : null;
-      if (ssFile) {
-        const ssPath = path.join(absArtifacts, 'screenshots', ssFile);
-        if (fs.existsSync(ssPath)) {
-          const data = fs.readFileSync(ssPath);
-          const src = 'data:image/png;base64,' + data.toString('base64');
-          html += `<details><summary class="small muted">Screenshot</summary><img src="${src}" alt="${escapeHtml(f.guideline_id)}" style="width:100%;border-radius:0.375rem;border:1px solid var(--border);margin-top:0.5rem"></details>`;
-        }
+      if (v.suggestion) {
+        html += `<p class="consistency-suggestion">${escapeHtml(v.suggestion)}`;
+        if (v.pf_doc_url) html += ` <a href="${escapeHtml(v.pf_doc_url)}" target="_blank" style="font-size:0.7rem;margin-left:0.3rem">docs &rarr;</a>`;
+        html += `</p>`;
       }
-
-      if (f.seen_on && f.seen_on.length > 1) {
-        html += `<p class="consistency-seen-on">Also seen on: ${f.seen_on.slice(1).map(s => '<code>' + escapeHtml(path.basename(s)) + '</code>').join(', ')}</p>`;
+      // Show specific lines
+      html += `<div class="consistency-files">`;
+      for (const sv of sameGuideline.slice(0, 5)) {
+        const short = (sv.file || '').replace('src/app/', '').replace('src/', '');
+        html += `<div class="consistency-file-row"><code>${escapeHtml(short)}:${sv.line || '?'}</code></div>`;
       }
+      if (sameGuideline.length > 5) html += `<div class="consistency-file-row muted">+${sameGuideline.length - 5} more</div>`;
+      html += `</div>`;
       html += `</div>`;
     }
-  } else if (visMode && visMode.ran) {
-    html += `<h3>Visual</h3><p class="small muted">No visual violations found in ${visMode.screenshots_checked || 0} screenshots.</p>`;
-  } else if (!visMode || !visMode.ran) {
-    html += `<p class="small muted">Visual analysis did not run.</p>`;
+
+    html += `</details>`;
   }
 
   return html;
@@ -945,6 +984,18 @@ function buildTokens() {
   const jiraRows = csvRows.filter(r => (r.source || '').toLowerCase() !== 'inferred');
   const inferredRows = csvRows.filter(r => (r.source || '').toLowerCase() === 'inferred');
 
+  // Build consistency violations per-AC lookup for CSV column + table badges
+  const cReport = readJsonOr(path.join(absArtifacts, 'consistency-report.json'), null);
+  const consistencyViolationIds = new Set();
+  if (cReport && cReport.source_mode && cReport.source_mode.violations) {
+    for (const v of cReport.source_mode.violations) {
+      consistencyViolationIds.add(v.guideline_id);
+    }
+  }
+  const consistencyBadge = consistencyViolationIds.size
+    ? ` <span class="sa-tag sa-error" style="font-size:0.55rem;vertical-align:middle" title="${consistencyViolationIds.size} design guideline violations found on prototype pages">${consistencyViolationIds.size} design issues</span>`
+    : '';
+
   const acTableRowsJira = jiraRows.map(r => {
     const id = escapeHtml(r.criterion_id);
     const criterion = escapeHtml(r.criterion_text);
@@ -994,32 +1045,112 @@ function buildTokens() {
   let screenshotIdx = 0;
   const screenshotIndexMap = {};
 
-  function registerScreenshot(filename, narration) {
+  function registerScreenshot(filename, narration, stepContext) {
     const src = screenshots[filename];
     if (!src) return -1;
     const idx = screenshotIdx++;
     screenshotIndexMap[filename] = idx;
-    screenshotArray.push({ src, narration: narration || '', filename });
+    screenshotArray.push({
+      src, narration: narration || '', filename,
+      step: stepContext || null
+    });
     return idx;
   }
 
+  // ---- Consistency lookup for screenshot annotations ----
+  const consistencyReport = readJsonOr(path.join(absArtifacts, 'consistency-report.json'), null);
+  const consistencyByRoute = {};
+
+  if (consistencyReport && consistencyReport.source_mode && consistencyReport.source_mode.violations) {
+    const routeMap = {
+      'AppLayout': '/',
+      'AgentCatalog/AgentCatalog': '/ai-hub/agents/catalog',
+      'AgentCatalog/AgentCatalogDetails': '/ai-hub/agents/catalog/:id',
+      'AgentCatalog/AgentDeployments': '/ai-hub/agents/deployments',
+      'Deployments/Deployments': '/ai-hub/models',
+      'Deployments/RegisterExternalModel': '/ai-hub/models',
+      'FeatureFlags': '/',
+      'routes': '/',
+      'ContextPanel': '/'
+    };
+
+    for (const v of consistencyReport.source_mode.violations) {
+      const file = v.file || '';
+      for (const [pattern, route] of Object.entries(routeMap)) {
+        if (file.includes(pattern)) {
+          if (!consistencyByRoute[route]) consistencyByRoute[route] = [];
+          const key = v.guideline_id + ':' + route;
+          if (!consistencyByRoute[route].find(x => x._key === key)) {
+            consistencyByRoute[route].push({ ...v, _key: key });
+          }
+          break;
+        }
+      }
+    }
+  }
+
+  const globalShellFiles = new Set(['AppLayout', 'FeatureFlags', 'routes', 'ContextPanel']);
+  const importLinePattern = /^(import |} from |export (interface|type|const) )/;
+
+  function isGlobalShellViolation(v) {
+    const f = v.file || '';
+    return [...globalShellFiles].some(g => f.includes(g));
+  }
+
+  function isImportFalsePositive(v) {
+    const desc = (v.description || '').trim();
+    return importLinePattern.test(desc) || desc.endsWith(',') && desc.split(/\s+/).length <= 2;
+  }
+
+  function getConsistencyForStep(step) {
+    const target = (step.target || '').toLowerCase();
+    const pageViolations = [];
+    const shellViolations = [];
+    for (const [route, violations] of Object.entries(consistencyByRoute)) {
+      if (target.includes(route) || (route === '/' && step.action === 'navigate' && target.includes('localhost'))) {
+        for (const v of violations) {
+          if (isImportFalsePositive(v)) continue;
+          const bucket = isGlobalShellViolation(v) ? shellViolations : pageViolations;
+          if (!bucket.find(m => m.guideline_id === v.guideline_id)) bucket.push(v);
+        }
+      }
+    }
+    return { page: pageViolations, shell: shellViolations, all: [...pageViolations, ...shellViolations] };
+  }
+
+  // ---- Exploration persona reactions lookup ----
+  const explorationReactions = {};
+  const explorationData = journeyLog ? journeyLog.exploration || [] : [];
+  for (const expl of explorationData) {
+    for (const step of (expl.steps || [])) {
+      if (step.screenshot && step.persona_reaction) {
+        explorationReactions[path.basename(step.screenshot)] = {
+          persona: expl.persona_name || expl.persona,
+          reaction: step.persona_reaction
+        };
+      }
+    }
+  }
+
   // ---- Journey Blocks ----
+  const journeyColors = ['#0066cc', '#16a34a', '#d97706', '#7c3aed', '#0891b2', '#dc2626'];
   let journeyBlocksHtml = '';
   const pathRows = [];
 
   for (const journey of journeys) {
+    const jIdx = journeys.indexOf(journey);
+    const jColor = journeyColors[jIdx % journeyColors.length];
     const divider = journeyBlocksHtml ? '<div class="journey-divider"></div>' : '';
-    let block = `${divider}<h3>${escapeHtml(journey.title)}</h3>`;
-    block += `<p class="small muted"><strong>Persona:</strong> ${escapeHtml(journey.persona)} · <strong>Source:</strong> ${escapeHtml(journey.source)} · <strong>Verdict:</strong> ${badgeHtml(journey.verdict)}</p>`;
+    let block = `${divider}<h3 style="border-left:4px solid ${jColor};padding-left:0.6rem">${escapeHtml(journey.title)}</h3>`;
+    block += `<p class="small muted" style="padding-left:calc(0.6rem + 4px)"><strong>Persona:</strong> ${escapeHtml(journey.persona)} · <strong>Source:</strong> ${escapeHtml(journey.source)} · <strong>Verdict:</strong> ${badgeHtml(journey.verdict)}</p>`;
 
     const steps = journey.steps || [];
-    for (const step of steps) {
-      block += `<div style="margin:1rem 0">`;
-      block += `<p class="small"><strong>Step ${step.step}</strong> — ${escapeHtml(step.action)} → <code>${escapeHtml(step.target)}</code> · ${badgeHtml(step.result === 'success' ? 'PASS' : 'FAIL')}`;
-      if (step.timestamp_ms !== undefined) block += ` · <span class="mono muted">${step.timestamp_ms}ms</span>`;
-      block += `</p>`;
+    const renderedScreenshots = new Set();
 
-      // Find screenshot: explicit path in JSON, or auto-detect by naming convention
+    for (let si = 0; si < steps.length; si++) {
+      const step = steps[si];
+
+      // Find screenshot
       let ssFilename = step.screenshot ? path.basename(step.screenshot) : null;
       if (!ssFilename) {
         const jIdx = journeys.indexOf(journey) + 1;
@@ -1031,15 +1162,133 @@ function buildTokens() {
           if (screenshots[c]) { ssFilename = c; break; }
         }
       }
-      if (ssFilename && screenshots[ssFilename]) {
-        const idx = registerScreenshot(ssFilename, step.narration || '');
-        if (idx >= 0) {
-          block += `<div class="screenshot" data-idx="${idx}"><img src="${screenshots[ssFilename]}" alt="Step ${step.step}"></div>`;
+
+      // Check if the NEXT step uses the same screenshot — if so, merge narrations
+      let mergedSteps = [step];
+      if (ssFilename) {
+        while (si + 1 < steps.length) {
+          const nextStep = steps[si + 1];
+          const nextSs = nextStep.screenshot ? path.basename(nextStep.screenshot) : null;
+          if (nextSs === ssFilename) {
+            mergedSteps.push(nextStep);
+            si++;
+          } else break;
         }
       }
 
-      if (step.narration) {
-        block += `<div class="narration">${escapeHtml(step.narration)}</div>`;
+      // Render step headers (all merged steps)
+      block += `<div style="margin:1rem 0">`;
+      for (const ms of mergedSteps) {
+        block += `<p class="small"><strong>Step ${ms.step}</strong> — ${escapeHtml(ms.action)} → <code>${escapeHtml(ms.target)}</code> · ${badgeHtml(ms.result === 'success' ? 'PASS' : 'FAIL')}`;
+        if (ms.timestamp_ms !== undefined) block += ` · <span class="mono muted">${ms.timestamp_ms}ms</span>`;
+        block += `</p>`;
+      }
+      if (ssFilename && screenshots[ssFilename] && !renderedScreenshots.has(ssFilename)) {
+        renderedScreenshots.add(ssFilename);
+        const cResult = getConsistencyForStep(step);
+        const reaction = explorationReactions[ssFilename];
+
+        const overlays = ud ? (ud.persona_overlays || []) : [];
+        const scoreImpacts = [];
+        const seenDims = new Set();
+        for (const ms of mergedSteps) {
+          if (ms.action === 'navigate-assisted' || ms.url_fallback) {
+            if (ud && ud.dimensions) {
+              for (const d of ud.dimensions) {
+                if (seenDims.has(d.name)) continue;
+                for (const [pid, s] of Object.entries(d.scores)) {
+                  if (s.assisted_nav_impact) {
+                    seenDims.add(d.name);
+                    scoreImpacts.push({ dim: d.name, score: d.composite_score || s.score, note: 'Capped by navigate-assisted at this step', persona: pid });
+                    break;
+                  }
+                }
+              }
+            }
+          }
+          const stepOvs = overlays.filter(o => (o.confusion_events || []).some(e => e.step === ms.step || e.step === parseFloat(ms.step)));
+          for (const ov of stepOvs) {
+            const confEvent = (ov.confusion_events || []).find(e => e.step === ms.step || e.step === parseFloat(ms.step));
+            if (confEvent && !seenDims.has('Patience:' + ov.persona)) {
+              seenDims.add('Patience:' + ov.persona);
+              scoreImpacts.push({ dim: 'Patience', score: null, note: `${ov.persona_name}: ${confEvent.trigger} (${confEvent.patience_cost}%)`, persona: ov.persona });
+            }
+          }
+        }
+
+        const mergedNarrations = mergedSteps.map(ms => ms.narration).filter(Boolean).join(' ');
+
+        const stepCtx = {
+          stepNum: mergedSteps.map(ms => ms.step).join(', '),
+          action: step.action || '',
+          target: step.target || '',
+          result: step.result || '',
+          error: mergedSteps.map(ms => ms.error).filter(Boolean).join('; '),
+          rootCause: mergedSteps.map(ms => ms.root_cause).filter(Boolean).join('; '),
+          journeyTitle: journey.title,
+          journeyIdx: jIdx,
+          journeyColor: jColor,
+          journeySource: journey.source || '',
+          persona: journey.persona,
+          verdict: mergedSteps.some(ms => ms.result !== 'success') ? 'FAIL' : 'PASS',
+          violations: cResult.page.map(cf => ({
+            id: cf.guideline_id, title: cf.guideline_title || cf.guideline_id,
+            severity: cf.severity, file: (cf.file || '').replace('src/app/', '').replace('src/', ''),
+            line: cf.line, description: cf.description || '', suggestion: cf.suggestion || '', pfDocUrl: cf.pf_doc_url || '', category: cf.category || '', isShell: false
+          })),
+          shellViolations: cResult.shell.map(cf => ({
+            id: cf.guideline_id, title: cf.guideline_title || cf.guideline_id,
+            severity: cf.severity, file: (cf.file || '').replace('src/app/', '').replace('src/', ''),
+            line: cf.line, description: cf.description || '', suggestion: cf.suggestion || '', pfDocUrl: cf.pf_doc_url || '', category: cf.category || '', isShell: true
+          })),
+          personaReaction: reaction ? { name: reaction.persona, text: reaction.reaction } : null,
+          scoreImpacts: scoreImpacts.slice(0, 5)
+        };
+
+        const idx = registerScreenshot(ssFilename, mergedNarrations, stepCtx);
+        if (idx >= 0) {
+          block += `<div class="screenshot-card">`;
+          block += `<div class="screenshot" data-idx="${idx}"><img src="${screenshots[ssFilename]}" alt="Step ${step.step}"></div>`;
+
+          if (mergedNarrations) {
+            block += `<div class="narration">${escapeHtml(mergedNarrations)}</div>`;
+          }
+
+          const allFindings = [...cResult.page, ...cResult.shell];
+          if (allFindings.length) {
+            block += `<div class="screenshot-annotations">`;
+            for (const cf of cResult.page) {
+              const sevCls = cf.severity === 'error' ? 'sa-error' : 'sa-warning';
+              const detailId = `sa-detail-${journeys.indexOf(journey)}-${step.step}-${cf.guideline_id}`.replace(/[^a-zA-Z0-9-]/g, '-');
+              block += `<div class="sa-item">`;
+              block += `<button class="sa-tag ${sevCls}" onclick="document.getElementById('${detailId}').toggleAttribute('open')">${escapeHtml(cf.guideline_title || cf.guideline_id)}</button>`;
+              block += `<details id="${detailId}" class="sa-detail"><summary style="display:none"></summary><div class="sa-detail-body">`;
+              if (cf.file) block += `<div class="sa-location"><code>${escapeHtml((cf.file || '').replace('src/app/', '').replace('src/', '') + (cf.line ? ':' + cf.line : ''))}</code></div>`;
+              if (cf.suggestion) block += `<p class="sa-fix"><strong>Fix:</strong> ${escapeHtml(cf.suggestion)}</p>`;
+              if (cf.pf_doc_url) block += `<a href="${escapeHtml(cf.pf_doc_url)}" target="_blank" class="sa-doc-link">PatternFly documentation &rarr;</a>`;
+              block += `</div></details></div>`;
+            }
+            if (cResult.shell.length) {
+              block += `<details class="sa-shell-toggle"><summary class="small muted">${cResult.shell.length} global shell issue${cResult.shell.length > 1 ? 's' : ''} (AppLayout, nav, flags)</summary><div class="screenshot-annotations" style="border-top:none;padding-top:0">`;
+              for (const cf of cResult.shell) {
+                const sevCls = cf.severity === 'error' ? 'sa-error' : 'sa-warning';
+                block += `<span class="sa-tag ${sevCls}" title="${escapeHtml(cf.suggestion || '')}">${escapeHtml(cf.guideline_title || cf.guideline_id)}</span>`;
+              }
+              block += `</div></details>`;
+            }
+            block += `</div>`;
+          }
+
+          if (reaction) {
+            block += `<div class="screenshot-persona"><strong>${escapeHtml(reaction.persona)}:</strong> <em>${escapeHtml(reaction.reaction)}</em></div>`;
+          }
+
+          block += `</div>`;
+        }
+      } else if (!ssFilename || !screenshots[ssFilename]) {
+        for (const ms of mergedSteps) {
+          if (ms.narration) block += `<div class="narration">${escapeHtml(ms.narration)}</div>`;
+        }
       }
 
       if (step.error) {
@@ -1054,15 +1303,91 @@ function buildTokens() {
 
     journeyBlocksHtml += block;
 
+    const unassistedPass = steps.filter(s => s.result === 'success' && s.action !== 'navigate-assisted').length;
     const matchPct = journey.steps_expected > 0
-      ? Math.round((journey.steps_completed / journey.steps_expected) * 100) + '%'
+      ? Math.round((unassistedPass / journey.steps_expected) * 100) + '%'
       : '—';
-    const drift = journey.verdict === 'PASS' ? '—' : `Blocked at step ${(steps.find(s => s.result !== 'success') || {}).step || '?'}`;
-    pathRows.push(`<tr><td>${escapeHtml(journey.title)}</td><td>${escapeHtml(journey.persona)}</td><td>${journey.steps_expected}</td><td>${journey.steps_completed}</td><td>${matchPct}</td><td class="small">${escapeHtml(drift)}</td></tr>`);
+    const matchClass = unassistedPass === journey.steps_expected ? 'color:var(--status-success)' : unassistedPass === 0 ? 'color:var(--status-danger)' : 'color:var(--status-warning)';
+    let drift = '—';
+    if (journey.verdict !== 'PASS') {
+      const failStep = steps.find(s => s.result !== 'success' && s.action !== 'navigate-assisted');
+      if (failStep) {
+        const reason = failStep.error ? failStep.error.substring(0, 60) : 'step failed';
+        drift = `Step ${failStep.step}: ${reason}`;
+      }
+    }
+    pathRows.push(`<tr><td>${escapeHtml(journey.title)}</td><td>${escapeHtml(journey.persona)}</td><td>${journey.steps_expected}</td><td>${unassistedPass}</td><td style="${matchClass};font-weight:500">${matchPct}</td><td class="small">${escapeHtml(drift)}</td></tr>`);
   }
 
+  // ---- Append exploration as additional journey blocks ----
+  if (explorationData.length) {
+    journeyBlocksHtml += `<div class="journey-divider"></div>`;
+    journeyBlocksHtml += `<h3 style="color:var(--text2)">Exploration — beyond prescribed journeys</h3>`;
+    journeyBlocksHtml += `<p class="small muted" style="margin:-0.25rem 0 1rem">Pages the persona visited after the prescribed AC journeys. Same browser session, same state.</p>`;
+
+    for (const expl of explorationData) {
+      const pName = escapeHtml(expl.persona_name || expl.persona);
+      let block = `<p class="small"><strong>${pName}</strong> · ${escapeHtml(expl.goal || '')}</p>`;
+      if (expl.prescribed_gap) {
+        block += `<p class="small muted" style="margin:0 0 0.75rem">${escapeHtml(expl.prescribed_gap)}</p>`;
+      }
+
+      for (const step of (expl.steps || [])) {
+        block += `<div style="margin:1rem 0">`;
+        block += `<p class="small"><strong>Step ${step.step}</strong> — ${escapeHtml(step.action || '')} → <code>${escapeHtml(step.target || '')}</code> · ${badgeHtml(step.result === 'success' ? 'PASS' : 'FAIL')}</p>`;
+
+        const ssFile = step.screenshot ? path.basename(step.screenshot) : null;
+        if (ssFile && screenshots[ssFile]) {
+          const exploCtx = {
+            stepNum: step.step, action: step.action || '', target: step.target || '',
+            result: step.result || '', error: '', rootCause: '',
+            journeyTitle: 'Exploration', persona: pName, verdict: step.result === 'success' ? 'PASS' : 'FAIL',
+            violations: getConsistencyForStep(step).page.map(cf => ({
+              id: cf.guideline_id, title: cf.guideline_title || cf.guideline_id,
+              severity: cf.severity, file: (cf.file || '').replace('src/app/', '').replace('src/', ''),
+              line: cf.line, description: cf.description || '', suggestion: cf.suggestion || '', pfDocUrl: cf.pf_doc_url || '', category: cf.category || ''
+            })),
+            shellViolations: getConsistencyForStep(step).shell.map(cf => ({
+              id: cf.guideline_id, title: cf.guideline_title || cf.guideline_id,
+              severity: cf.severity, file: (cf.file || '').replace('src/app/', '').replace('src/', ''),
+              line: cf.line, description: cf.description || '', suggestion: cf.suggestion || '', pfDocUrl: cf.pf_doc_url || '', category: cf.category || ''
+            })),
+            personaReaction: step.persona_reaction ? { name: pName, text: step.persona_reaction } : null,
+            scoreImpacts: []
+          };
+          const idx = registerScreenshot(ssFile, step.narration || '', exploCtx);
+          if (idx >= 0) {
+            block += `<div class="screenshot-card">`;
+            block += `<div class="screenshot" data-idx="${idx}"><img src="${screenshots[ssFile]}" alt="Explore step ${step.step}"></div>`;
+            if (step.narration) block += `<div class="narration">${escapeHtml(step.narration)}</div>`;
+            if (step.persona_reaction) {
+              block += `<div class="screenshot-persona"><strong>${pName}:</strong> <em>${escapeHtml(step.persona_reaction)}</em></div>`;
+            }
+            block += `</div>`;
+          }
+        } else {
+          if (step.narration) block += `<div class="narration">${escapeHtml(step.narration)}</div>`;
+          if (step.persona_reaction) {
+            block += `<div class="screenshot-persona"><strong>${pName}:</strong> <em>${escapeHtml(step.persona_reaction)}</em></div>`;
+          }
+        }
+        block += `</div>`;
+      }
+      journeyBlocksHtml += block;
+    }
+  }
+
+  const pathLegend = `<details class="path-legend"><summary class="small muted">What do these columns mean?</summary><div class="card card-compact" style="margin-top:0.5rem"><dl class="path-legend-dl">` +
+    `<dt>Journey</dt><dd>A user goal derived from the Jira acceptance criteria (e.g., "Browse Agent Catalog" comes from AC-1).</dd>` +
+    `<dt>Persona</dt><dd>The simulated user profile walking through this journey — their expertise level affects what friction they encounter.</dd>` +
+    `<dt>Expected</dt><dd>How many UI steps the journey should take if the feature works correctly (click sidebar, click card, verify content, etc.).</dd>` +
+    `<dt>Actual</dt><dd>How many steps completed successfully <strong>without URL workarounds</strong>. Steps that required direct URL navigation (navigate-assisted) are not counted — they mean the page exists but a real user can't find it.</dd>` +
+    `<dt>Match</dt><dd>Actual / Expected as a percentage. <strong style="color:var(--status-success)">100%</strong> = the journey works end-to-end. <strong style="color:var(--status-warning)">50-99%</strong> = partially blocked. <strong style="color:var(--status-danger)">&lt;50%</strong> = mostly broken.</dd>` +
+    `<dt>Drift Notes</dt><dd>Where the journey broke — the specific step and what went wrong (e.g., "sidebar nav missing" or "detail page content too sparse").</dd>` +
+    `</dl></div></details>`;
+
   const pathComparisonTable = pathRows.length
-    ? `<table class="tbl mb1"><thead><tr><th>Journey</th><th>Persona</th><th>Expected</th><th>Actual</th><th>Match</th><th>Drift Notes</th></tr></thead><tbody>${pathRows.join('\n')}</tbody></table>`
+    ? `<table class="tbl mb1"><thead><tr><th>Journey</th><th>Persona</th><th>Expected</th><th>Actual</th><th>Match</th><th>Drift Notes</th></tr></thead><tbody>${pathRows.join('\n')}</tbody></table>${pathLegend}`
     : '';
 
   // ---- Usability Table ----
@@ -1254,7 +1579,7 @@ function buildTokens() {
 
   // ---- Screenshot array for JS ----
   const screenshotArrayStr = screenshotArray.map(s =>
-    `{src:${JSON.stringify(s.src)},narration:${JSON.stringify(s.narration)},filename:${JSON.stringify(s.filename)}}`
+    `{src:${JSON.stringify(s.src)},narration:${JSON.stringify(s.narration)},filename:${JSON.stringify(s.filename)},step:${JSON.stringify(s.step || null)}}`
   ).join(',\n');
 
   // ---- CSV data for download ----
@@ -1291,6 +1616,7 @@ function buildTokens() {
 
   return {
     '{{PROTOTYPE_ID}}': protoId,
+    '{{ARTIFACTS_PATH}}': absArtifacts,
     '{{JIRA_URL}}': jiraUrl,
     '{{PROTOTYPE_URL}}': prototypeUrl,
     '{{RFE_URL}}': rfeUrl,
@@ -1336,8 +1662,6 @@ function buildTokens() {
     '{{CODE_DELTAS_HTML}}': buildCodeDeltasHtml(),
     '{{CONSISTENCY_HTML}}': buildConsistencyHtml(),
     '{{CONSISTENCY_TAB_DISPLAY}}': fs.existsSync(path.join(absArtifacts, 'consistency-report.json')) ? '' : 'display:none',
-    '{{EXPLORATION_HTML}}': buildExplorationHtml(),
-    '{{EXPLORATION_DISPLAY}}': (readJsonOr(path.join(absArtifacts, 'journey-log.json'), {}).exploration || []).length ? '' : 'display:none',
     '{{EXTERNAL_USABILITY_HTML}}': buildExternalUsabilityHtml(),
     '{{EXTERNAL_USABILITY_DISPLAY}}': fs.existsSync(path.join(absArtifacts, 'zack-skill-output')) ? '' : 'display:none'
   };

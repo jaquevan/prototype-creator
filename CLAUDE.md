@@ -158,15 +158,24 @@ make test
 
 ### Fetching Context
 
+**Required before running prototype-evaluate.** These bootstrap external repos into `.context/` for usability scoring and design consistency checking. Requires VPN for GitLab repos.
+
 ```bash
-# Fetch design system docs (PatternFly)
-bash scripts/fetch-design-system-context.sh
+# All at once:
+make context
 
-# Bootstrap decision-kit skills into .context/
-bash scripts/bootstrap-decision-kit.sh
-
-# Bootstrap usability testing personas + rubric into .context/
-bash scripts/bootstrap-usability-testing.sh
+# Or individually:
+bash scripts/fetch-design-system-context.sh          # PatternFly component docs + tokens
+bash scripts/bootstrap-decision-kit.sh               # Decision-kit thinking skills
+bash scripts/bootstrap-usability-testing.sh           # Personas + 7-dimension rubric (Zack Bodnar)
+bash scripts/bootstrap-consistency-checker.sh         # PatternFly design guidelines (Beau Morley)
 ```
+
+| Directory | Source | Used by |
+|-----------|--------|---------|
+| `.context/design-system/` | PatternFly docs | prototype-create |
+| `.context/decision-kit/` | [decision-kit](https://github.com/jnemargut/decision-kit) | prototype-create |
+| `.context/usability-testing/` | [automated-usability-testing](https://gitlab.cee.redhat.com/zbodnar/automated-usability-testing) | prototype-evaluate (Steps 3b, 3c) |
+| `.context/consistency-checker/` | [consistency-checker](https://gitlab.cee.redhat.com/bmorley/consistency-checker) | prototype-evaluate (Step 3e) |
 
 $ARGUMENTS
