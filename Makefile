@@ -31,3 +31,9 @@ clean:
 # Generate pipeline report
 report:
 	uv run python3 scripts/generate-report.py
+
+# Publish an evaluation report to GitLab Pages
+# Usage: make publish-report KEY=RHAISTRAT-1536
+publish-report:
+	@if [ -z "$(KEY)" ]; then echo "Usage: make publish-report KEY=RHAISTRAT-1536"; exit 1; fi
+	bash scripts/publish-report.sh .artifacts/$(KEY)/

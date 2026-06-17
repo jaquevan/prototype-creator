@@ -36,18 +36,19 @@ const C = {
 const COLUMNS = [
   { header: 'Jira Key',       width: 130 },  // A  0
   { header: 'Title',          width: 220 },  // B  1
-  { header: 'Designer',       width: 85  },  // C  2
-  { header: 'Automated',      width: 85  },  // D  3
-  { header: 'Agree',          width: 60  },  // E  4
-  { header: 'Usability',      width: 80  },  // F  5
-  { header: 'Verdicts',       width: 105 },  // G  6
-  { header: 'Eval Date',      width: 85  },  // H  7
-  { header: 'Total ACs',      width: 65  },  // I  8
-  { header: 'Fail Details',   width: 280 },  // J  9
-  { header: 'Flagged Details', width: 280 }, // K  10
-  { header: 'MR',             width: 150 },  // L  11
-  { header: 'Prototype',      width: 150 },  // M  12
-  { header: 'Notes',          width: 200 },  // N  13
+  { header: 'Report',         width: 120 },  // C  2
+  { header: 'Designer',       width: 85  },  // D  3
+  { header: 'Automated',      width: 85  },  // E  4
+  { header: 'Agree',          width: 60  },  // F  5
+  { header: 'Usability',      width: 80  },  // G  6
+  { header: 'Verdicts',       width: 105 },  // H  7
+  { header: 'Eval Date',      width: 85  },  // I  8
+  { header: 'Total ACs',      width: 65  },  // J  9
+  { header: 'Fail Details',   width: 280 },  // K  10
+  { header: 'Flagged Details', width: 280 }, // L  11
+  { header: 'MR',             width: 150 },  // M  12
+  { header: 'Prototype',      width: 150 },  // N  13
+  { header: 'Notes',          width: 200 },  // O  14
 ];
 
 const TITLE_ROW = 0, SUBTITLE_ROW = 1, HEADER_ROW = 2, DATA_START_ROW = 3;
@@ -68,8 +69,8 @@ function sheetsGet(token, range) {
   return JSON.parse(res);
 }
 
-function sheetsPut(token, range, values) {
-  const url = `${API_BASE}/values/${encodeURIComponent(range)}?valueInputOption=RAW`;
+function sheetsPut(token, range, values, inputOption = 'USER_ENTERED') {
+  const url = `${API_BASE}/values/${encodeURIComponent(range)}?valueInputOption=${inputOption}`;
   const bodyFile = path.join(ARTIFACTS_BASE, '_sync_body.json');
   fs.writeFileSync(bodyFile, JSON.stringify({ values }), 'utf8');
   const res = execSync(
@@ -189,7 +190,10 @@ function readEvalResults(key) {
   const failDetails = acRows.filter(r => r.verdict === 'FAIL').map(detailLine).join('\n');
   const flaggedDetails = acRows.filter(r => r.verdict === 'FLAGGED').map(detailLine).join('\n');
 
-  return { autoLofi, usScore, verdict, pass, fail, flagged, totalACs, failDetails, flaggedDetails, evalDate: new Date().toISOString().split('T')[0] };
+  const reportUrlPath = path.join(ARTIFACTS_BASE, key, 'report-url.txt');
+  const reportUrl = fs.existsSync(reportUrlPath) ? fs.readFileSync(reportUrlPath, 'utf8').trim() : '';
+
+  return { autoLofi, usScore, verdict, pass, fail, flagged, totalACs, failDetails, flaggedDetails, evalDate: new Date().toISOString().split('T')[0], reportUrl };
 }
 
 // ── Formatting helpers ─────────────────────────────────────────────────
@@ -273,8 +277,15 @@ function buildFormatRequests(sheetId, dataRows, evalFlags) {
       // Blue left accent stripe
       req.push({ updateBorders: { range: rng(sheetId, r, r + 1, 0, 1), left: border(C.evalAccent, 'SOLID_THICK') } });
 
-      // Designer lo-fi (col 2) + Automated lo-fi (col 3) — colored pills
-      for (const col of [2, 3]) {
+      // Report link (col 2) — blue underlined link style
+      if (row[2]) {
+        req.push(fmt(sheetId, r, r + 1, 2, 3,
+          { textFormat: { fontSize: 10, foregroundColor: { red: 0.06, green: 0.36, blue: 0.78 }, underline: true, bold: true }, horizontalAlignment: 'CENTER', verticalAlignment: 'MIDDLE' },
+          'textFormat,horizontalAlignment,verticalAlignment'));
+      }
+
+      // Designer lo-fi (col 3) + Automated lo-fi (col 4) — colored pills
+      for (const col of [3, 4]) {
         const val = row[col];
         if (val && val !== '—') {
           const sc = statusColor(val);
@@ -284,40 +295,40 @@ function buildFormatRequests(sheetId, dataRows, evalFlags) {
         }
       }
 
-      // Agreement (col 4)
-      const agree = (row[4] || '').toLowerCase();
+      // Agreement (col 5)
+      const agree = (row[5] || '').toLowerCase();
       if (agree === 'yes' || agree === 'no') {
         const yes = agree === 'yes';
-        req.push(fmt(sheetId, r, r + 1, 4, 5,
+        req.push(fmt(sheetId, r, r + 1, 5, 6,
           { backgroundColor: yes ? C.passBg : C.failBg, textFormat: { bold: true, fontSize: 10, foregroundColor: yes ? C.passText : C.failText }, horizontalAlignment: 'CENTER', verticalAlignment: 'MIDDLE' },
           'backgroundColor,textFormat,horizontalAlignment,verticalAlignment'));
       }
 
-      // Usability (col 5), Verdicts (col 6), Total ACs (col 8) — centered
-      for (const col of [5, 6, 8]) {
+      // Usability (col 6), Verdicts (col 7), Total ACs (col 9) — centered
+      for (const col of [6, 7, 9]) {
         if (row[col]) {
           req.push(fmt(sheetId, r, r + 1, col, col + 1,
-            { textFormat: { bold: col === 6, fontSize: 10 }, horizontalAlignment: 'CENTER', verticalAlignment: 'MIDDLE' },
+            { textFormat: { bold: col === 7, fontSize: 10 }, horizontalAlignment: 'CENTER', verticalAlignment: 'MIDDLE' },
             'textFormat,horizontalAlignment,verticalAlignment'));
         }
       }
 
-      // Fail Details (col 9) — red text, wrap
-      if (row[9]) {
-        req.push(fmt(sheetId, r, r + 1, 9, 10,
+      // Fail Details (col 10) — red text, wrap
+      if (row[10]) {
+        req.push(fmt(sheetId, r, r + 1, 10, 11,
           { textFormat: { fontSize: 9, foregroundColor: C.failText }, wrapStrategy: 'WRAP', verticalAlignment: 'TOP' },
           'textFormat,wrapStrategy,verticalAlignment'));
       }
 
-      // Flagged Details (col 10) — amber text, wrap
-      if (row[10]) {
-        req.push(fmt(sheetId, r, r + 1, 10, 11,
+      // Flagged Details (col 11) — amber text, wrap
+      if (row[11]) {
+        req.push(fmt(sheetId, r, r + 1, 11, 12,
           { textFormat: { fontSize: 9, foregroundColor: C.mixedText }, wrapStrategy: 'WRAP', verticalAlignment: 'TOP' },
           'textFormat,wrapStrategy,verticalAlignment'));
       }
     } else {
-      // No eval: mute the result columns (D through Total ACs)
-      req.push(fmt(sheetId, r, r + 1, 3, 11,
+      // No eval: mute the result columns (E through Total ACs)
+      req.push(fmt(sheetId, r, r + 1, 4, 12,
         { textFormat: { foregroundColor: C.muted, fontSize: 10, italic: true }, horizontalAlignment: 'CENTER', verticalAlignment: 'MIDDLE' },
         'textFormat,horizontalAlignment,verticalAlignment'));
     }
@@ -399,7 +410,7 @@ function main() {
 
     const evl = evalResults[key];
     let autoLofi = '', usScore = '', agree = '', verdict = '', evalDate = '';
-    let totalACs = '', failDetails = '', flaggedDetails = '';
+    let totalACs = '', failDetails = '', flaggedDetails = '', reportUrl = '';
 
     if (evl) {
       autoLofi = evl.autoLofi;
@@ -409,12 +420,14 @@ function main() {
       totalACs = String(evl.totalACs);
       failDetails = evl.failDetails;
       flaggedDetails = evl.flaggedDetails;
+      reportUrl = evl.reportUrl || '';
       const dPass = designerLofi.toLowerCase().startsWith('pass');
       const aPass = autoLofi.toLowerCase().startsWith('pass');
       agree = (designerLofi === '—' || designerLofi === 'N/A') ? '—' : (dPass === aPass ? 'Yes' : 'No');
     }
 
-    dataRows.push([key, title, designerLofi, autoLofi, agree, usScore, verdict, evalDate, totalACs, failDetails, flaggedDetails, mr, protoUrl, designerNotes]);
+    const reportLink = reportUrl ? `=HYPERLINK("${reportUrl}","View Report")` : '';
+    dataRows.push([key, title, reportLink, designerLofi, autoLofi, agree, usScore, verdict, evalDate, totalACs, failDetails, flaggedDetails, mr, protoUrl, designerNotes]);
     evalFlags.push(!!evl);
   }
 

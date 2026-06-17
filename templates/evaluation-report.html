@@ -75,8 +75,8 @@ details[open] summary::before{transform:rotate(90deg)}
 .modal-ctx-violation-error .mcv-sev{color:var(--status-danger);font-weight:600;font-size:0.65rem;text-transform:uppercase}
 .modal-ctx-violation-warning .mcv-sev{color:var(--status-warning);font-weight:600;font-size:0.65rem;text-transform:uppercase}
 .modal-ctx-section details summary{list-style:none;display:flex;align-items:center;gap:0.35rem;cursor:pointer;user-select:none}
-.modal-ctx-section details summary::before{content:'';display:inline-block;width:0;height:0;border-left:4px solid transparent;border-right:4px solid transparent;border-top:5px solid var(--text2);transition:transform 0.15s;flex-shrink:0}
-.modal-ctx-section details:not([open]) summary::before{transform:rotate(-90deg)}
+.modal-ctx-section details summary::before{content:'▸';display:inline-block;font-size:0.7rem;color:var(--text2);transition:transform 0.2s;flex-shrink:0;width:0.7rem}
+.modal-ctx-section details[open] summary::before{content:'▾'}
 .modal-ctx-section details summary::-webkit-details-marker{display:none}
 .modal-ctx-section details summary h4{margin:0}
 .modal-ctx-violation strong{font-size:0.75rem;display:block;margin-bottom:0.15rem}
@@ -89,7 +89,7 @@ details[open] summary::before{transform:rotate(90deg)}
 .modal-ctx-persona strong{font-weight:700}
 .modal-ctx-impact{font-size:0.75rem;margin:0.25rem 0;display:flex;justify-content:space-between;align-items:center;padding:0.2rem 0}
 .modal-ctx-impact-score{font-weight:600;font-family:var(--font-mono);font-size:0.8rem}
-.modal-actions{display:flex;gap:0.5rem;position:absolute;top:0.75rem;right:0.75rem;z-index:2}
+.modal-actions{display:flex;gap:0.5rem;position:sticky;top:0;float:right;z-index:2;padding:0.25rem 0}
 .modal-actions button{background:var(--bg2);border:1px solid var(--border);color:var(--text);width:2rem;height:2rem;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:0.875rem;cursor:pointer;transition:background 0.15s}
 .modal-actions button:hover{background:var(--border)}
 .modal-toast{position:absolute;bottom:4rem;right:1.5rem;background:var(--text);color:var(--bg);padding:0.35rem 0.75rem;border-radius:0.375rem;font-size:0.75rem;opacity:0;transition:opacity 0.3s;pointer-events:none}
@@ -351,6 +351,7 @@ details[open] summary .section-icon{opacity:0.8}
     <div class="meta-item"><div class="meta-label">Depth</div><div class="meta-value">{{DEPTH}}</div></div>
     <div class="meta-item"><div class="meta-label">Evaluated</div><div class="meta-value">{{EVAL_DATE}}</div></div>
     <div class="meta-item"><div class="meta-label">Usability</div><div class="meta-value">{{USABILITY_SCORE}}</div></div>
+    <div class="meta-item" style="{{OUTCOME_DISPLAY}}"><div class="meta-label">Outcome</div><div class="meta-value">{{OUTCOME_LINK}}</div></div>
     <div class="meta-item"><div class="meta-label">Journeys</div><div class="meta-value">{{JOURNEY_SUMMARY}}</div></div>
     <div class="meta-item"><div class="meta-label">Gaps</div><div class="meta-value">{{GAPS_SUMMARY}}</div></div>
   </div>
@@ -446,9 +447,9 @@ details[open] summary .section-icon{opacity:0.8}
     <!-- AC Results: Jira ACs -->
     <h2 id="ac-results">Acceptance Criteria</h2>
     <p class="small muted" style="margin:-0.5rem 0 1rem">Source: <a href="{{JIRA_URL}}" target="_blank">{{PROTOTYPE_ID}}</a> — {{AC_JIRA_COUNT}} criteria extracted verbatim from ticket</p>
-    <table class="tbl">
+    <table class="tbl" id="ac-table-jira">
       <thead>
-        <tr><th style="width:3.5rem">ID</th><th>Acceptance Criterion</th><th style="width:5.5rem">Verdict</th><th>Evidence</th></tr>
+        <tr><th style="width:3.5rem">ID</th><th>Acceptance Criterion</th><th style="width:5.5rem">Verdict</th><th>Evidence</th><th style="width:7rem">Human Review</th></tr>
       </thead>
       <tbody>
         {{AC_TABLE_ROWS_JIRA}}
@@ -555,10 +556,6 @@ details[open] summary .section-icon{opacity:0.8}
 <!-- Screenshot Modal — split view -->
 <div class="modal-overlay" id="screenshotModal">
   <div class="modal-content">
-    <div class="modal-actions">
-      <button onclick="copyComposite()" title="Copy screenshot with context"><svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 010 1.5h-1.5a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-1.5a.75.75 0 011.5 0v1.5A1.75 1.75 0 019.25 16h-7.5A1.75 1.75 0 010 14.25v-7.5z"/><path d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0114.25 11h-7.5A1.75 1.75 0 015 9.25v-7.5zm1.75-.25a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-7.5a.25.25 0 00-.25-.25h-7.5z"/></svg></button>
-      <button onclick="closeModal()" title="Close">×</button>
-    </div>
     <div class="modal-toast" id="modalToast">Copied to clipboard</div>
 
     <div class="modal-img-pane">
@@ -571,6 +568,10 @@ details[open] summary .section-icon{opacity:0.8}
     </div>
 
     <div class="modal-ctx-pane" id="modalCtx">
+      <div class="modal-actions">
+        <button onclick="copyComposite()" title="Copy screenshot with context"><svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 010 1.5h-1.5a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-1.5a.75.75 0 011.5 0v1.5A1.75 1.75 0 019.25 16h-7.5A1.75 1.75 0 010 14.25v-7.5z"/><path d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0114.25 11h-7.5A1.75 1.75 0 015 9.25v-7.5zm1.75-.25a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-7.5a.25.25 0 00-.25-.25h-7.5z"/></svg></button>
+        <button onclick="closeModal()" title="Close">×</button>
+      </div>
       <!-- populated by JS -->
     </div>
   </div>
@@ -592,7 +593,37 @@ function downloadHTML() {
 }
 
 function downloadCSV() {
-  var blob = new Blob([csvData], {type: 'text/csv'});
+  // Collect human review annotations from editable fields
+  var annotations = {};
+  var inputs = document.querySelectorAll('.human-review-input');
+  for (var i = 0; i < inputs.length; i++) {
+    var val = inputs[i].value.trim();
+    if (val) annotations[inputs[i].getAttribute('data-ac')] = val;
+  }
+
+  var exportCsv = csvData;
+  // Append human_notes column to AC section rows if any annotations exist
+  if (Object.keys(annotations).length > 0) {
+    var lines = exportCsv.split('\n');
+    var inAcSection = false;
+    for (var li = 0; li < lines.length; li++) {
+      if (lines[li].startsWith('# ACCEPTANCE CRITERIA')) { inAcSection = true; continue; }
+      if (lines[li].startsWith('#')) { inAcSection = false; continue; }
+      if (!inAcSection || !lines[li].trim()) continue;
+      if (li === lines.indexOf('prototype_id,source,criterion_id,criterion_text,verdict,evidence,fix_action,fix_file,consistency_violations') ||
+          lines[li].startsWith('prototype_id,')) {
+        lines[li] += ',human_notes';
+        continue;
+      }
+      // Find the criterion_id in this row (3rd field)
+      var fields = lines[li].split(',');
+      var acId = (fields[2] || '').replace(/"/g, '');
+      lines[li] += ',"' + (annotations[acId] || '').replace(/"/g, '""') + '"';
+    }
+    exportCsv = lines.join('\n');
+  }
+
+  var blob = new Blob([exportCsv], {type: 'text/csv'});
   var a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
   a.download = 'evaluation-{{PROTOTYPE_ID}}.csv';
@@ -726,10 +757,10 @@ function closeModal() {
 
 function boldKeys(text) {
   return escH(text)
-    .replace(/\b(FAIL|PASS|FLAGGED|ASSISTED)\b/g, '<strong>$1</strong>')
+    .replace(/\b(FAIL|PASS|FLAGGED)\b/g, '<strong>$1</strong>')
     .replace(/\b(Step\s+\d+(\.\d+)?)\b/g, '<strong>$1</strong>')
-    .replace(/\b(navigate-assisted|url_fallback|navigate|verify|verify-scroll|click|fill)\b/g, '<strong>$1</strong>')
-    .replace(/(feature exists|orphaned|NOT updated|not found|sidebar nav|missing)/gi, '<strong>$1</strong>');
+    .replace(/\b(navigate-assisted|url_fallback)\b/g, '<strong>$1</strong>')
+    .replace(/(NOT updated|not found|not reachable|orphaned|empty|missing|blocked)/gi, '<strong>$1</strong>');
 }
 
 function renderModal() {
@@ -765,6 +796,17 @@ function renderModal() {
     html += '<div class="modal-ctx-header">';
     html += '<h3><strong>Step ' + st.stepNum + '</strong> — ' + escH(st.action) + '</h3>';
     html += '<p><code>' + escH(st.target) + '</code> · ' + (st.verdict === 'PASS' ? '<span class="badge badge-pass">PASS</span>' : '<span class="badge badge-fail">FAIL</span>') + '</p>';
+    // AC badges in modal — clickable to show criterion text
+    if (st.acIds && st.acIds.length) {
+      html += '<div style="margin:0.25rem 0 0">';
+      for (var ai = 0; ai < st.acIds.length; ai++) {
+        var acId = st.acIds[ai];
+        var acText = (st.acTexts && st.acTexts[acId]) || '';
+        html += '<span class="badge" style="background:rgba(0,102,204,0.1);color:#0066cc;margin-right:0.3rem;cursor:pointer" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display===\'none\'?\'block\':\'none\'">' + escH(acId) + '</span>';
+        html += '<div style="display:none;font-size:0.7rem;color:var(--text);background:var(--bg2);border:1px solid var(--border);border-radius:0.25rem;padding:0.4rem 0.6rem;margin:0.25rem 0 0.4rem;line-height:1.5"><strong>' + escH(acId) + ':</strong> ' + escH(acText) + '</div>';
+      }
+      html += '</div>';
+    }
     html += '</div>';
 
     if (s.narration) {
@@ -778,18 +820,43 @@ function renderModal() {
       html += '<div class="ta-callout ta-callout-expected" style="margin:0.5rem 0"><strong>Root cause:</strong> ' + boldKeys(st.rootCause) + '</div>';
     }
 
-    // 1. Persona (top)
-    if (st.personaReaction) {
+    // 1. Personas with patience — always show
+    if (st.personaPatience && st.personaPatience.length) {
+      html += '<div class="modal-ctx-section"><h4>Personas</h4>';
+      for (var pi = 0; pi < st.personaPatience.length; pi++) {
+        var pp = st.personaPatience[pi];
+        var ppColor = pp.patience > 60 ? '#16a34a' : pp.patience > 30 ? '#d97706' : '#dc2626';
+        html += '<div style="display:flex;align-items:center;justify-content:space-between;margin:0.3rem 0;font-size:0.75rem">';
+        html += '<span style="font-weight:600">' + escH(pp.persona) + '</span>';
+        html += '<span style="display:inline-flex;align-items:center;gap:0.3rem;font-family:var(--font-mono)">';
+        html += '<span style="width:60px;height:6px;background:#eaeaea;border-radius:3px;overflow:hidden;display:inline-block"><span style="height:100%;width:' + pp.patience + '%;background:' + ppColor + ';display:block;border-radius:3px"></span></span>';
+        html += '<span style="color:' + ppColor + '">' + pp.patience + '%</span>';
+        if (pp.cost) html += '<span style="color:#dc2626;font-size:0.65rem">(' + pp.cost + '%)</span>';
+        html += '</span></div>';
+        if (pp.trigger) html += '<p style="font-size:0.65rem;color:var(--text2);margin:0 0 0.2rem;padding-left:0.5rem">&mdash; ' + escH(pp.trigger) + '</p>';
+      }
+      // Also show persona reaction quote if available
+      if (st.personaReaction) {
+        html += '<div style="margin-top:0.5rem;padding:0.4rem 0.6rem;background:var(--bg2);border-radius:0.25rem;font-size:0.75rem;font-style:italic;border-left:2px solid var(--accent)">';
+        html += '<strong>' + escH(st.personaReaction.name) + ':</strong> "' + escH(st.personaReaction.text) + '"';
+        html += '</div>';
+      }
+      html += '</div>';
+    } else if (st.personaReaction) {
       html += '<div class="modal-ctx-section"><h4>Persona</h4>';
       html += '<div class="modal-ctx-persona"><strong>' + escH(st.personaReaction.name) + ':</strong> "' + escH(st.personaReaction.text) + '"</div>';
       html += '</div>';
     }
 
-    // 2. Score Impact
-    if (st.scoreImpacts && st.scoreImpacts.length) {
-      html += '<div class="modal-ctx-section"><h4>Score Impact</h4>';
-      for (var j = 0; j < st.scoreImpacts.length; j++) {
-        var si = st.scoreImpacts[j];
+    // 2. Score Impact — skip Patience entries when personaPatience is already showing them
+    var nonPatienceImpacts = (st.scoreImpacts || []).filter(function(si) {
+      if (si.dim === 'Patience' && st.personaPatience && st.personaPatience.length) return false;
+      return true;
+    });
+    if (nonPatienceImpacts.length) {
+      html += '<div class="modal-ctx-section"><h4>Dimension Impact</h4>';
+      for (var j = 0; j < nonPatienceImpacts.length; j++) {
+        var si = nonPatienceImpacts[j];
         html += '<div class="modal-ctx-impact"><span>' + escH(si.dim) + '</span>';
         if (si.score !== null) html += '<span class="modal-ctx-impact-score" style="color:' + (si.score <= 1 ? 'var(--status-danger)' : 'var(--status-warning)') + '">' + si.score + '/3</span>';
         html += '</div>';
@@ -798,7 +865,34 @@ function renderModal() {
       html += '</div>';
     }
 
+    // 2b. Outcome Context (if available) — auto-open with link
+    if (st.outcomeContext) {
+      var outcomeUrl = '';
+      if (st.outcomeContext.key) {
+        outcomeUrl = st.outcomeContext.key.startsWith('RHOAIUX-') ? 'https://redhat.atlassian.net/browse/' + st.outcomeContext.key : 'https://issues.redhat.com/browse/' + st.outcomeContext.key;
+      }
+      html += '<div class="modal-ctx-section"><details open><summary style="cursor:pointer;user-select:none"><h4 style="display:inline">Outcome</h4> ';
+      if (outcomeUrl) {
+        html += '<a href="' + escH(outcomeUrl) + '" target="_blank" style="font-size:0.7rem">' + escH(st.outcomeContext.key) + '</a>';
+      } else {
+        html += '<span style="font-size:0.7rem;color:var(--text2)">' + escH(st.outcomeContext.key) + '</span>';
+      }
+      html += '</summary>';
+      if (st.outcomeContext.problem) html += '<p style="font-size:0.75rem;color:var(--text);margin:0.35rem 0;line-height:1.5"><strong>Working towards:</strong> ' + escH(st.outcomeContext.problem) + '</p>';
+      if (st.outcomeContext.criteria && st.outcomeContext.criteria.length) {
+        html += '<p style="font-size:0.7rem;color:var(--text2);margin:0.25rem 0;font-weight:600">Outcome success criteria:</p>';
+        html += '<ul style="font-size:0.7rem;color:var(--text2);margin:0.2rem 0;padding-left:1rem">';
+        for (var ci = 0; ci < st.outcomeContext.criteria.length; ci++) {
+          html += '<li>' + escH(st.outcomeContext.criteria[ci]) + '</li>';
+        }
+        html += '</ul>';
+      }
+      html += '</details></div>';
+    }
+
     // 3. Violations — page-specific open, shell collapsed
+    var mrDiffBase = st.journeyIdx !== undefined ? 'https://gitlab.cee.redhat.com/uxd/prototypes/rhoai/-/merge_requests/' : '';
+
     function renderViolationList(violations) {
       var out = '';
       var sorted = violations.slice().sort(function(a, b) {
@@ -808,16 +902,27 @@ function renderModal() {
       for (var i = 0; i < sorted.length; i++) {
         var v = sorted[i];
         var cls = v.severity === 'error' ? 'modal-ctx-violation-error' : 'modal-ctx-violation-warning';
-        var visualHint = getVisualHint(v.file, v.category);
         out += '<div class="modal-ctx-violation ' + cls + '">';
         out += '<span class="mcv-sev">' + escH(v.severity) + '</span> ';
         out += '<strong>' + escH(v.title) + '</strong>';
-        if (visualHint) out += '<p class="mcv-hint">' + escH(visualHint) + '</p>';
+
+        // Code context: file path + line (source-mode findings)
+        if (v.file) {
+          out += '<p class="mcv-file"><code>' + escH(v.file) + (v.line ? ':' + v.line : '') + '</code></p>';
+        }
+
+        // Description as code snippet
         if (v.description) out += '<pre class="mcv-code">' + escH(v.description) + '</pre>';
-        if (v.suggestion) out += '<p class="mcv-fix">' + escH(v.suggestion) + '</p>';
-        out += '<p class="mcv-file">' + escH(v.file) + (v.line ? ':' + v.line : '');
-        if (v.pfDocUrl) out += ' · <a href="' + escH(v.pfDocUrl) + '" target="_blank">docs</a>';
-        out += '</p>';
+
+        // Fix suggestion
+        if (v.suggestion) out += '<p class="mcv-fix">Fix: ' + escH(v.suggestion) + '</p>';
+
+        // Links: PF docs + GitLab diff
+        var links = [];
+        if (v.pfDocUrl) links.push('<a href="' + escH(v.pfDocUrl) + '" target="_blank">PatternFly docs</a>');
+        if (v.file && mrDiffBase) links.push('<a href="' + mrDiffBase + '" target="_blank">View in MR diff</a>');
+        if (links.length) out += '<p style="font-size:0.65rem;margin:0.2rem 0">' + links.join(' · ') + '</p>';
+
         out += '</div>';
       }
       return out;

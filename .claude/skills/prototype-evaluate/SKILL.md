@@ -37,6 +37,8 @@ bash scripts/bootstrap-consistency-checker.sh  # → .context/consistency-checke
 
 **These paths are relative to the project root**, not the artifacts directory. The project root is the directory containing this SKILL.md file's parent `.claude/` directory.
 
+**Product overlay:** Read `config/product-overlay.yaml` for product-specific configuration (Jira instance URLs, git conventions, design system paths, known MR mappings). If adapting this skill for a different product, create a new overlay file — see `docs/skill-overlays.md`.
+
 If running as a subagent or in a fresh context window: verify `.context/` exists at the project root before starting. If it doesn't, run `make context` first (requires VPN for GitLab repos).
 
 **External repos these bootstrap from:**
@@ -451,7 +453,27 @@ Journey 2: "Register an External Model"
 
 In `--depth=quick` mode, journeys stop after verifying the flow *exists* and is navigable (steps 1-3 above). In `--depth=thorough` mode, journeys complete the full interaction including data entry, submission, and result verification.
 
-If no strategy brief exists, derive expaected paths from the user stories alone using reasonable UI patterns (forms for creation, tables for listing, detail views for inspection).
+If no strategy brief exists, derive expected paths from the user stories alone using reasonable UI patterns (forms for creation, tables for listing, detail views for inspection).
+
+#### AC Traceability
+
+Every journey MUST include an `ac_ids` array listing the acceptance criteria it tests. This enables the report to show "Testing AC-6" prominently in the journey header, making it immediately clear what the journey validates.
+
+```
+Journey 1: "Register an External Provider"
+  ac_ids: ["AC-1", "AC-2"]
+  ...
+```
+
+#### Source Labeling Rules
+
+The `source` field on each journey MUST clearly indicate where the journey came from:
+
+- **From an explicit user story in the RFE:** `"source": "Story 1 + Decision 3 (Creation Flow: modal form)"`
+- **Inferred from acceptance criteria (no explicit user story):** `"source": "Inferred from AC-6: <verbatim AC text truncated to ~80 chars>"`
+- **From High Level Requirements:** `"source": "HLR-2: As a platform operator, I want to..."`
+
+**NEVER synthesize a fake user story string.** If there is no explicit "As a [role], I want [goal]" statement in the ticket, do NOT generate one like "User Story: Platform Operator wants to see GPU queue utilization." Instead, reference the AC directly: `"Inferred from AC-6: tooltip displays the requested and admitted CPU, memory, and GPU resources"`. This makes it immediately clear to reviewers whether the journey traces to a real user story or was derived by the evaluator.
 
 Store the journey definitions internally — they are used in Step 3 (Playwright) and in the report's path comparison section.
 
@@ -465,7 +487,7 @@ Build the SDLC breadcrumb for the report header. The breadcrumb traces the pipel
 
 From the Jira issue fetched in Step 1, extract:
 
-- **Source RFE**: Look in `issuelinks` for a `clones` relationship to an RHAIRFE-* ticket. Use the key and build the URL: `https://issues.redhat.com/browse/<RFE-KEY>`
+- **Source RFE**: Look in `issuelinks` for a `clones` relationship to an RHAIRFE-* ticket. In the Jira API response, this appears in the `issuelinks` array as an entry with `type.name: "Cloners"` or `type.inward: "is cloned by"` / `type.outward: "clones"`. The linked RFE key will be in `outwardIssue.key` or `inwardIssue.key` depending on direction. Look for a key matching `RHAIRFE-*`. If no such link exists, the RFE step is omitted from the breadcrumb. Do NOT use the STRAT key as the RFE — they are different tickets even if they share text.
 - **STRAT**: The ticket being evaluated. URL: `https://issues.redhat.com/browse/<KEY>`
 
 #### Discover the prototype MR
@@ -489,12 +511,20 @@ The prototype may have been submitted as a GitLab merge request. Search for it i
 
 #### Build the breadcrumb data
 
-Store internally for use in the report header:
+Store internally for use in the report header.
+
+**URL validation rules:**
+
+1. Before building the RFE URL, verify the linked ticket actually exists by checking `issuelinks` for a `clones` relationship to an `RHAIRFE-*` key. If no link exists, omit the RFE breadcrumb step entirely (do NOT guess or fabricate an RFE key).
+2. Use the correct Jira instance URL based on the project key prefix:
+   - `RHAIRFE-*` and `RHAISTRAT-*` → `https://issues.redhat.com/browse/<KEY>`
+   - `RHOAIUX-*` → `https://redhat.atlassian.net/browse/<KEY>`
+3. Include a `"validated": true/false` field for each breadcrumb entry. Set `validated: true` only if the key was confirmed via Jira API response. Set `validated: false` if the key was inferred from text matching (e.g., found in markdown but not confirmed via API). The render script uses this to show unvalidated links as plain text with a tooltip.
 
 ```json
 {
-  "rfe": { "key": "RHAIRFE-1277", "url": "https://issues.redhat.com/browse/RHAIRFE-1277" },
-  "strat": { "key": "RHAISTRAT-1536", "url": "https://issues.redhat.com/browse/RHAISTRAT-1536" },
+  "rfe": { "key": "RHAIRFE-1277", "url": "https://issues.redhat.com/browse/RHAIRFE-1277", "validated": true },
+  "strat": { "key": "RHAISTRAT-1536", "url": "https://issues.redhat.com/browse/RHAISTRAT-1536", "validated": true },
   "prototype": { "label": "rhoai/3.5", "url": "https://gitlab.cee.redhat.com/uxd/prototypes/rhoai/-/tree/3.5", "type": "branch" },
   "mr": null
 }
@@ -503,6 +533,55 @@ Store internally for use in the report header:
 If an MR is found, set `"mr": { "id": "!42", "url": "https://gitlab.cee.redhat.com/.../merge_requests/42" }` and use the MR URL for the prototype breadcrumb step instead of the branch URL.
 
 If no RFE link is found in Jira, omit the RFE step from the breadcrumb. If no prototype repo is detected, omit the prototype step. The breadcrumb degrades gracefully — at minimum it shows `STRAT → Eval Report`.
+
+### 1e: Fetch Parent Outcome (if available)
+
+After building the breadcrumb, check whether the STRAT has a parent Outcome. Outcomes provide the most reliable grounding for user journeys and success criteria — they describe the intended end-state for a feature area.
+
+#### How to find the Outcome
+
+1. In the Jira issue fetched in Step 1, look at `issuelinks` for relationships pointing to an Outcome-type ticket. Common patterns:
+   - `is child of` → parent Outcome
+   - `is cloned by` → related Outcome
+   - Direct parent in the hierarchy (the breadcrumb in Jira may show an Outcome above the STRAT)
+2. Outcome tickets typically have a project key like `RHOAIUX-*` or an issue type of "Outcome"
+3. If found, fetch it via `mcp__atlassian__getJiraIssue(issueIdOrKey: "<OUTCOME-KEY>")`
+
+#### What to extract
+
+From the Outcome ticket, extract:
+- **Key** — the Jira key (e.g., `RHOAIUX-2375`)
+- **Problem statement** — what user pain exists today
+- **User journey outline** — if present, the expected end-to-end flow
+- **Acceptance criteria** — broader success criteria that the STRAT contributes to
+- **Connected RFEs** — list of RFE keys linked to this Outcome
+
+#### Store as `outcome-context.json`
+
+Write to `.artifacts/<KEY>/outcome-context.json`:
+
+```json
+{
+  "key": "RHOAIUX-2375",
+  "title": "Bring Your Own Agent Support",
+  "problem_statement": "Users cannot deploy custom agent images...",
+  "user_journey": "Navigate to AI Hub > Agents > Deploy > Select image > Configure > Monitor",
+  "acceptance_criteria": [
+    "Users can deploy agent container images from the AI Hub",
+    "Agent deployments are visible alongside model deployments",
+    "Status monitoring available for running agents"
+  ],
+  "connected_rfes": ["RHAIRFE-294", "RHAIRFE-310"]
+}
+```
+
+#### How this is used
+
+- **Step 2 (AC evaluation):** If a STRAT AC is ambiguous, the Outcome provides clarification about the broader intent. Do NOT add Outcome ACs as hard pass/fail criteria — they inform interpretation only.
+- **Modal view (report):** The Outcome context appears in the screenshot modal's context pane so reviewers can see alignment at a glance.
+- **Journey validation:** If the Outcome describes a user journey, compare it against the journeys defined in Step 1c to catch any major gaps.
+
+If no Outcome is found, proceed without it. The eval works fine without Outcome context — it just can't provide the broader feature-area grounding.
 
 ## Step 2: Classify and Evaluate Each Criterion
 
@@ -660,6 +739,14 @@ await page.screenshot({ path: `screenshots/journey-${journeyIdx}-step-${stepIdx}
 
 Without this, multiple verify steps on the same page produce identical screenshots that don't show what's being verified. Each screenshot must visually demonstrate the element the step claims to check.
 
+**Deduplicate identical screenshots.** Before saving a new screenshot, compare the current page state to the previous step:
+1. Check if `page.url()` is the same as the previous step's URL
+2. If URL is the same AND the step failed for the same reason (e.g., element not found), reuse the previous screenshot path instead of saving a new file
+3. In the journey-log.json, set `"screenshot": "screenshots/journey-N-step-M.png"` pointing to the previous step's file and add `"screenshot_reused": true`
+4. The render script already merges steps that share a screenshot (see `mergedSteps` logic). This deduplication ensures the merged behavior works correctly.
+
+This prevents the report from showing the same empty table or stuck page 5+ times when Playwright gets stuck on repeated failures. The report will show one screenshot with a note like "Steps 4-8 showed identical state" instead of 5 identical images.
+
 **Visible vs total element counts.** When verifying element counts (e.g., "cards in a catalog"), report BOTH the total DOM count and the visible-in-viewport count. Use this in the narration: "Found 66 elements total in DOM (6 visible in current viewport)." Do not claim all elements are visible when only a few are on screen.
 
 Create the screenshots directory before running:
@@ -763,6 +850,7 @@ Save the full journey log to `.artifacts/<KEY>/journey-log.json`.
       "title": "Register an External Provider",
       "persona": "Model Deployer",
       "source": "Story 1 + Decision 3",
+      "ac_ids": ["AC-1", "AC-2"],
       "verdict": "PASS",
       "steps_expected": 6,
       "steps_completed": 6,
@@ -977,6 +1065,8 @@ Add a `usability_dimensions` section to `.artifacts/<KEY>/journey-log.json`:
 
 The `composite_score` per dimension is the average across evaluated personas. The `overall_score` is the sum of composite scores out of 21.
 
+**REQUIRED: `persona_overlays` must always be populated.** Even if no confusion events occurred, include an entry for each evaluated persona with `patience_start: 100`, `patience_end: 100`, `confusion_events: []`. The report modal uses this data to render persona patience bars on every screenshot. If `persona_overlays` is missing or empty, the modal will show no persona information.
+
 ## Step 3c: Think-Aloud Usability (Optional — `--usability=deep|thorough`)
 
 This step produces a first-person think-aloud narrative from the persona's perspective, using the evidence captured in Step 3 (both prescribed journeys AND exploratory navigation from the unified Playwright session). It uses Zack Bodnar's dual-phase protocol from [automated-usability-testing](https://gitlab.cee.redhat.com/zbodnar/automated-usability-testing).
@@ -1139,6 +1229,25 @@ Runs against the screenshots already captured by Step 3's unified Playwright ses
 **Deduplication:** If the same violation appears on multiple screenshots (e.g., sidebar icon issue on every page), collapse to one finding with a `seen_on` list of screenshot paths. Only report each unique guideline violation once.
 
 ### Output
+
+**Required fields for every violation (source-mode and visual-mode):**
+
+Every violation entry MUST include these fields for the report modal to render correctly:
+- `guideline_id` — unique identifier for the guideline
+- `guideline_title` — human-readable title
+- `category` — grouping (icons, tables, layouts, navigation, etc.)
+- `severity` — `error` or `warning`
+- `description` — what's wrong (for source-mode: the offending code line; for visual-mode: what's visually incorrect)
+- `suggestion` — how to fix it
+- `pf_doc_url` — link to the relevant PatternFly documentation page (if applicable)
+
+Source-mode violations additionally require:
+- `file` — relative path to the file containing the violation
+- `line` — line number in that file
+
+Visual-mode findings additionally require:
+- `screenshot` — path to the screenshot where the violation is visible
+- `verdict` — must be `VIOLATION` for findings that should appear in the modal
 
 Write to `.artifacts/<KEY>/consistency-report.json`:
 
@@ -1549,17 +1658,19 @@ node scripts/compare-runs.js RHAISTRAT-1740
 
 Shows verdict count deltas, journey changes, usability score changes, and per-criterion verdict changes between runs.
 
-### Sync to Google Sheet (optional)
+### Publish Report & Sync to Google Sheet (automatic)
 
-After logging, sync the eval results to the team's [Prototype Creator Evaluation](https://docs.google.com/spreadsheets/d/1pVpmc4RKLwM-fLAH8mR2uj2hlWX30TGiot8kpg5ETEo) Google Sheet so designers can see automated verdicts alongside their manual reviews:
+`log-run.js` automatically:
+
+1. **Publishes the HTML report** to GitLab Pages via `scripts/publish-report.sh`, making it viewable at `https://eval-reports-7ebc0e.pages.redhat.com/evals/<KEY>/` (VPN required). Writes the URL to `.artifacts/<KEY>/report-url.txt`.
+2. **Syncs to Google Sheet** — pushes eval results including the report URL to the team's [Prototype Creator Evaluation](https://docs.google.com/spreadsheets/d/1pVpmc4RKLwM-fLAH8mR2uj2hlWX30TGiot8kpg5ETEo) sheet.
+
+Both steps are gracefully skipped if auth is not configured. To publish manually:
 
 ```bash
+make publish-report KEY=RHAISTRAT-1536
 node scripts/sync-sheet.js
 ```
-
-This writes four columns (Automated Lo-fi, Usability Score, Verdicts Agree, Last Eval Date) for each STRAT that has an eval CSV in `.artifacts/`. Requires Google Sheets API auth — see `scripts/sync-sheet.js` header for setup.
-
-Skip this step if Google Sheets auth is not configured — it's not required for the eval to complete.
 
 ## Error Handling
 

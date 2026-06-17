@@ -140,6 +140,20 @@ function main() {
   console.log(`  Archived:  ${archiveDir}`);
   console.log(`  Log:       ${logPath}`);
 
+  // Publish report to GitLab Pages (or reports branch)
+  const publishScript = path.join(__dirname, 'publish-report.sh');
+  if (fs.existsSync(publishScript) && fs.existsSync(path.join(absArtifacts, 'evaluation-report.html'))) {
+    try {
+      console.log(`\n  Publishing report...`);
+      const reportUrl = execSync(`bash "${publishScript}" "${absArtifacts}"`, {
+        cwd: projectRoot, encoding: 'utf8', timeout: 60000
+      }).trim().split('\n').pop();
+      console.log(`  Report URL: ${reportUrl}`);
+    } catch (e) {
+      console.log(`  Report publish skipped (GitLab auth not configured or failed)`);
+    }
+  }
+
   // Auto-sync to Google Sheet if auth is available
   const syncScript = path.join(__dirname, 'sync-sheet.js');
   if (fs.existsSync(syncScript)) {

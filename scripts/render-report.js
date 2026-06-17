@@ -911,6 +911,9 @@ function buildTokens() {
 
   const csvRows = parseCsv(csvRaw);
 
+  // Outcome context (needed by screenshot modal)
+  const outcomeContext = readJsonOr(path.join(absArtifacts, 'outcome-context.json'), null);
+
   // Gather think-aloud files
   const taFiles = [];
   try {
@@ -1001,7 +1004,7 @@ function buildTokens() {
     const criterion = escapeHtml(r.criterion_text);
     const verdict = badgeHtml(r.verdict);
     const evidence = escapeHtml(r.rationale || r.evidence || '');
-    return `<tr><td><strong>${id}</strong></td><td>${criterion}</td><td>${verdict}</td><td class="small">${evidence}</td></tr>`;
+    return `<tr><td><strong>${id}</strong></td><td>${criterion}</td><td>${verdict}</td><td class="small">${evidence}</td><td><input type="text" class="human-review-input" data-ac="${id}" placeholder="Add note..." style="width:100%;border:1px solid var(--border);border-radius:0.25rem;padding:0.2rem 0.4rem;font-size:0.75rem;font-family:var(--font-body)"></td></tr>`;
   }).join('\n');
 
   const acTableRowsInferred = inferredRows.map(r => {
@@ -1015,12 +1018,38 @@ function buildTokens() {
   const acJiraCount = jiraRows.length;
 
   // ---- Breadcrumb ----
+  // Resolve Jira instance URL based on project key prefix
+  function jiraUrlForKey(key) {
+    if (!key) return '';
+    if (key.startsWith('RHOAIUX-')) return `https://redhat.atlassian.net/browse/${key}`;
+    return `https://issues.redhat.com/browse/${key}`;
+  }
+
+  // Render a breadcrumb link — validated links become anchors, unvalidated become plain text with tooltip
+  function breadcrumbLink(key, url, label, validated) {
+    const displayText = escapeHtml(label || key || '');
+    if (validated === false || !url) {
+      return `<span title="Link could not be verified" style="color:var(--text2)">${displayText}</span>`;
+    }
+    return `<a href="${escapeHtml(url)}">${displayText}</a>`;
+  }
+
   let breadcrumbHtml = '';
   if (journeyLog && journeyLog.breadcrumb) {
     const bc = journeyLog.breadcrumb;
     const parts = [];
-    if (bc.rfe) parts.push(`<a href="${escapeHtml(bc.rfe.url)}">${escapeHtml(bc.rfe.key)}</a>`);
-    if (bc.strat) parts.push(`<a href="${escapeHtml(bc.strat.url)}">${escapeHtml(bc.strat.key)}</a>`);
+    if (bc.rfe && bc.rfe.key) {
+      const rfeUrl = bc.rfe.url || jiraUrlForKey(bc.rfe.key);
+      parts.push(breadcrumbLink(bc.rfe.key, rfeUrl, bc.rfe.key + ' (RFE)', bc.rfe.validated !== false));
+    }
+    // Outcome link (between RFE and STRAT)
+    if (outcomeContext && outcomeContext.key) {
+      parts.push(`<a href="${escapeHtml(jiraUrlForKey(outcomeContext.key))}">${escapeHtml(outcomeContext.key)} (Outcome)</a>`);
+    }
+    if (bc.strat && bc.strat.key) {
+      const stratUrl = bc.strat.url || jiraUrlForKey(bc.strat.key);
+      parts.push(breadcrumbLink(bc.strat.key, stratUrl, bc.strat.key + ' (STRAT)', bc.strat.validated !== false));
+    }
     if (bc.mr) parts.push(`<a href="${escapeHtml(bc.mr.url)}">${escapeHtml(bc.mr.id)}</a>`);
     else if (bc.prototype) parts.push(`<a href="${escapeHtml(bc.prototype.url)}">${escapeHtml(bc.prototype.label)}</a>`);
     parts.push('Eval Report');
@@ -1030,9 +1059,13 @@ function buildTokens() {
     const rfeKey = rfeMatch ? rfeMatch[0] : null;
     const parts = [];
     if (rfeKey) {
-      parts.push(`<a href="https://issues.redhat.com/browse/${rfeKey}">${rfeKey} (RFE)</a>`);
+      parts.push(`<a href="${jiraUrlForKey(rfeKey)}">${rfeKey} (RFE)</a>`);
     }
-    parts.push(`<a href="${escapeHtml(jiraUrl)}">${escapeHtml(protoId)} (STRAT)</a>`);
+    // Outcome in fallback breadcrumb
+    if (outcomeContext && outcomeContext.key) {
+      parts.push(`<a href="${escapeHtml(jiraUrlForKey(outcomeContext.key))}">${escapeHtml(outcomeContext.key)} (Outcome)</a>`);
+    }
+    parts.push(`<a href="${escapeHtml(jiraUrlForKey(protoId) || jiraUrl)}">${escapeHtml(protoId)} (STRAT)</a>`);
     if (journeyLog && journeyLog.prototype_url) {
       parts.push(`<a href="${escapeHtml(journeyLog.prototype_url)}">Prototype</a>`);
     }
@@ -1060,6 +1093,18 @@ function buildTokens() {
   // ---- Consistency lookup for screenshot annotations ----
   const consistencyReport = readJsonOr(path.join(absArtifacts, 'consistency-report.json'), null);
   const consistencyByRoute = {};
+  const consistencyByScreenshot = {};
+
+  // Map visual findings by screenshot filename for modal display
+  if (consistencyReport && consistencyReport.visual_mode && consistencyReport.visual_mode.findings) {
+    for (const f of consistencyReport.visual_mode.findings) {
+      if (f.verdict !== 'VIOLATION') continue;
+      const ssKey = f.screenshot ? path.basename(f.screenshot) : null;
+      if (!ssKey) continue;
+      if (!consistencyByScreenshot[ssKey]) consistencyByScreenshot[ssKey] = [];
+      consistencyByScreenshot[ssKey].push(f);
+    }
+  }
 
   if (consistencyReport && consistencyReport.source_mode && consistencyReport.source_mode.violations) {
     const routeMap = {
@@ -1102,10 +1147,12 @@ function buildTokens() {
     return importLinePattern.test(desc) || desc.endsWith(',') && desc.split(/\s+/).length <= 2;
   }
 
-  function getConsistencyForStep(step) {
+  function getConsistencyForStep(step, ssFilename) {
     const target = (step.target || '').toLowerCase();
     const pageViolations = [];
     const shellViolations = [];
+
+    // Source-mode violations matched by route
     for (const [route, violations] of Object.entries(consistencyByRoute)) {
       if (target.includes(route) || (route === '/' && step.action === 'navigate' && target.includes('localhost'))) {
         for (const v of violations) {
@@ -1115,6 +1162,26 @@ function buildTokens() {
         }
       }
     }
+
+    // Visual-mode findings matched by screenshot filename
+    if (ssFilename && consistencyByScreenshot[ssFilename]) {
+      for (const f of consistencyByScreenshot[ssFilename]) {
+        if (!pageViolations.find(m => m.guideline_id === f.guideline_id)) {
+          pageViolations.push({
+            guideline_id: f.guideline_id,
+            guideline_title: f.guideline_title || f.guideline_id,
+            category: f.category || '',
+            severity: f.severity || 'warning',
+            file: '',
+            line: null,
+            description: f.description || '',
+            suggestion: f.suggestion || '',
+            pf_doc_url: f.pf_doc_url || ''
+          });
+        }
+      }
+    }
+
     return { page: pageViolations, shell: shellViolations, all: [...pageViolations, ...shellViolations] };
   }
 
@@ -1142,7 +1209,16 @@ function buildTokens() {
     const jColor = journeyColors[jIdx % journeyColors.length];
     const divider = journeyBlocksHtml ? '<div class="journey-divider"></div>' : '';
     let block = `${divider}<h3 style="border-left:4px solid ${jColor};padding-left:0.6rem">${escapeHtml(journey.title)}</h3>`;
-    block += `<p class="small muted" style="padding-left:calc(0.6rem + 4px)"><strong>Persona:</strong> ${escapeHtml(journey.persona)} · <strong>Source:</strong> ${escapeHtml(journey.source)} · <strong>Verdict:</strong> ${badgeHtml(journey.verdict)}</p>`;
+    // Extract AC reference for prominent badge display — prefer ac_ids array, fall back to parsing source
+    let acLabels = [];
+    if (Array.isArray(journey.ac_ids) && journey.ac_ids.length > 0) {
+      acLabels = journey.ac_ids;
+    } else {
+      const acMatch = (journey.source || '').match(/(?:Inferred from |Story \d+ \+ )?(AC-\d+|NAV-\d+|HLR-\d+)/gi);
+      if (acMatch) acLabels = acMatch.map(m => m.replace(/^(?:Inferred from |Story \d+ \+ )/i, ''));
+    }
+    const acBadge = acLabels.length > 0 ? acLabels.map(ac => `<span class="badge" style="background:rgba(0,102,204,0.1);color:#0066cc;margin-right:0.4rem">Testing ${escapeHtml(ac)}</span>`).join('') : '';
+    block += `<p class="small muted" style="padding-left:calc(0.6rem + 4px)">${acBadge}<strong>Persona:</strong> ${escapeHtml(journey.persona)} · <strong>Source:</strong> ${escapeHtml(journey.source)} · <strong>Verdict:</strong> ${badgeHtml(journey.verdict)}</p>`;
 
     const steps = journey.steps || [];
     const renderedScreenshots = new Set();
@@ -1176,16 +1252,28 @@ function buildTokens() {
         }
       }
 
-      // Render step headers (all merged steps)
+      // Render step headers (all merged steps) with patience meter
       block += `<div style="margin:1rem 0">`;
       for (const ms of mergedSteps) {
         block += `<p class="small"><strong>Step ${ms.step}</strong> — ${escapeHtml(ms.action)} → <code>${escapeHtml(ms.target)}</code> · ${badgeHtml(ms.result === 'success' ? 'PASS' : 'FAIL')}`;
         if (ms.timestamp_ms !== undefined) block += ` · <span class="mono muted">${ms.timestamp_ms}ms</span>`;
+        // Inline patience meter — show if persona overlay has a confusion event at this step
+        if (ud && ud.persona_overlays) {
+          for (const ov of ud.persona_overlays) {
+            const confEvent = (ov.confusion_events || []).find(e => e.step === ms.step || e.step === parseFloat(ms.step));
+            if (confEvent) {
+              const patienceAfter = Math.max(0, (ov.patience_start || 100) + (ov.confusion_events || []).filter(e => (e.step || 0) <= ms.step).reduce((sum, e) => sum + (e.patience_cost || 0), 0));
+              const pColor = patienceAfter > 60 ? '#16a34a' : patienceAfter > 30 ? '#d97706' : '#dc2626';
+              block += ` · <span style="display:inline-flex;align-items:center;gap:0.3rem;font-size:0.75rem;font-family:var(--font-mono)"><span style="width:80px;height:6px;background:#eaeaea;border-radius:3px;overflow:hidden;display:inline-block"><span style="height:100%;width:${patienceAfter}%;background:${pColor};display:block;border-radius:3px"></span></span> <span style="color:${pColor}">${confEvent.patience_cost}%</span></span>`;
+              break;
+            }
+          }
+        }
         block += `</p>`;
       }
       if (ssFilename && screenshots[ssFilename] && !renderedScreenshots.has(ssFilename)) {
         renderedScreenshots.add(ssFilename);
-        const cResult = getConsistencyForStep(step);
+        const cResult = getConsistencyForStep(step, ssFilename);
         const reaction = explorationReactions[ssFilename];
 
         const overlays = ud ? (ud.persona_overlays || []) : [];
@@ -1211,7 +1299,10 @@ function buildTokens() {
             const confEvent = (ov.confusion_events || []).find(e => e.step === ms.step || e.step === parseFloat(ms.step));
             if (confEvent && !seenDims.has('Patience:' + ov.persona)) {
               seenDims.add('Patience:' + ov.persona);
-              scoreImpacts.push({ dim: 'Patience', score: null, note: `${ov.persona_name}: ${confEvent.trigger} (${confEvent.patience_cost}%)`, persona: ov.persona });
+              // Compute cumulative patience at this step
+              const priorCosts = (ov.confusion_events || []).filter(e => (e.step || 0) <= ms.step).reduce((sum, e) => sum + (e.patience_cost || 0), 0);
+              const patienceAfter = Math.max(0, (ov.patience_start || 100) + priorCosts);
+              scoreImpacts.push({ dim: 'Patience', score: null, note: `${ov.persona_name}: ${confEvent.trigger} (${confEvent.patience_cost}%)`, persona: ov.persona, patienceAfter });
             }
           }
         }
@@ -1229,6 +1320,7 @@ function buildTokens() {
           journeyIdx: jIdx,
           journeyColor: jColor,
           journeySource: journey.source || '',
+          acIds: journey.ac_ids || [],
           persona: journey.persona,
           verdict: mergedSteps.some(ms => ms.result !== 'success') ? 'FAIL' : 'PASS',
           violations: cResult.page.map(cf => ({
@@ -1242,7 +1334,21 @@ function buildTokens() {
             line: cf.line, description: cf.description || '', suggestion: cf.suggestion || '', pfDocUrl: cf.pf_doc_url || '', category: cf.category || '', isShell: true
           })),
           personaReaction: reaction ? { name: reaction.persona, text: reaction.reaction } : null,
-          scoreImpacts: scoreImpacts.slice(0, 5)
+          scoreImpacts: scoreImpacts.slice(0, 5),
+          outcomeContext: outcomeContext ? { key: outcomeContext.key || '', problem: (outcomeContext.problem_statement || '').slice(0, 200), criteria: (outcomeContext.acceptance_criteria || []).slice(0, 5) } : null,
+          // All persona patience states at this step
+          personaPatience: (ud && ud.persona_overlays || []).map(ov => {
+            const priorCosts = (ov.confusion_events || []).filter(e => (e.step || 0) <= (mergedSteps[mergedSteps.length - 1].step || 0)).reduce((sum, e) => sum + (e.patience_cost || 0), 0);
+            const patienceNow = Math.max(0, (ov.patience_start || 100) + priorCosts);
+            const confAtStep = (ov.confusion_events || []).find(e => mergedSteps.some(ms => e.step === ms.step || e.step === parseFloat(ms.step)));
+            return { persona: ov.persona_name || ov.persona, patience: patienceNow, trigger: confAtStep ? confAtStep.trigger : null, cost: confAtStep ? confAtStep.patience_cost : null };
+          }),
+          // AC criterion texts for clickable badges
+          acTexts: (journey.ac_ids || []).reduce((map, id) => {
+            const row = [...jiraRows, ...inferredRows].find(r => r.criterion_id === id);
+            if (row) map[id] = row.criterion_text || '';
+            return map;
+          }, {})
         };
 
         const idx = registerScreenshot(ssFilename, mergedNarrations, stepCtx);
@@ -1342,12 +1448,12 @@ function buildTokens() {
             stepNum: step.step, action: step.action || '', target: step.target || '',
             result: step.result || '', error: '', rootCause: '',
             journeyTitle: 'Exploration', persona: pName, verdict: step.result === 'success' ? 'PASS' : 'FAIL',
-            violations: getConsistencyForStep(step).page.map(cf => ({
+            violations: getConsistencyForStep(step, ssFile).page.map(cf => ({
               id: cf.guideline_id, title: cf.guideline_title || cf.guideline_id,
               severity: cf.severity, file: (cf.file || '').replace('src/app/', '').replace('src/', ''),
               line: cf.line, description: cf.description || '', suggestion: cf.suggestion || '', pfDocUrl: cf.pf_doc_url || '', category: cf.category || ''
             })),
-            shellViolations: getConsistencyForStep(step).shell.map(cf => ({
+            shellViolations: getConsistencyForStep(step, ssFile).shell.map(cf => ({
               id: cf.guideline_id, title: cf.guideline_title || cf.guideline_id,
               severity: cf.severity, file: (cf.file || '').replace('src/app/', '').replace('src/', ''),
               line: cf.line, description: cf.description || '', suggestion: cf.suggestion || '', pfDocUrl: cf.pf_doc_url || '', category: cf.category || ''
@@ -1577,6 +1683,8 @@ function buildTokens() {
   const aiInsights = aiInsightsSection ? mdToHtml(aiInsightsSection) : '';
   const aiInsightsDisplay = aiInsights ? '' : 'display:none';
 
+  // ---- Outcome context for modal display (loaded earlier in function) ----
+
   // ---- Screenshot array for JS ----
   const screenshotArrayStr = screenshotArray.map(s =>
     `{src:${JSON.stringify(s.src)},narration:${JSON.stringify(s.narration)},filename:${JSON.stringify(s.filename)},step:${JSON.stringify(s.step || null)}}`
@@ -1663,7 +1771,9 @@ function buildTokens() {
     '{{CONSISTENCY_HTML}}': buildConsistencyHtml(),
     '{{CONSISTENCY_TAB_DISPLAY}}': fs.existsSync(path.join(absArtifacts, 'consistency-report.json')) ? '' : 'display:none',
     '{{EXTERNAL_USABILITY_HTML}}': buildExternalUsabilityHtml(),
-    '{{EXTERNAL_USABILITY_DISPLAY}}': fs.existsSync(path.join(absArtifacts, 'zack-skill-output')) ? '' : 'display:none'
+    '{{EXTERNAL_USABILITY_DISPLAY}}': fs.existsSync(path.join(absArtifacts, 'zack-skill-output')) ? '' : 'display:none',
+    '{{OUTCOME_DISPLAY}}': outcomeContext ? '' : 'display:none',
+    '{{OUTCOME_LINK}}': outcomeContext ? `<a href="${escapeHtml(jiraUrlForKey(outcomeContext.key))}" target="_blank">${escapeHtml(outcomeContext.key)}</a> — ${escapeHtml((outcomeContext.title || '').slice(0, 60))}` : ''
   };
 }
 

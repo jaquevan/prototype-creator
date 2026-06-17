@@ -96,12 +96,13 @@ function readEvalCSV(key) {
 
   const hasJiraFail = jiraRows.some(r => r.verdict === 'FAIL');
   const hasNavFail = navRows.some(r => r.verdict === 'FAIL');
-  const allJiraPass = jiraRows.every(r => r.verdict === 'PASS');
+  // FLAGGED = "needs human review", not a failure. Only PASS and FLAGGED together = pass.
+  const allJiraPassOrFlagged = jiraRows.every(r => r.verdict === 'PASS' || r.verdict === 'FLAGGED');
 
   let ourLofi;
   if (hasNavFail) ourLofi = 'Fail (nav)';
   else if (hasJiraFail) ourLofi = 'Fail';
-  else if (allJiraPass) ourLofi = 'Pass';
+  else if (allJiraPassOrFlagged) ourLofi = 'Pass';
   else ourLofi = 'Mixed';
 
   return {
