@@ -48,7 +48,7 @@ details[open] summary::before{transform:rotate(90deg)}
 .screenshot:hover::after{content:'Click to expand';position:absolute;bottom:0.5rem;right:0.5rem;background:rgba(0,0,0,0.7);color:#fff;padding:0.2rem 0.5rem;border-radius:0.25rem;font-size:0.7rem}
 
 /* Stat card */
-.stat{text-align:center;padding:0.75rem 1.25rem;background:var(--bg2);border:1px solid var(--border);border-radius:0.5rem;min-width:80px;cursor:pointer;transition:box-shadow 0.15s,border-color 0.15s}
+.stat{text-align:center;padding:0.75rem 1rem;background:var(--bg2);border:1px solid var(--border);border-radius:0.5rem;cursor:pointer;transition:box-shadow 0.15s,border-color 0.15s}
 .stat:hover{border-color:var(--accent);box-shadow:0 2px 8px rgba(0,0,0,0.06)}
 .stat-n{font-family:var(--font-heading);font-size:1.5rem;font-weight:700}
 .stat-l{font-size:0.7rem;color:var(--text2);text-transform:uppercase;letter-spacing:0.04em}
@@ -56,6 +56,8 @@ details[open] summary::before{transform:rotate(90deg)}
 /* Modal — split view */
 .modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);z-index:1000;align-items:center;justify-content:center;padding:1rem}
 .modal-overlay.active{display:flex}
+.modal-overlay-close{position:absolute;top:1.25rem;right:1.25rem;z-index:1001;width:2.5rem;height:2.5rem;border-radius:50%;background:rgba(0,0,0,0.5);border:1px solid rgba(255,255,255,0.2);color:#fff;font-size:1.25rem;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background 0.15s}
+.modal-overlay-close:hover{background:rgba(0,0,0,0.7)}
 .modal-content{background:var(--bg);border-radius:0.75rem;width:90vw;height:88vh;display:flex;overflow:hidden;position:relative;box-shadow:0 25px 50px -12px rgba(0,0,0,0.25)}
 .modal-img-pane{flex:0 0 70%;display:flex;flex-direction:column;background:#0a0a0a;position:relative}
 .modal-img-pane img{flex:1;width:100%;height:0;min-height:0;object-fit:contain;padding:0.5rem}
@@ -130,8 +132,20 @@ details[open] summary::before{transform:rotate(90deg)}
 .breadcrumb-bar a{color:var(--accent);font-size:0.75rem}
 .breadcrumb-bar span.sep{margin:0 0.4rem;color:var(--border)}
 
-/* Stats row */
-.stats-row{display:flex;gap:0.75rem;flex-wrap:wrap;margin:1.5rem 0}
+/* Archived links */
+.link-archived{opacity:0.7;position:relative}
+.link-archived:hover::after{content:attr(title);position:absolute;bottom:-1.5rem;left:50%;transform:translateX(-50%);background:var(--text);color:var(--bg);padding:0.2rem 0.5rem;border-radius:0.25rem;font-size:0.65rem;white-space:nowrap;z-index:10;pointer-events:none}
+
+/* Depth badge */
+.depth-badge{display:inline-block;padding:0.1rem 0.5rem;border-radius:999px;font-size:0.7rem;font-weight:600;text-transform:uppercase;letter-spacing:0.03em}
+.depth-badge-quick{background:rgba(22,163,74,0.1);color:#16a34a}
+.depth-badge-thorough{background:rgba(0,102,204,0.1);color:#0066cc}
+
+/* Stats row — grid for symmetrical equal-width cards */
+.stats-row{display:grid;grid-template-columns:repeat(5,1fr);gap:0.75rem;margin:1.5rem 0}
+@media(max-width:700px){.stats-row{grid-template-columns:repeat(3,1fr)}}
+@media(max-width:450px){.stats-row{grid-template-columns:repeat(2,1fr)}}
+.stat-explainer{font-size:0.65rem;color:var(--text2);margin-top:0.15rem;font-weight:400;line-height:1.3}
 
 /* Think-aloud styles */
 .ta-step{background:var(--bg2);border-radius:0.5rem;padding:1rem;margin:0.75rem 0}
@@ -331,13 +345,11 @@ details[open] summary .section-icon{opacity:0.8}
     <span class="arrow">→</span>
     <a href="{{PROTOTYPE_REPO_URL}}" target="_blank">Prototype</a>
     <span class="arrow">·</span>
-    <a href="{{MR_URL}}" target="_blank" style="font-size:0.75rem;opacity:0.7">{{MR_LABEL}}</a>
+    <a href="{{MR_URL}}" target="_blank" class="link-archived" style="font-size:0.75rem;opacity:0.7" title="MR may be closed — link still viewable">{{MR_LABEL}}</a>
     <span class="arrow">→</span>
     <strong style="color:var(--text);font-size:0.8125rem">Eval</strong>
   </div>
   <div class="header-actions">
-    <button onclick="downloadHTML()">↓ HTML</button>
-    <button onclick="downloadCSV()">↓ CSV</button>
     <button onclick="toggleCsvPreview()">CSV Preview</button>
     <button class="header-toggle" id="detailsToggle" onclick="toggleDetails()" aria-label="Toggle details">Details ▶</button>
   </div>
@@ -345,15 +357,15 @@ details[open] summary .section-icon{opacity:0.8}
 
 <!-- Header Details (collapsible) -->
 <div class="header-details" id="headerDetails">
-  <p>{{DESCRIPTION}}</p>
+  <p style="margin-bottom:0.75rem">{{DESCRIPTION}}</p>
   <div class="meta-grid">
     <div class="meta-item"><div class="meta-label">Story</div><div class="meta-value">{{STORY_TITLE}}</div></div>
-    <div class="meta-item"><div class="meta-label">Depth</div><div class="meta-value">{{DEPTH}}</div></div>
+    <div class="meta-item"><div class="meta-label">Depth</div><div class="meta-value"><span class="depth-badge depth-badge-{{DEPTH}}">{{DEPTH}}</span></div></div>
     <div class="meta-item"><div class="meta-label">Evaluated</div><div class="meta-value">{{EVAL_DATE}}</div></div>
-    <div class="meta-item"><div class="meta-label">Usability</div><div class="meta-value">{{USABILITY_SCORE}}</div></div>
+    <div class="meta-item"><div class="meta-label">Usability</div><div class="meta-value">{{USABILITY_SCORE}} / 21</div></div>
     <div class="meta-item" style="{{OUTCOME_DISPLAY}}"><div class="meta-label">Outcome</div><div class="meta-value">{{OUTCOME_LINK}}</div></div>
     <div class="meta-item"><div class="meta-label">Journeys</div><div class="meta-value">{{JOURNEY_SUMMARY}}</div></div>
-    <div class="meta-item"><div class="meta-label">Gaps</div><div class="meta-value">{{GAPS_SUMMARY}}</div></div>
+    <div class="meta-item"><div class="meta-label">Source</div><div class="meta-value">{{STORY_SOURCE}}</div></div>
   </div>
 </div>
 
@@ -361,7 +373,10 @@ details[open] summary .section-icon{opacity:0.8}
 <div class="csv-preview" id="csvPreview" style="display:none">
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.5rem">
     <p style="margin:0;font-size:0.75rem;color:var(--text2)">evaluation-report.csv · <code style="font-size:0.7rem">{{ARTIFACTS_PATH}}/evaluation-report.csv</code></p>
-    <button onclick="toggleCsvPreview()" style="background:none;border:none;cursor:pointer;color:var(--text2);font-size:0.8rem">Close</button>
+    <div style="display:flex;gap:0.5rem;align-items:center">
+      <button onclick="downloadCSV()" style="background:var(--accent);border:none;color:#fff;padding:0.35rem 0.75rem;border-radius:0.375rem;cursor:pointer;font-family:var(--font-body);font-size:0.8125rem;font-weight:500">↓ Download CSV</button>
+      <button onclick="toggleCsvPreview()" style="background:none;border:none;cursor:pointer;color:var(--text2);font-size:0.8rem">Close</button>
+    </div>
   </div>
   <div class="csv-table-wrap" id="csvTableWrap"></div>
 </div>
@@ -376,23 +391,28 @@ details[open] summary .section-icon{opacity:0.8}
     <div class="stats-row">
       <div class="stat" onclick="scrollToSection('ac-results')">
         <div class="stat-n" style="color:var(--status-success)">{{PASS_COUNT}}</div>
-        <div class="stat-l">Pass</div>
+        <div class="stat-l">Criteria Passed</div>
+        <div class="stat-explainer">Acceptance criteria met</div>
       </div>
       <div class="stat" onclick="scrollToSection('ac-results')">
         <div class="stat-n" style="color:var(--status-danger)">{{FAIL_COUNT}}</div>
-        <div class="stat-l">Fail</div>
+        <div class="stat-l">Criteria Failed</div>
+        <div class="stat-explainer">Not implemented or broken</div>
       </div>
       <div class="stat" onclick="scrollToSection('flagged')">
         <div class="stat-n" style="color:var(--status-warning)">{{FLAGGED_COUNT}}</div>
         <div class="stat-l">Flagged</div>
+        <div class="stat-explainer">Needs human judgment</div>
       </div>
       <div class="stat" onclick="scrollToSection('usability-dimensions')">
         <div class="stat-n">{{USABILITY_SCORE}}</div>
         <div class="stat-l">Usability</div>
+        <div class="stat-explainer">Score out of 21 (7 dimensions)</div>
       </div>
       <div class="stat" onclick="scrollToSection('path-comparison')">
         <div class="stat-n">{{JOURNEY_RATIO}}</div>
-        <div class="stat-l">Journeys</div>
+        <div class="stat-l">Journeys Passed</div>
+        <div class="stat-explainer">Persona walkthroughs completed</div>
       </div>
     </div>
 
@@ -459,7 +479,13 @@ details[open] summary .section-icon{opacity:0.8}
     <!-- AC Results: Evaluator Checks -->
     <div id="evaluator-checks" style="{{INFERRED_CHECKS_DISPLAY}}">
       <h3 style="margin-top:1.5rem;color:var(--text2)">Evaluator Checks</h3>
-      <p class="small muted" style="margin:-0.25rem 0 0.75rem">Inferred from MR delta analysis — not in the Jira ticket</p>
+      <p class="small muted" style="margin:-0.25rem 0 0.5rem">Additional quality checks identified from the code changes — these supplement the Jira acceptance criteria.</p>
+      <details style="margin:0 0 0.75rem">
+        <summary style="font-size:0.75rem;color:var(--accent);font-weight:500;padding:0">What are these?</summary>
+        <div style="font-size:0.75rem;color:var(--text2);padding:0.5rem 0;line-height:1.6">
+          The evaluator automatically derives these from the MR diff to catch things the acceptance criteria might miss — navigation reachability (can users actually get to the new pages?), feature flag configuration, accessibility basics, and error state handling. They use IDs like NAV-1, FLAG-1, EVAL-1 to distinguish them from Jira-sourced criteria.
+        </div>
+      </details>
       <table class="tbl" style="opacity:0.85">
         <thead>
           <tr><th style="width:3.5rem">ID</th><th>Check</th><th style="width:5.5rem">Verdict</th><th>Evidence</th></tr>
@@ -473,7 +499,6 @@ details[open] summary .section-icon{opacity:0.8}
     <!-- Usability Dimensions -->
     <h2 id="usability-dimensions">Usability Dimension Scores (INF)</h2>
     {{USABILITY_TABLE}}
-    {{PERSONA_SENSITIVITY}}
     {{PATIENCE_TRACKING}}
 
     <!-- Think-Aloud Comparison -->
@@ -505,7 +530,7 @@ details[open] summary .section-icon{opacity:0.8}
 
     <div class="panel-tabs">
       <button class="panel-tab active" onclick="switchTab('journeys')">Journeys</button>
-      <button class="panel-tab" onclick="switchTab('personas')" style="{{PERSONAS_TAB_DISPLAY}}">Personas & Think-Aloud</button>
+      <button class="panel-tab" onclick="switchTab('personas')" style="{{PERSONAS_TAB_DISPLAY}}">Personas</button>
       <button class="panel-tab" onclick="switchTab('consistency')" style="{{CONSISTENCY_TAB_DISPLAY}}">Consistency</button>
     </div>
 
@@ -527,6 +552,8 @@ details[open] summary .section-icon{opacity:0.8}
 
       {{PERSONA_PROFILES_HTML}}
 
+      {{PERSONA_SENSITIVITY}}
+
       {{THINK_ALOUD_NARRATIVES}}
 
       <!-- External Usability (Zack's skill output) -->
@@ -540,7 +567,7 @@ details[open] summary .section-icon{opacity:0.8}
     <!-- Tab: Consistency -->
     <div class="panel-content" id="panel-consistency">
       <h2>Design Consistency</h2>
-      <p class="small muted" style="margin:-0.5rem 0 1rem">Powered by <a href="https://gitlab.cee.redhat.com/bmorley/consistency-checker" target="_blank">consistency-checker</a> (Beau Morley). Advisory — does not block the eval.</p>
+      <p class="small muted" style="margin:-0.5rem 0 1rem">Checks PatternFly design pattern compliance in source code and captured screenshots. Powered by <a href="https://gitlab.cee.redhat.com/bmorley/consistency-checker" target="_blank">consistency-checker</a> (Beau Morley).</p>
       {{CONSISTENCY_HTML}}
     </div>
 
@@ -555,8 +582,10 @@ details[open] summary .section-icon{opacity:0.8}
 
 <!-- Screenshot Modal — split view -->
 <div class="modal-overlay" id="screenshotModal">
+  <!-- Close button in the blurred overlay area -->
+  <button onclick="closeModal()" class="modal-overlay-close" title="Close modal">×</button>
   <div class="modal-content">
-    <div class="modal-toast" id="modalToast">Copied to clipboard</div>
+    <div class="modal-toast" id="modalToast">Copied for AI</div>
 
     <div class="modal-img-pane">
       <img id="modalImg" src="" alt="Screenshot">
@@ -569,7 +598,7 @@ details[open] summary .section-icon{opacity:0.8}
 
     <div class="modal-ctx-pane" id="modalCtx">
       <div class="modal-actions">
-        <button onclick="copyComposite()" title="Copy screenshot with context"><svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 010 1.5h-1.5a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-1.5a.75.75 0 011.5 0v1.5A1.75 1.75 0 019.25 16h-7.5A1.75 1.75 0 010 14.25v-7.5z"/><path d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0114.25 11h-7.5A1.75 1.75 0 015 9.25v-7.5zm1.75-.25a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-7.5a.25.25 0 00-.25-.25h-7.5z"/></svg></button>
+        <button onclick="copyComposite()" title="Copy for AI"><svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 010 1.5h-1.5a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-1.5a.75.75 0 011.5 0v1.5A1.75 1.75 0 019.25 16h-7.5A1.75 1.75 0 010 14.25v-7.5z"/><path d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0114.25 11h-7.5A1.75 1.75 0 015 9.25v-7.5zm1.75-.25a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-7.5a.25.25 0 00-.25-.25h-7.5z"/></svg></button>
         <button onclick="closeModal()" title="Close">×</button>
       </div>
       <!-- populated by JS -->
@@ -582,15 +611,6 @@ var csvData = `{{CSV_DATA}}`;
 
 var screenshotData = [{{SCREENSHOT_ARRAY}}];
 var currentScreenshotIdx = 0;
-
-function downloadHTML() {
-  var blob = new Blob([document.documentElement.outerHTML], {type: 'text/html'});
-  var a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = 'evaluation-{{PROTOTYPE_ID}}.html';
-  a.click();
-  URL.revokeObjectURL(a.href);
-}
 
 function downloadCSV() {
   // Collect human review annotations from editable fields
@@ -1036,8 +1056,7 @@ function copyContext() {
     setTimeout(function() { toastEl.classList.remove('show'); }, 2000);
   }
 
-  // fallback: just copy text
-  navigator.clipboard.writeText(md).then(function() { showToast('Context text copied'); });
+  navigator.clipboard.writeText(md).then(function() { showToast('Copied for AI'); });
 }
 
 function copyComposite() {

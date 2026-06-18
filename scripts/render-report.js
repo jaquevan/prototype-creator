@@ -300,6 +300,23 @@ function buildPersonaSelectionHtml() {
   return html;
 }
 
+function getPersonaAvatar(pid) {
+  const colorMap = {
+    'deena-junior': '#e86e30',
+    'deena-senior': '#c45a26',
+    'alex-junior': '#6b5b95',
+    'alex-senior': '#4a3d7a',
+    'maude': '#8b6914',
+    'paula': '#1a8cba',
+    'sam': '#4a5568',
+    'raj': '#b8860b',
+  };
+  const base = pid.replace(/-junior|-senior/, '');
+  const color = colorMap[pid] || colorMap[base] || '#6b7280';
+  const svg = `<svg viewBox="0 0 24 24" width="18" height="18" fill="#fff"><path d="M12 12c2.7 0 4.8-2.1 4.8-4.8S14.7 2.4 12 2.4 7.2 4.5 7.2 7.2 9.3 12 12 12zm0 2.4c-3.2 0-9.6 1.6-9.6 4.8v2.4h19.2v-2.4c0-3.2-6.4-4.8-9.6-4.8z"/></svg>`;
+  return { svg, color };
+}
+
 function buildPersonaProfilesHtml() {
   const journeyLog = readJsonOr(path.join(absArtifacts, 'journey-log.json'), null);
   const ud = journeyLog ? journeyLog.usability_dimensions : null;
@@ -328,13 +345,17 @@ function buildPersonaProfilesHtml() {
     const patience = patienceMatch ? patienceMatch[1].trim() : '';
     const exploration = explorationMatch ? explorationMatch[1].trim() : '';
     const errorRecovery = errorRecoveryMatch ? errorRecoveryMatch[1].trim() : '';
+    const avatar = getPersonaAvatar(pid);
 
     html += `<div class="persona-card">`;
-    html += `<h4>${escapeHtml(name)}</h4>`;
+    html += `<div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:0.5rem">`;
+    html += `<div style="width:2.5rem;height:2.5rem;border-radius:50%;background:${avatar.color};display:flex;align-items:center;justify-content:center;flex-shrink:0">${avatar.svg}</div>`;
+    html += `<div><h4 style="margin:0">${escapeHtml(name)}</h4>`;
+    html += `<span style="font-size:0.75rem;color:var(--text2)">${escapeHtml(level)}</span></div>`;
+    html += `</div>`;
     html += `<div class="persona-meta">`;
     html += `<span>${escapeHtml(role)}</span>`;
     if (archetype) html += `<span>${escapeHtml(archetype)}</span>`;
-    html += `<span>${escapeHtml(level)}</span>`;
     html += `</div>`;
 
     // Behavioral attributes
@@ -905,7 +926,7 @@ function buildTokens() {
   const protoId = extractPrototypeId();
   const csvRaw = readFileOr(path.join(absArtifacts, 'evaluation-report.csv'), '');
   const journeyLog = readJsonOr(path.join(absArtifacts, 'journey-log.json'), null);
-  const mdRaw = readFileOr(path.join(absArtifacts, 'evaluation-report.md'), '');
+  const extractState = readJsonOr(path.join(absArtifacts, 'extract-state.json'), null);
   const screenshotsDir = path.join(absArtifacts, 'screenshots');
   const screenshots = loadScreenshots(screenshotsDir);
 
@@ -944,26 +965,17 @@ function buildTokens() {
   const ud = journeyLog ? journeyLog.usability_dimensions : null;
   const usabilityScore = ud ? ud.overall_score || '—' : '—';
 
-  // Description from md
-  const storyLine = mdRaw.match(/\*\*Story\*\*:\s*(.+)/);
-  const storyTitle = storyLine ? storyLine[1].trim() : protoId;
-  const depthLine = mdRaw.match(/\*\*Depth\*\*:\s*(.+)/);
-  const depth = depthLine ? depthLine[1].trim() : 'quick';
-  const evalDateLine = mdRaw.match(/\*\*Evaluated at\*\*:\s*(.+)/);
-  const evalDateRaw = evalDateLine ? evalDateLine[1].trim() : (journeyLog ? journeyLog.evaluated_at || '' : '');
+  // Metadata from JSON artifacts (no MD dependency)
+  const storyTitle = (extractState && extractState.ticket_summary) || protoId;
+  const depth = (extractState && extractState.depth) || (journeyLog && journeyLog.depth) || 'quick';
+  const evalDateRaw = (journeyLog && journeyLog.evaluated_at) || '';
   const evalDate = evalDateRaw ? new Date(evalDateRaw).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—';
 
+  // Generate description from results
   let description = '';
-  const conclusionBody = extractMdSection(mdRaw, 'Conclusion');
-  if (conclusionBody) {
-    const firstPara = conclusionBody.split('\n').find(l => l.trim() && !l.trim().startsWith('#'));
-    if (firstPara) description = firstPara.trim();
-  }
-  if (!description) {
-    const methodMatch = mdRaw.match(/This evaluation checks\b[^\n]*/i);
-    if (methodMatch) description = methodMatch[0].trim();
-  }
-  if (!description) {
+  if (passCount + failCount + flaggedCount > 0) {
+    description = `${storyTitle} — ${passCount} passed, ${failCount} failed, ${flaggedCount} flagged for review`;
+  } else {
     description = storyTitle !== protoId ? `${storyTitle} — prototype evaluation` : `Evaluation of ${protoId}`;
   }
 
@@ -1055,11 +1067,10 @@ function buildTokens() {
     parts.push('Eval Report');
     breadcrumbHtml = parts.join('<span class="sep">→</span>');
   } else {
-    const rfeMatch = mdRaw.match(/RHAIRFE-\d+/);
-    const rfeKey = rfeMatch ? rfeMatch[0] : null;
+    const fallbackRfeKey = (extractState && extractState.rfe_key) || null;
     const parts = [];
-    if (rfeKey) {
-      parts.push(`<a href="${jiraUrlForKey(rfeKey)}">${rfeKey} (RFE)</a>`);
+    if (fallbackRfeKey) {
+      parts.push(`<a href="${jiraUrlForKey(fallbackRfeKey)}">${fallbackRfeKey} (RFE)</a>`);
     }
     // Outcome in fallback breadcrumb
     if (outcomeContext && outcomeContext.key) {
@@ -1662,26 +1673,55 @@ function buildTokens() {
   let flaggedHtml = '';
   if (flaggedRows.length) {
     let rows = '';
+    let hasEmptyContext = false;
     for (const r of flaggedRows) {
-      rows += `<tr><td><strong>${escapeHtml(r.criterion_id)}</strong></td><td class="small">${escapeHtml(r.criterion_text)}</td><td>${escapeHtml(r.tier)}</td><td class="small">${escapeHtml(r.rationale)}</td><td class="small">${escapeHtml(r.human_action)}</td></tr>`;
+      const rationale = r.rationale || '';
+      const humanAction = r.human_action || '';
+      if (!rationale && !humanAction) hasEmptyContext = true;
+      const rationaleDisplay = rationale || '<span class="muted" style="font-style:italic">Review this criterion against the prototype directly</span>';
+      const actionDisplay = humanAction || '<span class="muted" style="font-style:italic">Verify manually</span>';
+      rows += `<tr><td><strong>${escapeHtml(r.criterion_id)}</strong></td><td class="small">${escapeHtml(r.criterion_text)}</td><td>${escapeHtml(r.tier)}</td><td class="small">${rationaleDisplay}</td><td class="small">${actionDisplay}</td></tr>`;
     }
-    flaggedHtml = `<table class="tbl"><thead><tr><th>ID</th><th>Criterion</th><th>Tier</th><th>Why Flagged</th><th>Action Needed</th></tr></thead><tbody>${rows}</tbody></table>`;
+    let contextNote = '';
+    if (hasEmptyContext) {
+      contextNote = '<p style="font-size:0.75rem;color:var(--text2);margin:0.75rem 0 0;font-style:italic">Flagged items could not be fully evaluated by the automated pipeline — they require human expertise to verify (e.g., comparing against an external reference, validating business logic, or confirming visual consistency with another system).</p>';
+    }
+    flaggedHtml = `<table class="tbl"><thead><tr><th>ID</th><th>Criterion</th><th>Tier</th><th>Why Flagged</th><th>Action Needed</th></tr></thead><tbody>${rows}</tbody></table>${contextNote}`;
   } else {
     flaggedHtml = '<p class="muted">No items flagged for human review.</p>';
   }
 
   // ---- Methodology ----
-  const methodologySection = extractMdSection(mdRaw, 'How This Evaluation Was Conducted');
-  const methodologyHtml = methodologySection ? mdToHtml(methodologySection) : '<p>Methodology details not available.</p>';
+  const methodologyFallback = `
+    <p><strong>This evaluation runs a 3-phase automated pipeline:</strong></p>
+    <ol style="font-size:0.8125rem;line-height:1.7;color:var(--text)">
+      <li><strong>Extract</strong> — Fetches the Jira STRAT ticket, extracts acceptance criteria verbatim, identifies personas and user journeys from the linked RFE, and maps the SDLC breadcrumb (Outcome → RFE → STRAT → Prototype).</li>
+      <li><strong>Journey Walkthroughs</strong> — Generates Playwright scripts that navigate the prototype as different personas. Each acceptance criterion is classified into evaluation tiers. Screenshots are captured at every step. Design consistency is checked against PatternFly guidelines.</li>
+      <li><strong>Usability Scoring</strong> — Scores 7 dimensions (workflow continuity, cross-persona handoffs, scalability, system status, technical abstraction, mental model fidelity, accessibility) per persona. Optionally runs a think-aloud protocol where the evaluator role-plays a persona's internal monologue.</li>
+    </ol>
+    <p style="font-size:0.8125rem;color:var(--text2);margin-top:0.75rem">Verdicts: <strong>PASS</strong> = criterion met, <strong>FAIL</strong> = not implemented or broken, <strong>FLAGGED</strong> = requires human judgment (e.g., comparing against an external system the pipeline cannot access).</p>
+  `;
+  const methodologyHtml = methodologyFallback;
 
-  // ---- Conclusion ----
-  const conclusionSection = extractMdSection(mdRaw, 'Conclusion');
-  const conclusionHtml = conclusionSection ? mdToHtml(conclusionSection) : '<p>Conclusion not available.</p>';
+  // ---- Conclusion (generated from results) ----
+  let conclusionHtml = '';
+  if (passCount + failCount + flaggedCount > 0) {
+    const total = passCount + failCount + flaggedCount;
+    const passRate = Math.round((passCount / total) * 100);
+    conclusionHtml = `<p><strong>${passCount}/${total} criteria passed</strong> (${passRate}% pass rate).`;
+    if (failCount > 0) conclusionHtml += ` ${failCount} failed — these represent missing or broken functionality.`;
+    if (flaggedCount > 0) conclusionHtml += ` ${flaggedCount} flagged for human review — these require manual verification against external references or backend systems.`;
+    conclusionHtml += `</p>`;
+    if (journeyPass < journeyTotal) {
+      conclusionHtml += `<p>${journeyPass}/${journeyTotal} persona journeys completed successfully. Failed journeys indicate navigation or interaction gaps that block real users.</p>`;
+    }
+  } else {
+    conclusionHtml = '<p>No evaluation data available.</p>';
+  }
 
-  // ---- AI Insights ----
-  const aiInsightsSection = extractMdSection(mdRaw, 'Key Diagnostic Insights');
-  const aiInsights = aiInsightsSection ? mdToHtml(aiInsightsSection) : '';
-  const aiInsightsDisplay = aiInsights ? '' : 'display:none';
+  // ---- AI Insights (empty without MD) ----
+  const aiInsights = '';
+  const aiInsightsDisplay = 'display:none';
 
   // ---- Outcome context for modal display (loaded earlier in function) ----
 
@@ -1694,9 +1734,7 @@ function buildTokens() {
   const csvDataEscaped = csvRaw.replace(/`/g, '\\`').replace(/\\/g, '\\\\').replace(/\$/g, '\\$');
 
   // Build link URLs
-  // Extract RFE key from markdown or journey-log
-  const rfeKeyMatch = mdRaw.match(/RHAIRFE-\d+/);
-  const rfeKey = rfeKeyMatch ? rfeKeyMatch[0] : '';
+  const rfeKey = (extractState && extractState.rfe_key) || '';
   const rfeUrl = rfeKey ? `https://issues.redhat.com/browse/${rfeKey}` : jiraUrl;
 
   // Prototype repo — detect from journey-log or default
@@ -1773,7 +1811,10 @@ function buildTokens() {
     '{{EXTERNAL_USABILITY_HTML}}': buildExternalUsabilityHtml(),
     '{{EXTERNAL_USABILITY_DISPLAY}}': fs.existsSync(path.join(absArtifacts, 'zack-skill-output')) ? '' : 'display:none',
     '{{OUTCOME_DISPLAY}}': outcomeContext ? '' : 'display:none',
-    '{{OUTCOME_LINK}}': outcomeContext ? `<a href="${escapeHtml(jiraUrlForKey(outcomeContext.key))}" target="_blank">${escapeHtml(outcomeContext.key)}</a> — ${escapeHtml((outcomeContext.title || '').slice(0, 60))}` : ''
+    '{{OUTCOME_LINK}}': outcomeContext ? `<a href="${escapeHtml(jiraUrlForKey(outcomeContext.key))}" target="_blank">${escapeHtml(outcomeContext.key)}</a> — ${escapeHtml((outcomeContext.title || '').slice(0, 60))}` : '',
+    '{{STORY_SOURCE}}': rfeKey
+      ? `<a href="${escapeHtml(rfeUrl)}" target="_blank">${escapeHtml(rfeKey)}</a> (RFE)${outcomeContext ? ` → <a href="${escapeHtml(jiraUrlForKey(outcomeContext.key))}" target="_blank">${escapeHtml(outcomeContext.key)}</a> (Outcome)` : ''}`
+      : `<a href="${escapeHtml(jiraUrl)}" target="_blank">${escapeHtml(protoId)}</a> (STRAT only)`
   };
 }
 

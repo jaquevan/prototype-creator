@@ -30,6 +30,7 @@ jira:
 git:
   base_branch: "3.5"
   remote_url: "https://gitlab.cee.redhat.com/uxd/prototypes/rhoai.git"
+  local_workspace: "~/Desktop/rhoai-prototypes"
   pages_base_url: "https://rhoai-5171de.pages.redhat.com"
   mr_branch_pattern: "mr-{number}"
   diff_url_template: "https://gitlab.cee.redhat.com/uxd/prototypes/rhoai/-/merge_requests/{number}/diffs"

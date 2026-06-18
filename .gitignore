@@ -1,6 +1,7 @@
 # Pipeline output (per-RFE artifacts)
 .artifacts/
 tmp/
+reports/
 
 # Fetched context (downloaded at runtime)
 .context/
@@ -25,6 +26,9 @@ build/
 .vscode/
 *.swp
 *.swo
+
+# Test fixtures — oversized files (>20MB) excluded from git
+tests/fixtures/images/oversized-test.png
 
 # OS
 .DS_Store

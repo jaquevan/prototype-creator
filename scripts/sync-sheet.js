@@ -32,23 +32,21 @@ const C = {
   borderDark:  { red: 0.55, green: 0.56, blue: 0.58 },
 };
 
-// Column layout
+// Column layout — primary columns first, reference data at end
 const COLUMNS = [
-  { header: 'Jira Key',       width: 130 },  // A  0
-  { header: 'Title',          width: 220 },  // B  1
-  { header: 'Report',         width: 120 },  // C  2
-  { header: 'Designer',       width: 85  },  // D  3
-  { header: 'Automated',      width: 85  },  // E  4
-  { header: 'Agree',          width: 60  },  // F  5
-  { header: 'Usability',      width: 80  },  // G  6
-  { header: 'Verdicts',       width: 105 },  // H  7
-  { header: 'Eval Date',      width: 85  },  // I  8
-  { header: 'Total ACs',      width: 65  },  // J  9
-  { header: 'Fail Details',   width: 280 },  // K  10
-  { header: 'Flagged Details', width: 280 }, // L  11
-  { header: 'MR',             width: 150 },  // M  12
-  { header: 'Prototype',      width: 150 },  // N  13
-  { header: 'Notes',          width: 200 },  // O  14
+  { header: 'Jira Key',    width: 145 },  // A  0
+  { header: 'Title',       width: 280 },  // B  1
+  { header: 'Report',      width: 55  },  // C  2
+  { header: 'Designer',    width: 80  },  // D  3
+  { header: 'Automated',   width: 85  },  // E  4
+  { header: 'Agree',       width: 55  },  // F  5
+  { header: 'Usability',   width: 75  },  // G  6
+  { header: 'Verdicts',    width: 105 },  // H  7
+  { header: 'Eval Date',   width: 130 },  // I  8  (date + time)
+  { header: 'Fails',       width: 350 },  // J  9
+  { header: 'Flagged',     width: 350 },  // K  10
+  { header: 'MR',          width: 40  },  // L  11
+  { header: 'Proto',       width: 45  },  // M  12
 ];
 
 const TITLE_ROW = 0, SUBTITLE_ROW = 1, HEADER_ROW = 2, DATA_START_ROW = 3;
@@ -177,14 +175,15 @@ function readEvalResults(key) {
   const flagged = acRows.filter(r => r.verdict === 'FLAGGED').length;
   const hasNavFail = navRows.some(r => r.verdict === 'FAIL');
   const hasJiraFail = jiraRows.some(r => r.verdict === 'FAIL');
-  const allJiraPass = jiraRows.every(r => r.verdict === 'PASS');
-  const autoLofi = hasNavFail ? 'Fail (nav)' : hasJiraFail ? 'Fail' : allJiraPass ? 'Pass' : 'Mixed';
+  // FLAGGED = "needs human review", not a failure — same logic as compare-ground-truth.js
+  const allJiraPassOrFlagged = jiraRows.every(r => r.verdict === 'PASS' || r.verdict === 'FLAGGED');
+  const autoLofi = hasNavFail ? 'Fail (nav)' : hasJiraFail ? 'Fail' : allJiraPassOrFlagged ? 'Pass' : 'Mixed';
   const verdict = `${pass}P / ${fail}F / ${flagged}FL`;
   const totalACs = acRows.length;
 
   const detailLine = (r) => {
     const id = r.criterion_id || '?';
-    const txt = (r.criterion_text || r.evidence || '').substring(0, 60);
+    const txt = (r.criterion_text || r.evidence || '').substring(0, 80);
     return txt ? `${id}: ${txt}` : id;
   };
   const failDetails = acRows.filter(r => r.verdict === 'FAIL').map(detailLine).join('\n');
@@ -193,7 +192,13 @@ function readEvalResults(key) {
   const reportUrlPath = path.join(ARTIFACTS_BASE, key, 'report-url.txt');
   const reportUrl = fs.existsSync(reportUrlPath) ? fs.readFileSync(reportUrlPath, 'utf8').trim() : '';
 
-  return { autoLofi, usScore, verdict, pass, fail, flagged, totalACs, failDetails, flaggedDetails, evalDate: new Date().toISOString().split('T')[0], reportUrl };
+  // Get eval date from the CSV file's mtime (when the eval actually ran)
+  const csvStat = fs.statSync(csvPath);
+  const evalMtime = csvStat.mtime;
+  const evalDate = evalMtime.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) + ' ' +
+    evalMtime.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+
+  return { autoLofi, usScore, verdict, pass, fail, flagged, totalACs, failDetails, flaggedDetails, evalDate, evalMtime, reportUrl };
 }
 
 // ── Formatting helpers ─────────────────────────────────────────────────
@@ -225,17 +230,21 @@ function buildFormatRequests(sheetId, dataRows, evalFlags) {
   const req = [];
   const totalRows = DATA_START_ROW + dataRows.length;
 
-  // Sheet properties: freeze header rows, hide default gridlines
+  // Sheet properties: freeze header rows, show gridlines for cell separation
   req.push({ updateSheetProperties: {
-    properties: { sheetId, gridProperties: { frozenRowCount: DATA_START_ROW, hideGridlines: true } },
+    properties: { sheetId, gridProperties: { frozenRowCount: DATA_START_ROW, hideGridlines: false } },
     fields: 'gridProperties.frozenRowCount,gridProperties.hideGridlines',
   }});
 
   // Column widths + row heights
   COLUMNS.forEach((col, i) => req.push(dim(sheetId, 'COLUMNS', i, i + 1, col.width)));
-  req.push(dim(sheetId, 'ROWS', TITLE_ROW, TITLE_ROW + 1, 36));
-  req.push(dim(sheetId, 'ROWS', SUBTITLE_ROW, SUBTITLE_ROW + 1, 24));
-  req.push(dim(sheetId, 'ROWS', HEADER_ROW, HEADER_ROW + 1, 30));
+  req.push(dim(sheetId, 'ROWS', TITLE_ROW, TITLE_ROW + 1, 38));
+  req.push(dim(sheetId, 'ROWS', SUBTITLE_ROW, SUBTITLE_ROW + 1, 26));
+  req.push(dim(sheetId, 'ROWS', HEADER_ROW, HEADER_ROW + 1, 32));
+  // Data rows: minimum height (rows with wrapped content will auto-expand)
+  if (dataRows.length > 0) {
+    req.push(dim(sheetId, 'ROWS', DATA_START_ROW, DATA_START_ROW + dataRows.length, 32));
+  }
 
   // Title row — merged, dark, bold
   req.push({ mergeCells: { range: rng(sheetId, TITLE_ROW, TITLE_ROW + 1, 0, COL_COUNT), mergeType: 'MERGE_ALL' } });
@@ -261,27 +270,32 @@ function buildFormatRequests(sheetId, dataRows, evalFlags) {
     const r = DATA_START_ROW + i;
     const row = dataRows[i];
     const hasEval = evalFlags[i];
-    const rowBg = hasEval ? C.evalBg : (i % 2 ? C.zebraOdd : C.white);
+    const rowBg = i % 2 ? C.zebraOdd : C.white;
 
-    // Base row format
+    // Base row format — all cells vertically centered, clipped, bordered
     req.push(fmt(sheetId, r, r + 1, 0, COL_COUNT,
       { backgroundColor: rowBg, textFormat: { fontSize: 10, foregroundColor: C.text },
-        verticalAlignment: 'MIDDLE', wrapStrategy: 'CLIP',
-        borders: { bottom: border(C.borderLight) } },
-      'backgroundColor,textFormat,verticalAlignment,wrapStrategy,borders'));
+        horizontalAlignment: 'CENTER', verticalAlignment: 'MIDDLE', wrapStrategy: 'CLIP',
+        borders: {
+          top: border(C.borderLight),
+          bottom: border(C.borderLight),
+          left: border(C.borderLight),
+          right: border(C.borderLight),
+        } },
+      'backgroundColor,textFormat,horizontalAlignment,verticalAlignment,wrapStrategy,borders'));
 
-    // Jira key — bold
-    req.push(fmt(sheetId, r, r + 1, 0, 1, { textFormat: { bold: true, fontSize: 10 } }, 'textFormat'));
+    // Jira key (col 0) — bold, left-aligned
+    req.push(fmt(sheetId, r, r + 1, 0, 1, { textFormat: { bold: true, fontSize: 10 }, horizontalAlignment: 'LEFT' }, 'textFormat,horizontalAlignment'));
+
+    // Title (col 1) — left-aligned
+    req.push(fmt(sheetId, r, r + 1, 1, 2, { horizontalAlignment: 'LEFT' }, 'horizontalAlignment'));
 
     if (hasEval) {
-      // Blue left accent stripe
-      req.push({ updateBorders: { range: rng(sheetId, r, r + 1, 0, 1), left: border(C.evalAccent, 'SOLID_THICK') } });
-
-      // Report link (col 2) — blue underlined link style
+      // Report link (col 2) — bold
       if (row[2]) {
         req.push(fmt(sheetId, r, r + 1, 2, 3,
-          { textFormat: { fontSize: 10, foregroundColor: { red: 0.06, green: 0.36, blue: 0.78 }, underline: true, bold: true }, horizontalAlignment: 'CENTER', verticalAlignment: 'MIDDLE' },
-          'textFormat,horizontalAlignment,verticalAlignment'));
+          { textFormat: { fontSize: 10, bold: true } },
+          'textFormat'));
       }
 
       // Designer lo-fi (col 3) + Automated lo-fi (col 4) — colored pills
@@ -290,47 +304,45 @@ function buildFormatRequests(sheetId, dataRows, evalFlags) {
         if (val && val !== '—') {
           const sc = statusColor(val);
           req.push(fmt(sheetId, r, r + 1, col, col + 1,
-            { backgroundColor: sc.bg, textFormat: { bold: true, fontSize: 10, foregroundColor: sc.fg }, horizontalAlignment: 'CENTER', verticalAlignment: 'MIDDLE' },
-            'backgroundColor,textFormat,horizontalAlignment,verticalAlignment'));
+            { backgroundColor: sc.bg, textFormat: { bold: true, fontSize: 10, foregroundColor: sc.fg } },
+            'backgroundColor,textFormat'));
         }
       }
 
-      // Agreement (col 5)
+      // Agreement (col 5) — green/red cell fill, dark text for readability
       const agree = (row[5] || '').toLowerCase();
       if (agree === 'yes' || agree === 'no') {
         const yes = agree === 'yes';
         req.push(fmt(sheetId, r, r + 1, 5, 6,
-          { backgroundColor: yes ? C.passBg : C.failBg, textFormat: { bold: true, fontSize: 10, foregroundColor: yes ? C.passText : C.failText }, horizontalAlignment: 'CENTER', verticalAlignment: 'MIDDLE' },
-          'backgroundColor,textFormat,horizontalAlignment,verticalAlignment'));
+          { backgroundColor: yes ? { red: 0.78, green: 0.92, blue: 0.78 } : { red: 0.95, green: 0.80, blue: 0.80 }, textFormat: { bold: true, fontSize: 10, foregroundColor: C.text }, horizontalAlignment: 'CENTER' },
+          'backgroundColor,textFormat,horizontalAlignment'));
       }
 
-      // Usability (col 6), Verdicts (col 7), Total ACs (col 9) — centered
-      for (const col of [6, 7, 9]) {
-        if (row[col]) {
-          req.push(fmt(sheetId, r, r + 1, col, col + 1,
-            { textFormat: { bold: col === 7, fontSize: 10 }, horizontalAlignment: 'CENTER', verticalAlignment: 'MIDDLE' },
-            'textFormat,horizontalAlignment,verticalAlignment'));
-        }
+      // Verdicts (col 7) — bold
+      if (row[7]) {
+        req.push(fmt(sheetId, r, r + 1, 7, 8,
+          { textFormat: { bold: true, fontSize: 10 } },
+          'textFormat'));
       }
 
-      // Fail Details (col 10) — red text, wrap
+      // Fail Details (col 9) — red text, left-aligned, wrapped for readability
+      if (row[9]) {
+        req.push(fmt(sheetId, r, r + 1, 9, 10,
+          { textFormat: { fontSize: 9, foregroundColor: C.failText }, horizontalAlignment: 'LEFT', verticalAlignment: 'TOP', wrapStrategy: 'WRAP' },
+          'textFormat,horizontalAlignment,verticalAlignment,wrapStrategy'));
+      }
+
+      // Flagged Details (col 10) — amber text, left-aligned, wrapped
       if (row[10]) {
         req.push(fmt(sheetId, r, r + 1, 10, 11,
-          { textFormat: { fontSize: 9, foregroundColor: C.failText }, wrapStrategy: 'WRAP', verticalAlignment: 'TOP' },
-          'textFormat,wrapStrategy,verticalAlignment'));
-      }
-
-      // Flagged Details (col 11) — amber text, wrap
-      if (row[11]) {
-        req.push(fmt(sheetId, r, r + 1, 11, 12,
-          { textFormat: { fontSize: 9, foregroundColor: C.mixedText }, wrapStrategy: 'WRAP', verticalAlignment: 'TOP' },
-          'textFormat,wrapStrategy,verticalAlignment'));
+          { textFormat: { fontSize: 9, foregroundColor: C.mixedText }, horizontalAlignment: 'LEFT', verticalAlignment: 'TOP', wrapStrategy: 'WRAP' },
+          'textFormat,horizontalAlignment,verticalAlignment,wrapStrategy'));
       }
     } else {
-      // No eval: mute the result columns (E through Total ACs)
-      req.push(fmt(sheetId, r, r + 1, 4, 12,
-        { textFormat: { foregroundColor: C.muted, fontSize: 10, italic: true }, horizontalAlignment: 'CENTER', verticalAlignment: 'MIDDLE' },
-        'textFormat,horizontalAlignment,verticalAlignment'));
+      // No eval: mute the result columns
+      req.push(fmt(sheetId, r, r + 1, 3, COL_COUNT,
+        { textFormat: { foregroundColor: C.muted, fontSize: 10, italic: true } },
+        'textFormat'));
     }
   }
 
@@ -389,11 +401,10 @@ function main() {
   const timestamp = now.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 
   const titleRow = [`Prototype Creator — Automated Evaluation Results`];
-  const subtitleRow = [`Synced ${timestamp}  ·  ${evalCount}/${sourceRows.length - 1} evaluated  ·  Blue rows = eval run  ·  White rows = pending`];
+  const subtitleRow = [`Synced ${timestamp}  ·  ${evalCount} evaluated  ·  Sorted by most recent`];
   const headerRow = COLUMNS.map(c => c.header);
 
   const dataRows = [];
-  const evalFlags = [];
 
   for (let i = 1; i < sourceRows.length; i++) {
     const row = sourceRows[i];
@@ -401,6 +412,8 @@ function main() {
     if (!key || !key.startsWith('RHAISTRAT')) continue;
 
     const title = row[1] || '';
+    if (!title || title === 'N/A' || title === 'NA') continue;
+
     const mr = row[2] || '';
     const protoUrl = row[3] || '';
     const designerText = row[5] || '';
@@ -410,14 +423,13 @@ function main() {
 
     const evl = evalResults[key];
     let autoLofi = '', usScore = '', agree = '', verdict = '', evalDate = '';
-    let totalACs = '', failDetails = '', flaggedDetails = '', reportUrl = '';
+    let failDetails = '', flaggedDetails = '', reportUrl = '';
 
     if (evl) {
       autoLofi = evl.autoLofi;
       usScore = evl.usScore;
       verdict = evl.verdict;
       evalDate = evl.evalDate;
-      totalACs = String(evl.totalACs);
       failDetails = evl.failDetails;
       flaggedDetails = evl.flaggedDetails;
       reportUrl = evl.reportUrl || '';
@@ -426,23 +438,33 @@ function main() {
       agree = (designerLofi === '—' || designerLofi === 'N/A') ? '—' : (dPass === aPass ? 'Yes' : 'No');
     }
 
-    const reportLink = reportUrl ? `=HYPERLINK("${reportUrl}","View Report")` : '';
-    dataRows.push([key, title, reportLink, designerLofi, autoLofi, agree, usScore, verdict, evalDate, totalACs, failDetails, flaggedDetails, mr, protoUrl, designerNotes]);
-    evalFlags.push(!!evl);
+    const reportCell = reportUrl ? `=HYPERLINK("${reportUrl}","View")` : '';
+    const mrCell = mr ? `=HYPERLINK("${mr}","MR")` : '';
+    const protoCell = protoUrl ? `=HYPERLINK("${protoUrl}","Open")` : '';
+
+    const sortKey = evl ? evl.evalMtime.getTime() : 0;
+    dataRows.push({ cells: [key, title, reportCell, designerLofi, autoLofi, agree, usScore, verdict, evalDate, failDetails, flaggedDetails, mrCell, protoCell], hasEval: !!evl, sortKey });
   }
 
+  // Sort by most recent eval first
+  dataRows.sort((a, b) => b.sortKey - a.sortKey);
+
+  // Extract sorted cell arrays and flags
+  const sortedCells = dataRows.map(r => r.cells);
+  const evalFlags = dataRows.map(r => r.hasEval);
+
   // ── Clear entire sheet, then write fresh ──
-  const allRows = [titleRow, subtitleRow, headerRow, ...dataRows];
+  const allRows = [titleRow, subtitleRow, headerRow, ...sortedCells];
   sheetsClear(token, `${EVAL_SHEET}!A1:Z200`);
   sheetsPut(token, `${EVAL_SHEET}!A1`, allRows);
 
   // ── Apply formatting ──
-  const formatRequests = buildFormatRequests(sheetId, dataRows, evalFlags);
+  const formatRequests = buildFormatRequests(sheetId, sortedCells, evalFlags);
   if (formatRequests.length > 0) {
     sheetsPost(token, ':batchUpdate', { requests: formatRequests });
   }
 
-  console.log(`  Wrote ${dataRows.length} rows to "${EVAL_SHEET}" (${evalCount} with eval data)`);
+  console.log(`  Wrote ${sortedCells.length} rows to "${EVAL_SHEET}" (${evalCount} with eval data)`);
   console.log(`  Applied ${formatRequests.length} format operations\n`);
 
   if (evalCount > 0) {
@@ -455,6 +477,71 @@ function main() {
   }
 
   console.log(`  Sheet: https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}\n`);
+
+  // ── Verify (read back and validate) ──
+  if (process.argv.includes('--verify')) {
+    verify(token, sortedCells);
+  }
+}
+
+function verify(token, expectedRows) {
+  console.log('  ── Verifying sheet data ──\n');
+  const range = `${EVAL_SHEET}!A${DATA_START_ROW + 1}:M${DATA_START_ROW + expectedRows.length}`;
+  const actual = sheetsGet(token, range);
+  const actualRows = actual.values || [];
+
+  let errors = 0;
+
+  if (actualRows.length !== expectedRows.length) {
+    console.log(`  ERROR: Expected ${expectedRows.length} rows, got ${actualRows.length}`);
+    errors++;
+  }
+
+  for (let i = 0; i < Math.min(actualRows.length, expectedRows.length); i++) {
+    const exp = expectedRows[i];
+    const act = actualRows[i];
+
+    // Col 0: Jira Key must match
+    if (act[0] !== exp[0]) {
+      console.log(`  Row ${i + 1}: Jira Key mismatch — expected "${exp[0]}", got "${act[0]}"`);
+      errors++;
+    }
+
+    // Col 2: Report link — should show "View" if we wrote a HYPERLINK formula
+    if (exp[2] && !act[2]) {
+      console.log(`  Row ${i + 1} (${exp[0]}): Report link missing — formula may not have evaluated`);
+      errors++;
+    }
+
+    // Col 11: MR link
+    if (exp[11] && !act[11]) {
+      console.log(`  Row ${i + 1} (${exp[0]}): MR link missing`);
+      errors++;
+    }
+
+    // Col 12: Prototype link
+    if (exp[12] && !act[12]) {
+      console.log(`  Row ${i + 1} (${exp[0]}): Prototype link missing`);
+      errors++;
+    }
+
+    // Col 8: Eval date should not be empty for evaluated rows
+    if (exp[8] && !act[8]) {
+      console.log(`  Row ${i + 1} (${exp[0]}): Eval date missing`);
+      errors++;
+    }
+  }
+
+  // Verify sort order — first row should have the most recent date
+  if (actualRows.length >= 2 && actualRows[0][8] && actualRows[1][8]) {
+    console.log(`  Sort check: Row 1 date = "${actualRows[0][8]}", Row 2 date = "${actualRows[1][8]}"`);
+  }
+
+  if (errors === 0) {
+    console.log(`  All ${actualRows.length} rows verified OK\n`);
+  } else {
+    console.log(`\n  ${errors} verification error(s) found\n`);
+  }
 }
 
 main();
