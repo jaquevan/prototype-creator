@@ -11,7 +11,7 @@ Orchestrates the eval → refine → re-eval feedback loop. Runs prototype-evalu
 
 ### How It Connects to the Pipeline
 
-This skill wraps prototype-evaluate and prototype-refine in a loop. Each iteration runs the full eval pipeline (Phases 1-4), collects failures, feeds them to refine, and re-evaluates. Three sources feed refinement suggestions: FAIL criteria from AC evaluation, low usability dimension scores (0-1), and PatternFly consistency violations. Consistency fixes are applied first (deterministic file+line changes), then FAIL criteria, then usability gaps.
+This skill wraps prototype-evaluate and prototype-refine in a loop. Iteration 1 runs the full eval pipeline (Phases 1-4). Re-iterations execute Phases 2-4 inline (skipping Phase 1 and reading sub-skill instructions directly) to keep the prompt cache warm and avoid redundant Jira extraction. Three sources feed refinement suggestions: FAIL criteria from AC evaluation, low usability dimension scores (0-1), and PatternFly consistency violations. Consistency fixes are applied first (deterministic file+line changes), then FAIL criteria, then usability gaps.
 
 ## Usage
 
@@ -74,11 +74,18 @@ Attempts to resolve ALL items — including FLAGGED — without human interventi
 
 ## Loop Logic
 
-### Re-iteration Optimization
+### Optimization Strategy
 
-On iterations 2+, the loop passes `--skip-extract` to prototype-evaluate. This skips Phase 1 (Jira extraction, RFE/Outcome discovery, breadcrumb building) and reuses the cached `extract-state.json` from iteration 1. Phase 1 outputs are static — the Jira ticket content does not change between iterations. This eliminates 5-12 redundant Jira API calls per iteration.
+The iterate loop owns all performance optimization decisions. Sub-skills receive targeted flags — the loop decides WHEN and WHAT to optimize based on iteration state.
 
-The only Phase 1 data that changes between iterations is `mr-delta.json` (the git diff), which `--skip-extract` refreshes automatically when `--workspace` is provided.
+**Iteration 1** runs the full pipeline: Phase 1 (Jira extraction) → Phase 2 (journeys) → Phase 3 (usability) → Phase 4 (report) → refine.
+
+**Iterations 2+** optimize aggressively:
+- **Phase 1: SKIP entirely.** Read cached `extract-state.json` from iteration 1. Only refresh `mr-delta.json` (run `git diff` in the workspace). The Jira data, ACs, journey definitions, breadcrumb, and persona selection are static.
+- **Phase 2: SELECTIVE.** Parse the previous iteration's `evaluation-report.csv` to build a `--rerun-only` list of FAIL and FLAGGED criteria IDs. Only re-run Playwright journeys that test those criteria. PASS criteria carry forward.
+- **Phase 3: LIGHTWEIGHT.** Force inference-only usability scoring (no think-aloud) on non-final iterations. Only run think-aloud on the last iteration.
+- **Phase 2+3: INLINE.** Instead of invoking `/prototype-evaluate` (which spawns a new context and reloads all skill files), directly read and execute `.claude/skills/evaluate-journey/SKILL.md` and `.claude/skills/evaluate-usability/SKILL.md` within the current session. This eliminates ~5% cache misses from cold skill file loads.
+- **Screenshots: PRESERVE.** On re-iterations, only clear screenshots for re-run journeys. Carry forward screenshots from PASS journeys (they haven't changed). The final report includes all screenshots regardless of which iteration captured them.
 
 ### Timing Instrumentation
 
@@ -137,6 +144,9 @@ Write to `.artifacts/<KEY>/timing.json` after each iteration:
 ```
 iteration = 0
 
+# Parse user's original usability flag for final-iteration use
+original_usability_flag = parse --usability from $ARGUMENTS (default: "inference")
+
 # RESET TO MR BASELINE (unless --no-reset is passed)
 # By default, the workspace resets to the MR state so iteration 1 captures the original prototype.
 # Use --no-reset when a designer is evaluating their current local work (not an MR).
@@ -153,65 +163,104 @@ LOOP:
     cp .artifacts/<KEY>/evaluation-report.csv → .artifacts/<KEY>/evaluation-report-iter-{iteration-1}.csv
     cp -r .artifacts/<KEY>/screenshots/ → .artifacts/<KEY>/screenshots-iter-{iteration-1}/
 
-  # ALWAYS clear screenshots before each eval (prevents stale images)
-  rm -rf .artifacts/<KEY>/screenshots/
-  mkdir -p .artifacts/<KEY>/screenshots/
-
-  # Timing: record phase start
   record_phase_start("evaluate")
 
-  # Step 1: Evaluate
   if iteration == 1:
-    # First iteration: run full evaluation including Phase 1 (Jira extraction)
-    Run /prototype-evaluate <KEY> <URL> --depth=<depth> --feed-to-refine
-  else:
-    # Re-iterations: skip Phase 1 (Jira data is cached in extract-state.json)
-    Run /prototype-evaluate <KEY> <URL> --depth=<depth> --feed-to-refine --skip-extract
-  # Consistency checker MUST run on every iteration (especially after refine makes changes)
-  # It's part of Phase 2 — ensure .context/consistency-checker/ is available
+    # ── FIRST ITERATION: full pipeline ──────────────────────────
+    # Clear all screenshots for fresh capture
+    rm -rf .artifacts/<KEY>/screenshots/
+    mkdir -p .artifacts/<KEY>/screenshots/
 
-  # Timing: record phase end
+    Run /prototype-evaluate <KEY> <URL> --depth=<depth> --feed-to-refine --usability=<original_usability_flag>
+
+  else:
+    # ── RE-ITERATIONS: optimized inline execution ───────────────
+
+    # 1. Phase 1: SKIP — reuse cached extract-state.json
+    #    Only refresh the git diff to capture refine's changes
+    Read .artifacts/<KEY>/extract-state.json (cached from iteration 1)
+    if --workspace:
+      Refresh .artifacts/<KEY>/mr-delta.json:
+        cd <workspace> && git diff <base>...HEAD --name-only
+      Track which files refine modified (from previous iteration's refinement-suggestions.json)
+
+    # 2. Build the --rerun-only list from previous CSV
+    Read .artifacts/<KEY>/evaluation-report.csv
+    Parse FAIL and FLAGGED criteria IDs:
+      rerun_ids = [row.criterion_id for row in csv if row.verdict in ("FAIL", "FLAGGED")]
+    If rerun_ids is empty: all criteria pass — exit loop early
+
+    # 3. Selective screenshot clearing
+    #    Only clear screenshots for journeys being re-run
+    Read .artifacts/<KEY>/extract-state.json → journey_definitions
+    For each journey:
+      if ANY of journey.ac_ids are in rerun_ids:
+        Delete screenshots/journey-{N}-step-*.png (will be recaptured)
+      else:
+        Keep existing screenshots (PASS journeys are unchanged)
+
+    # 4. Phase 2: SELECTIVE journey walkthroughs (inline)
+    Read .claude/skills/evaluate-journey/SKILL.md and execute it with:
+      --rerun-only=<comma-separated rerun_ids>
+      --depth=<depth>
+    This carries forward PASS verdicts and only re-runs Playwright for FAIL/FLAGGED criteria.
+
+    # 5. Phase 3: LIGHTWEIGHT usability scoring (inline)
+    Determine usability depth for this iteration:
+      if iteration >= max_iterations:
+        usability_flag = original_usability_flag  # Final iteration: honor user's choice
+      else:
+        usability_flag = "inference"  # Mid-loop: skip think-aloud, inference only
+    
+    Read .claude/skills/evaluate-usability/SKILL.md and execute it with:
+      --usability=<usability_flag>
+      --iteration=<iteration>
+    On re-iterations, only read screenshots from re-run journeys for usability scoring.
+    Carry forward dimension scores for PASS journeys from the previous iteration.
+
+    # 6. Phase 4: Report generation
+    node scripts/render-report.js .artifacts/<KEY>/
+    node scripts/log-run.js .artifacts/<KEY>/ --note="Iteration <iteration>"
+
   record_phase_end("evaluate")
 
-  # Step 2: Check exit conditions
+  # ── Exit condition checks ─────────────────────────────────────
   Read .artifacts/<KEY>/evaluation-report.csv
   Count FAIL items (exclude FLAGGED — those are for humans)
-  
+
   if FAIL count == 0:
     STOP → "All criteria pass. Loop complete."
-  
+
   if iteration > 1:
     Compare current CSV verdicts against previous iteration
     if any criterion flipped PASS → FAIL:
-      STOP → "Regression detected: <criterion-id> was PASS, now FAIL. Stopping to prevent further damage."
+      STOP → "Regression detected: <criterion-id> was PASS, now FAIL."
 
   if iteration >= max_iterations:
     STOP → "Max iterations reached. <N> FAIL items remain."
 
-  # Timing: record refine start
+  # ── Refine ────────────────────────────────────────────────────
   record_phase_start("refine")
 
-  # Step 3: Refine
   Read .artifacts/<KEY>/refinement-suggestions.json
-  
+
   Prioritize suggestions:
     1. Consistency violations (deterministic, file+line fixes)
     2. FAIL criteria (requires code changes)
     3. Usability gaps scoring 0-1 (design improvements)
-  
+
   Run /prototype-refine <KEY> --suggestions=.artifacts/<KEY>/refinement-suggestions.json --workspace=<workspace>
-  
-  # Timing: record refine end
+
   record_phase_end("refine")
 
-  # Write timing data
+  # Write timing data for this iteration
   Append iteration timing to .artifacts/<KEY>/timing.json
 
-  # Step 4: Wait for rebuild
-  Wait for the dev server to pick up changes (HMR):
+  # Wait for rebuild (HMR or static)
+  Wait for dev server to pick up changes:
     - Watch for webpack recompile if dev server running
     - Or: wait 5 seconds for static builds
-  
+
   GOTO LOOP
 ```
 

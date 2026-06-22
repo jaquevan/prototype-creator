@@ -173,6 +173,51 @@ For each journey defined in Step 1c, generate and run a Playwright walkthrough:
 
 **Journey skip check (when `--rerun-only` is set):** Before generating the Playwright script for a journey, check if ANY of the journey's `ac_ids` are in the `--rerun-only` list. If none are, skip this journey entirely — carry forward its previous `journey-log.json` entry and screenshots. Log: "Journey <N> skipped — all tested criteria (AC-X, AC-Y) already PASS."
 
+### Parallel Journey Execution
+
+When multiple journeys need to run, group them by independence and execute non-overlapping flows concurrently. Playwright supports multiple browser contexts in a single browser instance.
+
+**Grouping rules:**
+1. **Same starting page = sequential.** Journeys that begin at the same URL (e.g., both start at "Gen AI Studio > Playground") must run sequentially — they share page state (model selection, chat history).
+2. **Different starting pages = parallel.** Journeys that navigate to entirely different sections (e.g., one goes to "Models > Registry" while another goes to "Settings > User Management") can run in parallel browser contexts.
+3. **Journeys that modify state = sequential after them.** If journey N creates a resource (registers a provider, deploys a model), and journey N+1 verifies it appears in a list, they must be sequential.
+
+**Implementation in the generated Playwright script (`journey-test.mjs`):**
+
+For parallel-eligible journeys, use Playwright's `browser.newContext()` to create isolated browser contexts:
+
+```javascript
+// Group journeys by start page
+const groups = groupJourneysByStartPage(journeys);
+
+for (const group of groups) {
+  if (group.length === 1 || group.some(j => j.modifiesState)) {
+    // Sequential: run one at a time in the same context
+    for (const journey of group) {
+      await runJourney(page, journey);
+    }
+  } else {
+    // Parallel: each journey gets its own browser context
+    await Promise.all(group.map(async (journey) => {
+      const context = await browser.newContext();
+      const parallelPage = await context.newPage();
+      await parallelPage.goto(prototypeUrl);
+      await runJourney(parallelPage, journey);
+      await context.close();
+    }));
+  }
+}
+```
+
+**Screenshot naming:** Parallel journeys use the same `screenshots/journey-{N}-step-{M}.png` convention. Since each journey has a unique N, there are no naming conflicts.
+
+**Error isolation:** A failure in one parallel journey does not affect others. Each context is independent.
+
+**When NOT to parallelize:**
+- When `--rerun-only` is set and only 1-2 journeys are being re-run (overhead of parallel contexts exceeds the benefit)
+- When the prototype uses shared server-side state (session cookies, database) that would cause race conditions
+- When `--depth=thorough` and journeys submit forms that create real resources in the prototype
+
 **Click-first rule**: Every navigation must happen via visible UI elements (links, buttons, tabs, menu items). If a step cannot be completed via click, it is a **failure** — log the blocked step and continue to the next journey.
 
 **URL fallback is DIAGNOSTIC ONLY — NEVER marks a step as PASS.** The generated Playwright script must follow these rules strictly:

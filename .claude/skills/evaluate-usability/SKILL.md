@@ -52,6 +52,20 @@ When `--iteration` is provided (passed by `prototype-iterate`):
 
 - **If `--iteration` is not set:** Behave normally — respect the `--usability` flag as documented in the table above.
 
+### Screenshot Caching on Re-iterations
+
+When `--iteration` is set and is > 1 (re-iteration within the iterate loop):
+
+1. **Read the previous evaluation-report.csv** to identify which criteria are PASS.
+2. **Map PASS criteria to their journeys** using `extract-state.json` → `journey_definitions[].ac_ids`.
+3. **Skip screenshot reads for PASS journeys.** Do not load or analyze screenshots from journeys where ALL tested criteria passed in the previous iteration. These screenshots haven't changed — the prototype code for those flows was not modified by refine.
+4. **Carry forward dimension scores for PASS journeys.** Read the previous `journey-log.json` → `usability_dimensions` section. For dimensions whose evidence comes entirely from PASS journeys, reuse the previous scores directly.
+5. **Only re-score dimensions that have evidence from re-run journeys.** If a dimension's evidence includes steps from a FAIL journey that was re-run, re-evaluate that dimension using the new screenshots.
+
+This optimization avoids reading potentially large PNG screenshots (the single most expensive I/O in Phase 3) when the underlying prototype flow hasn't changed. All screenshots — including those from PASS journeys captured in earlier iterations — still appear in the final HTML report. The report renderer reads from the `screenshots/` directory, which preserves PASS journey screenshots across iterations.
+
+**When `--iteration` is not set or is 1:** Read all screenshots normally. No caching.
+
 ---
 
 ## Step 3b: Usability Dimension Scoring (Optional)
@@ -120,6 +134,13 @@ If the Jira ticket has NO affected customers section, note `"target_audience_sou
 **Verification (BLOCKING):** Immediately after writing persona_selection to journey-log.json, re-read the file and confirm that `usability_dimensions.persona_selection` is present and non-empty. Do NOT proceed to Step 3b.2 until this check passes. If it's missing, the Personas tab will show a degraded fallback warning instead of the actual reasoning — this is a quality regression.
 
 ### 3b.2: Apply Persona Constraints to Journey Evidence
+
+**Re-iteration shortcut (when `--iteration` > 1):** Before re-evaluating all journey steps, check which journeys were re-run (from `--rerun-only` in the iterate loop or by checking which journey screenshots were refreshed). For journeys that were NOT re-run:
+- Copy the previous persona overlay entry from the archived `journey-log.json` (iteration N-1)
+- Do NOT re-read screenshots from those journeys
+- These carried-forward overlays count toward the final dimension scores
+
+Only apply full persona constraint analysis to journey steps from RE-RUN journeys.
 
 For each selected persona, re-evaluate the journey log from Step 3 through that persona's lens. Do NOT re-run Playwright — use the existing journey steps as evidence.
 
