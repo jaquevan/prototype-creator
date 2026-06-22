@@ -9,6 +9,17 @@ allowed-tools: Read, Write, Edit, Glob, Grep, Bash
 
 Phase 2 of the prototype-evaluate pipeline. Classifies acceptance criteria into evaluation tiers, runs Playwright persona journey walkthroughs against the live prototype, and checks design consistency against PatternFly guidelines.
 
+### Tier Quick Reference
+
+Every AC is classified into a tier that determines *how* to evaluate it — not *whether* to evaluate it. Every criterion gets a verdict regardless of tier.
+
+| Tier | What it means | Verdict options | Example |
+|------|--------------|-----------------|---------|
+| **T1** | Checkable from prototype source code | PASS or FAIL | "A form-based UI for defining roles" |
+| **T2** | Needs external reference to compare against | PASS, FAIL, or FLAG | "Align with ACM role creation UI" |
+| **T3** | Needs runtime/backend to fully verify | Split: UI part (PASS/FAIL) + backend part (FLAG) | "Validate inputs for valid RBAC" |
+| **T4** | Subjective/interpretive | Provide evidence, then FLAG | "Translate K8s terms to user-friendly" |
+
 ## Inputs
 
 | Input | Description | Required |
@@ -16,6 +27,7 @@ Phase 2 of the prototype-evaluate pipeline. Classifies acceptance criteria into 
 | `.artifacts/<KEY>/extract-state.json` | Output from evaluate-extract: `{ ac_list, journey_definitions, breadcrumb, persona_selection }` | Yes |
 | Prototype URL | Live URL to test against (e.g., `http://localhost:4200`) | Yes |
 | `--depth` flag | `quick` (default) or `thorough` | No |
+| `--rerun-only` | Comma-separated AC IDs to re-evaluate (e.g., `AC-3,AC-5`) | No |
 
 ## Outputs
 
@@ -27,11 +39,34 @@ Phase 2 of the prototype-evaluate pipeline. Classifies acceptance criteria into 
 | `.artifacts/<KEY>/consistency-report.json` | Design guideline violations (if `.context/consistency-checker/` exists) |
 | `.artifacts/<KEY>/evaluation-report.csv` | AC section with tier, verdict, evidence |
 
+> **Schema enforcement:** The CSV output MUST conform to the schema defined in `config/csv-schema.yaml`. The Section 1 header MUST be exactly:
+> ```
+> # ACCEPTANCE CRITERIA
+> criterion_id,source,tier,criterion_text,verdict,rationale,evidence,fix_action,fix_file,human_action
+> ```
+> All 10 columns are required. Use empty string for columns that don't apply (e.g., `fix_action` is empty for PASS/FLAGGED items, `human_action` is empty for PASS/FAIL items).
+>
+> After evaluate-usability runs, it will APPEND Section 2 (USABILITY DIMENSIONS) to this file. Do not overwrite it.
+
 ## Configuration
 
 Reads `config/product-overlay.yaml` for MR mappings and nav file conventions.
 
 ---
+
+### Selective Re-evaluation (when `--rerun-only` is set)
+
+When `--rerun-only` is passed (used by `prototype-iterate` on re-iterations):
+
+1. **Read the previous evaluation-report.csv** from `.artifacts/<KEY>/evaluation-report.csv`
+2. **Carry forward PASS verdicts** for criteria NOT in the `--rerun-only` list. Copy their rows verbatim from the previous CSV.
+3. **Only re-evaluate criteria in the `--rerun-only` list.** Run tier classification, Playwright journeys, and consistency checks ONLY for these criteria.
+4. **Only re-run Playwright journeys that test `--rerun-only` criteria.** Check each journey's `ac_ids` array — if none of its ACs are in `--rerun-only`, skip it and carry forward its previous journey-log.json entry.
+5. **Merge results**: combine carried-forward verdicts with fresh re-evaluation results into the new evaluation-report.csv.
+
+This optimization reduces Playwright execution time proportionally to the number of passing criteria. If 8/12 criteria passed on iteration 1, iteration 2 only re-runs journeys for the 4 failing criteria.
+
+**When `--rerun-only` is NOT set**, all criteria are evaluated normally (full evaluation, no carry-forward).
 
 ## Step 2: Classify and Evaluate Each Criterion
 
@@ -84,6 +119,8 @@ For each criterion:
 - **FAIL** — The criterion is clearly NOT satisfied. The required element, flow, or behavior is missing or broken.
 - **FLAGGED** — You cannot make a confident judgment. State why (missing reference, requires runtime, subjective) and what evidence you *did* find. Include the tier classification so the human reviewer knows what kind of verification is needed.
 
+**Prototype response rule:** When a criterion involves "the model returns a response" or "a response is displayed," the prototype uses simulated/placeholder responses. If ANY response element renders in the chat after the user action (even if it says "This is a simulated response"), that is a **PASS** — the UI flow works. Only mark FAIL if literally no response appears (the UI is broken, not just simulated). The evaluator is testing whether the prototype demonstrates the feature flow, not whether a real AI model responded.
+
 ### How to Check (Tier 1 and observable parts of Tier 2-4)
 
 **If MR delta data is available** (from Step 0b), use it to focus the search:
@@ -108,13 +145,20 @@ Run each persona journey defined in Step 1c as a Playwright walkthrough — clic
 
 ### Setup
 
-If Playwright is not installed in the workspace:
+Check if Playwright is already installed before running setup. This avoids redundant npm/browser installs on re-iterations (saves 10-30 seconds per iteration).
 
 ```bash
-npm init -y 2>/dev/null
-npm install --save-dev @playwright/test
-npx playwright install chromium
+# Check if Playwright is already available
+if ! npx playwright --version >/dev/null 2>&1; then
+  npm init -y 2>/dev/null
+  npm install --save-dev @playwright/test
+  npx playwright install chromium
+else
+  echo "Playwright already installed, skipping setup"
+fi
 ```
+
+On re-iterations within prototype-iterate, the workspace retains its `node_modules/` from the previous iteration. This check prevents reinstalling ~50MB of dependencies on every loop.
 
 ### Depth Modes
 
@@ -126,6 +170,8 @@ The `--depth` flag controls how far each journey goes:
 ### Journey Execution
 
 For each journey defined in Step 1c, generate and run a Playwright walkthrough:
+
+**Journey skip check (when `--rerun-only` is set):** Before generating the Playwright script for a journey, check if ANY of the journey's `ac_ids` are in the `--rerun-only` list. If none are, skip this journey entirely — carry forward its previous `journey-log.json` entry and screenshots. Log: "Journey <N> skipped — all tested criteria (AC-X, AC-Y) already PASS."
 
 **Click-first rule**: Every navigation must happen via visible UI elements (links, buttons, tabs, menu items). If a step cannot be completed via click, it is a **failure** — log the blocked step and continue to the next journey.
 
@@ -180,11 +226,14 @@ await page.waitForSelector(
 await page.waitForTimeout(500);
 
 // After message send: wait for assistant response to render
+// IMPORTANT: Prototypes use simulated/placeholder responses. ANY new message
+// element appearing after send = PASS. Do not FAIL because the response content
+// is generic or simulated. Only FAIL if literally nothing appears (broken UI).
 await page.waitForSelector(
-  '.pf-chatbot__message--assistant:last-child, [data-role="assistant"]:last-child, .message-assistant:last-of-type',
+  '.pf-chatbot__message--assistant:last-child, [data-role="assistant"]:last-child, .message-assistant:last-of-type, .pf-chatbot__message:last-child:not([data-role="user"])',
   { timeout: 10000 }
 ).catch(() => {});
-await page.waitForTimeout(300);
+await page.waitForTimeout(500); // extra wait for simulated streaming to finish
 
 // After modal/form open: wait for body content
 await page.waitForFunction(
@@ -239,9 +288,10 @@ This prevents the report from showing the same empty table or stuck page 5+ time
 
 **Visible vs total element counts.** When verifying element counts (e.g., "cards in a catalog"), report BOTH the total DOM count and the visible-in-viewport count. Use this in the narration: "Found 66 elements total in DOM (6 visible in current viewport)." Do not claim all elements are visible when only a few are on screen.
 
-Create the screenshots directory before running:
+Clear and recreate the screenshots directory before running to prevent stale screenshots from a previous iteration persisting:
 
 ```bash
+rm -rf .artifacts/<KEY>/screenshots
 mkdir -p .artifacts/<KEY>/screenshots
 ```
 
@@ -630,6 +680,48 @@ Write to `.artifacts/<KEY>/consistency-report.json`:
   }
 }
 ```
+
+### Consistency Suggestions for Refinement Loop
+
+When the eval is running with `--feed-to-refine` active, consistency violations must also be written to `.artifacts/<KEY>/refinement-suggestions.json` so the refine skill can act on them.
+
+After writing `consistency-report.json`, also append consistency findings to the refinement suggestions file:
+
+```json
+{
+  "consistency_suggestions": [
+    {
+      "type": "consistency",
+      "guideline_id": "icon-style-consistency",
+      "severity": "error",
+      "file": "src/pages/AgentCatalog/AgentCatalog.tsx",
+      "line": 42,
+      "current": "FolderIcon",
+      "fix": "OutlinedFolderIcon",
+      "pf_doc_url": "https://patternfly.org/icons",
+      "source": "source_mode"
+    },
+    {
+      "type": "consistency",
+      "guideline_id": "cta-placement",
+      "severity": "warning",
+      "screenshot": "screenshots/journey-1-step-3.png",
+      "description": "Primary action button positioned after secondary button",
+      "fix": "Move primary button to leftmost position in button group",
+      "pf_doc_url": "https://patternfly.org/layouts/bullseye",
+      "source": "visual_mode"
+    }
+  ]
+}
+```
+
+**Priority in the refine loop:** Consistency fixes are applied FIRST by prototype-refine because:
+1. They have specific file paths and line numbers (deterministic)
+2. They're guaranteed correct (PatternFly docs are the reference)
+3. They're cheap to apply (usually a single import or prop change)
+4. They reduce noise for subsequent iterations (fewer violations = cleaner screenshots for visual mode)
+
+Only include violations from files in the MR delta (`new_files` + `modified_files`). Pre-existing violations in unchanged files are not the prototype's responsibility to fix.
 
 ### Open Items (coordinate with Beau)
 

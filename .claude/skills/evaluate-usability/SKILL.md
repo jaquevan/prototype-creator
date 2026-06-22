@@ -7,7 +7,15 @@ allowed-tools: Read, Write, Edit, Glob, Grep, Bash
 
 # evaluate-usability
 
-Phase 3 of the prototype-evaluate pipeline (optional — only runs if `.context/usability-testing/` exists). Layers persona-based usability scoring on top of the journey walkthroughs from evaluate-journey, and optionally runs think-aloud narration for deeper qualitative analysis.
+Phase 3 of the prototype-evaluate pipeline. Layers persona-based usability scoring on top of the journey walkthroughs from evaluate-journey, and optionally runs think-aloud narration for deeper qualitative analysis.
+
+**This entire phase is optional.** It only runs when `.context/usability-testing/` exists (bootstrapped via `make context`). Without it, the eval still produces AC verdicts and journey walkthroughs — just no persona-based usability dimension scores or think-aloud traces.
+
+### What This Phase Adds (and What It Doesn't)
+
+- **Adds:** Per-persona usability scores across 7 dimensions (0-3 each, max 21), patience tracking, confusion event mapping, and optionally first-person think-aloud narration.
+- **Does NOT add:** New Playwright journeys. This phase reads the existing journey-log.json and screenshots from Phase 2 and re-evaluates them through persona lenses. No new browser sessions.
+- **Does NOT replace:** AC verdicts from Phase 2. Usability scores complement the PASS/FAIL/FLAGGED verdicts — they measure *how well* the experience works, not *whether* features exist.
 
 ## Inputs
 
@@ -17,6 +25,7 @@ Phase 3 of the prototype-evaluate pipeline (optional — only runs if `.context/
 | `.artifacts/<KEY>/screenshots/` | Journey step screenshots from evaluate-journey | Yes |
 | `.context/usability-testing/personas/` | Persona YAML files (deena-junior, alex-senior, etc.) | Yes |
 | `--usability` flag | `deep` (1-2 personas) or `thorough` (3 personas) — controls Step 3c | No |
+| `--iteration` | Current iteration number (from prototype-iterate) | No |
 
 ## Outputs
 
@@ -33,6 +42,16 @@ Phase 3 of the prototype-evaluate pipeline (optional — only runs if `.context/
 | `deep` | Runs | 1-2 personas | Both layers + comparison section |
 | `thorough` | Runs | 3 personas | Both layers + full comparison |
 
+### Iteration-Aware Think-Aloud
+
+When `--iteration` is provided (passed by `prototype-iterate`):
+
+- **If `--iteration` < max_iterations (not the final iteration):** Skip Step 3c (think-aloud) entirely, regardless of the `--usability` flag. Run Step 3b (inference scoring) only. Rationale: think-aloud is the most expensive phase (~40% of Phase 3 time) and produces qualitative insights best reserved for the final assessment. Mid-loop iterations only need quantitative dimension scores to guide refinement.
+
+- **If `--iteration` >= max_iterations (final iteration):** Run think-aloud normally based on the `--usability` flag.
+
+- **If `--iteration` is not set:** Behave normally — respect the `--usability` flag as documented in the table above.
+
 ---
 
 ## Step 3b: Usability Dimension Scoring (Optional)
@@ -42,6 +61,8 @@ This step layers persona-based usability scoring on top of the journey walkthrou
 **If `.context/usability-testing/` does not exist or is empty, skip this step entirely.** Add a note in the report: "Usability dimension scoring skipped. Run `make context` to bootstrap." All other evaluation steps (AC verdicts, journey walkthroughs) work unchanged.
 
 ### 3b.1: Select Personas
+
+> **FIRST ACTION: Before scoring any dimensions, write the `persona_selection` block to `journey-log.json` under `usability_dimensions.persona_selection`. This is not optional. The report will show a warning if it's missing. Do this IMMEDIATELY after selecting personas, before any scoring work begins. See the JSON schema below — every field is required.**
 
 Read persona YAML files from `.context/usability-testing/personas/`. Each persona defines knowledge constraints, patience model, behavioral attributes, and Jobs-to-be-Done.
 
@@ -96,7 +117,7 @@ If the RFE's target audience doesn't clearly match any persona, default to a jun
 
 If the Jira ticket has NO affected customers section, note `"target_audience_source": "not found in ticket — defaulting to closest match"`.
 
-**Verification:** After building the journey-log.json, confirm that `usability_dimensions.persona_selection` is present and non-empty. If it's missing, the Personas tab will show a "selection reasoning was not logged" warning instead of the actual reasoning.
+**Verification (BLOCKING):** Immediately after writing persona_selection to journey-log.json, re-read the file and confirm that `usability_dimensions.persona_selection` is present and non-empty. Do NOT proceed to Step 3b.2 until this check passes. If it's missing, the Personas tab will show a degraded fallback warning instead of the actual reasoning — this is a quality regression.
 
 ### 3b.2: Apply Persona Constraints to Journey Evidence
 
@@ -225,9 +246,75 @@ The `composite_score` per dimension is the average across evaluated personas. Th
 
 **REQUIRED: `persona_overlays` MUST always be populated.** Even if no confusion events occurred, include an entry for each evaluated persona with `patience_start: 100`, `patience_end: 100`, `confusion_events: []`. The report modal uses this data to render persona patience bars on every screenshot. If `persona_overlays` is missing or empty, the modal will show no persona information.
 
+### Append Usability Dimensions to CSV (Section 2)
+
+After scoring all dimensions, APPEND Section 2 to the existing `evaluation-report.csv` file. Do NOT overwrite Section 1 (written by evaluate-journey).
+
+```
+# USABILITY DIMENSIONS
+dimension_id,dimension_name,score,confidence,evidence,persona_scores
+workflow_continuity,Workflow Continuity,2,high,"journey-1 steps 1-4","{""deena-junior"":1,""deena-senior"":3}"
+cross_persona_handoffs,Cross-Persona Handoffs,3,high,"journey-1 steps 2-5","{""deena-junior"":3,""deena-senior"":3}"
+```
+
+Each row corresponds to one of the 7 dimensions. The `persona_scores` column is a JSON object with per-persona scores (escaped quotes for CSV).
+
+### Usability Suggestions for Refinement Loop
+
+When `--feed-to-refine` is active, after scoring all dimensions, generate actionable suggestions for dimensions scoring 0-1 (broken or severely impaired). Write these to `.artifacts/<KEY>/refinement-suggestions.json` alongside any consistency suggestions:
+
+```json
+{
+  "usability_suggestions": [
+    {
+      "type": "usability",
+      "dimension": "workflow_continuity",
+      "dimension_name": "Workflow Continuity",
+      "score": 1,
+      "persona": "deena-junior",
+      "persona_name": "Deena - Junior Data Scientist",
+      "problem": "5-click navigation path from Playground to model deployment page. Junior users lost after 3 clicks.",
+      "suggested_fix": "Add direct link from Playground model selector dropdown to the model's deployment page",
+      "affected_files": ["src/pages/Playground/Playground.tsx", "src/app/AppRoutes.tsx"],
+      "evidence_steps": ["journey-1-step-4", "journey-1-step-5"],
+      "confidence": "medium"
+    },
+    {
+      "type": "usability",
+      "dimension": "technical_abstraction",
+      "dimension_name": "Technical Abstraction",
+      "score": 0,
+      "persona": "deena-junior",
+      "persona_name": "Deena - Junior Data Scientist",
+      "problem": "Raw Kubernetes resource names displayed in the form labels (PersistentVolumeClaim, ServiceAccount). Deena has kubernetes knowledge: none.",
+      "suggested_fix": "Replace technical labels with user-friendly alternatives: 'Storage' instead of 'PersistentVolumeClaim', 'Service Identity' instead of 'ServiceAccount'",
+      "affected_files": ["src/pages/ModelDeploy/DeployForm.tsx"],
+      "evidence_steps": ["journey-2-step-3"],
+      "confidence": "high"
+    }
+  ]
+}
+```
+
+**Rules for generating suggestions:**
+- Only generate suggestions for dimensions scoring 0 or 1 (scores of 2-3 are acceptable)
+- Each suggestion MUST include the specific persona whose constraints caused the failure
+- Each suggestion MUST reference concrete journey steps as evidence
+- The `affected_files` field should list likely files to change (infer from the journey's target pages)
+- Set `confidence` to "high" when the fix is obvious from the evidence, "medium" when it requires design judgment, "low" when the evaluator is speculating
+- Do NOT suggest fixes for FLAGGED criteria — those are for humans
+
+**How the refine skill uses these:**
+- Usability suggestions are applied AFTER consistency fixes (which are deterministic)
+- High-confidence suggestions are applied directly
+- Medium-confidence suggestions are applied but flagged in the commit message
+- Low-confidence suggestions are logged but NOT applied automatically (presented to the designer in the next report instead)
+
 ## Step 3c: Think-Aloud Usability (Optional — `--usability=deep|thorough`)
 
 This step produces a first-person think-aloud narrative from the persona's perspective, using the evidence captured in Step 3 (both prescribed journeys AND exploratory navigation from the unified Playwright session). It uses Zack Bodnar's dual-phase protocol from [automated-usability-testing](https://gitlab.cee.redhat.com/zbodnar/automated-usability-testing).
+
+**Iteration guard:** If `--iteration` is set and is LESS than `max_iterations`, skip this entire step. Add a note to journey-log.json: `"think_aloud": { "skipped": true, "reason": "Mid-loop iteration — think-aloud deferred to final iteration" }`. Proceed to the output phase.
 
 **Only run if `--usability=deep` or `--usability=thorough` is passed AND `.context/usability-testing/` is bootstrapped.** If neither flag is present, skip entirely. Step 3b (inference) still runs regardless.
 

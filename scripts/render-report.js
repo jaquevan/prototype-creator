@@ -39,9 +39,12 @@ function escapeHtml(str) {
     .replace(/"/g, '&quot;');
 }
 
-function badgeHtml(verdict) {
+function badgeHtml(verdict, acId) {
   const v = String(verdict).toUpperCase();
   const cls = v === 'PASS' ? 'badge-pass' : v === 'FAIL' ? 'badge-fail' : 'badge-flagged';
+  if (v === 'FLAGGED' && acId) {
+    return `<span class="badge ${cls}" style="cursor:pointer" onclick="openReviewModal('${escapeHtml(acId)}')" title="Click to review">${v}</span>`;
+  }
   return `<span class="badge ${cls}">${v}</span>`;
 }
 
@@ -53,26 +56,128 @@ function extractPrototypeId() {
 // Parse CSV
 // ---------------------------------------------------------------------------
 
+// CSV schema: config/csv-schema.yaml — column names and order are enforced there
 function parseCsv(raw) {
   if (!raw) return [];
-  // Only parse the first section (AC rows). Stop at the next # comment or blank line after data.
-  const lines = raw.trim().split('\n').filter(l => !l.startsWith('#'));
+  const lines = raw.trim().split('\n');
   if (lines.length < 2) return [];
-  const headers = parseCSVLine(lines[0]);
+
+  // Parse Section 1 (Acceptance Criteria) — skip # headers
+  let headers = null;
   const rows = [];
-  for (let i = 1; i < lines.length; i++) {
-    const line = lines[i].trim();
-    if (!line) continue;
-    // Detect section boundary: if headers change (new section has different columns)
-    const vals = parseCSVLine(line);
-    if (vals.length >= 2 && !headers.includes(vals[0]) && /^[a-z_]+$/.test(vals[0]) && vals[0].includes('_') && !vals[0].startsWith('RHAISTRAT')) {
-      break; // Hit the usability dimensions section (dimension_id format)
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) {
+      if (headers && trimmed.startsWith('# USABILITY') || trimmed.startsWith('# BASELINE')) break;
+      continue;
     }
+    if (!headers) {
+      headers = parseCSVLine(trimmed);
+      continue;
+    }
+    const vals = parseCSVLine(trimmed);
     const obj = {};
     headers.forEach((h, idx) => { obj[h] = vals[idx] || ''; });
     rows.push(obj);
   }
   return rows;
+}
+
+function parseCsvSection(raw, sectionName) {
+  if (!raw) return [];
+  const lines = raw.trim().split('\n');
+  let inSection = false;
+  let headers = null;
+  const rows = [];
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (trimmed.startsWith('#')) {
+      if (trimmed.toUpperCase().includes(sectionName.toUpperCase())) { inSection = true; headers = null; continue; }
+      else if (inSection) break;
+      continue;
+    }
+    if (!inSection || !trimmed) continue;
+    if (!headers) { headers = parseCSVLine(trimmed); continue; }
+    const vals = parseCSVLine(trimmed);
+    const obj = {};
+    headers.forEach((h, idx) => { obj[h] = vals[idx] || ''; });
+    rows.push(obj);
+  }
+  return rows;
+}
+
+function buildFullCsv(csvRaw, journeyLog, passCount, failCount, flaggedCount) {
+  let fullCsv = csvRaw.trim();
+
+  // Append Section 2 (Usability Dimensions) if not already present and data exists
+  if (!fullCsv.includes('# USABILITY DIMENSIONS')) {
+    const ud = journeyLog ? journeyLog.usability_dimensions : null;
+    if (ud && ud.dimensions) {
+      fullCsv += '\n\n# USABILITY DIMENSIONS\ndimension_id,dimension_name,score,confidence,evidence,persona_scores\n';
+      for (const dim of ud.dimensions) {
+        const pScores = dim.persona_scores ? JSON.stringify(dim.persona_scores).replace(/"/g, '""') : '';
+        fullCsv += `${dim.id || ''},${escapeCSVField(dim.name || '')},${dim.composite_score || 0},${dim.confidence || 'medium'},${escapeCSVField(dim.evidence || '')},"${pScores}"\n`;
+      }
+    }
+  }
+
+  // Append Section 3 (Persona Insights) if not already present
+  if (!fullCsv.includes('# PERSONA INSIGHTS')) {
+    const ud = journeyLog ? journeyLog.usability_dimensions : null;
+    if (ud && ud.persona_overlays && ud.persona_overlays.length) {
+      fullCsv += '\n\n# PERSONA INSIGHTS\npersona,patience_start,patience_end,abandoned,confusion_events,cli_escapes,key_friction\n';
+      for (const overlay of ud.persona_overlays) {
+        const frictions = (overlay.confusion_events || []).map(e => e.trigger || '').filter(Boolean).slice(0, 3).join('; ');
+        fullCsv += `${escapeCSVField(overlay.persona_name || overlay.persona)},${overlay.patience_start || 100},${overlay.patience_end || 100},${overlay.abandoned || false},${(overlay.confusion_events || []).length},${overlay.cli_escapes || 0},${escapeCSVField(frictions)}\n`;
+      }
+    }
+  }
+
+  // Append Section 4 (Baseline) if not already present
+  if (!fullCsv.includes('# BASELINE')) {
+    const total = passCount + failCount + flaggedCount;
+    const passRate = total > 0 ? (passCount / total).toFixed(2) : '0';
+    const ud = journeyLog ? journeyLog.usability_dimensions : null;
+    const usabilityComposite = ud ? (ud.overall_score || 0) : 0;
+    const journeys = journeyLog ? journeyLog.journeys || [] : [];
+    const journeyPassRate = journeys.length > 0 ? (journeys.filter(j => j.verdict === 'PASS').length / journeys.length).toFixed(2) : '0';
+
+    // Build conclusion summary
+    let conclusion = '';
+    if (total > 0) {
+      conclusion = `${passCount}/${total} criteria passed (${(passCount/total*100).toFixed(0)}%)`;
+      if (failCount > 0) conclusion += `. ${failCount} failed`;
+      if (flaggedCount > 0) conclusion += `. ${flaggedCount} need human review`;
+    }
+
+    fullCsv += '\n\n# BASELINE\nmetric,value,source\n';
+    fullCsv += `total_criteria,${total},evaluation-report.csv\n`;
+    fullCsv += `pass_count,${passCount},evaluation-report.csv\n`;
+    fullCsv += `fail_count,${failCount},evaluation-report.csv\n`;
+    fullCsv += `flagged_count,${flaggedCount},evaluation-report.csv\n`;
+    fullCsv += `pass_rate,${passRate},computed\n`;
+    fullCsv += `usability_composite,${usabilityComposite},journey-log.json\n`;
+    fullCsv += `journey_pass_rate,${journeyPassRate},journey-log.json\n`;
+    fullCsv += `conclusion,${escapeCSVField(conclusion)},computed\n`;
+
+    // Add persona patience summaries
+    if (ud && ud.persona_overlays) {
+      for (const overlay of ud.persona_overlays) {
+        const name = overlay.persona_name || overlay.persona;
+        fullCsv += `patience_${(overlay.persona || '').replace(/[^a-z]/g, '_')},${overlay.patience_end || 100}%,persona-overlay\n`;
+      }
+    }
+  }
+
+  return fullCsv;
+}
+
+function escapeCSVField(str) {
+  if (!str) return '';
+  if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+    return '"' + str.replace(/"/g, '""') + '"';
+  }
+  return str;
 }
 
 function parseCSVLine(line) {
@@ -189,9 +294,28 @@ function loadScreenshots(screenshotsDir) {
   const map = {};
   if (!fs.existsSync(screenshotsDir)) return map;
   const files = fs.readdirSync(screenshotsDir).filter(f => f.endsWith('.png')).sort();
+
+  // Detect stale screenshots: if journey-log.json is newer than all screenshots,
+  // the screenshots may be from a prior iteration (not re-captured after refine).
+  const journeyLogPath = path.join(path.dirname(screenshotsDir), 'journey-log.json');
+  let journeyLogMtime = 0;
+  try { journeyLogMtime = fs.statSync(journeyLogPath).mtimeMs; } catch {}
+
+  let staleWarning = false;
   for (const file of files) {
-    const data = fs.readFileSync(path.join(screenshotsDir, file));
+    const filePath = path.join(screenshotsDir, file);
+    if (journeyLogMtime > 0) {
+      const ssMtime = fs.statSync(filePath).mtimeMs;
+      if (ssMtime < journeyLogMtime - 60000) {
+        staleWarning = true;
+      }
+    }
+    const data = fs.readFileSync(filePath);
     map[file] = 'data:image/png;base64,' + data.toString('base64');
+  }
+
+  if (staleWarning) {
+    console.warn('  ⚠ WARNING: Screenshots appear older than journey-log.json — they may be stale from a prior iteration.');
   }
   return map;
 }
@@ -294,9 +418,26 @@ function buildPersonaSelectionHtml() {
     return html;
   }
 
-  // No formal selection data — build a reasonable explanation from what we have
-  let html = `<p class="small"><strong>Personas evaluated:</strong> ${ud.personas_evaluated.map(p => '<code>' + escapeHtml(p) + '</code>').join(', ')}</p>`;
-  html += `<p class="small muted">Persona selection reasoning was not logged for this run. To enable, the eval should write <code>persona_selection</code> data to journey-log.json (see SKILL.md Step 3b.1). The personas above were selected based on the RFE's target audience.</p>`;
+  // No formal selection data — auto-generate from available persona and RFE context
+  const personas = ud.personas_evaluated;
+  let html = `<p class="small"><strong>Personas evaluated:</strong> ${personas.map(p => '<code>' + escapeHtml(p) + '</code>').join(', ')}</p>`;
+
+  // Attempt to infer reasoning from the persona IDs and any RFE snapshot
+  const hasJunior = personas.some(p => p.includes('junior'));
+  const hasSenior = personas.some(p => p.includes('senior'));
+  const families = [...new Set(personas.map(p => p.replace(/-junior|-senior|-experienced/, '')))];
+
+  let inferredReasoning = '';
+  if (hasJunior && hasSenior) {
+    inferredReasoning = `Junior + senior pair selected from the ${families.join('/')} persona family for maximum friction range.`;
+  } else if (families.length > 1) {
+    inferredReasoning = `Cross-domain selection: ${families.join(' + ')} personas to test different expertise levels.`;
+  } else {
+    inferredReasoning = `${families[0] || 'Unknown'} persona family selected based on RFE target audience.`;
+  }
+
+  html += `<p class="small"><strong>Inferred reasoning:</strong> ${escapeHtml(inferredReasoning)}</p>`;
+  html += `<p class="small muted" style="margin-top:0.5rem;padding:0.4rem 0.6rem;background:rgba(234,179,8,0.06);border-radius:0.25rem;border-left:2px solid var(--status-warning)">Full persona selection reasoning was not logged for this run. This is auto-generated from the evaluated personas list. To get full reasoning (target audience source, considered-but-rejected personas), ensure the eval writes <code>persona_selection</code> to journey-log.json before scoring (see SKILL.md Step 3b.1).</p>`;
   return html;
 }
 
@@ -581,6 +722,280 @@ function buildCodeDeltasHtml() {
   return html;
 }
 
+function buildStatDeltas(passCount, failCount, flaggedCount, usabilityScore, journeyLog) {
+  const iterLog = readJsonOr(path.join(absArtifacts, 'iteration-log.json'), null);
+  if (!iterLog || !iterLog.iterations || iterLog.iterations.length < 2) return '';
+  const iter1 = iterLog.iterations[0];
+  const passDelta = passCount - iter1.pass_count;
+  const failDelta = failCount - iter1.fail_count;
+  if (passDelta === 0 && failDelta === 0) return '';
+  let html = '<div style="font-size:0.65rem;color:var(--text2);margin-top:0.75rem;text-align:center">';
+  html += 'vs Iteration 1: ';
+  if (passDelta > 0) html += `<span style="color:var(--status-success)">+${passDelta} passed</span> `;
+  if (failDelta < 0) html += `<span style="color:var(--status-success)">${failDelta} failed</span>`;
+  if (failDelta > 0) html += `<span style="color:var(--status-danger)">+${failDelta} failed</span>`;
+  html += '</div>';
+  return html;
+}
+
+function buildFlaggedDataArray(csvRows, journeyLog, screenshots) {
+  const flagged = csvRows.filter(r => (r.verdict || '').toUpperCase() === 'FLAGGED');
+  if (!flagged.length) return '[]';
+
+  const journeys = journeyLog ? journeyLog.journeys || [] : [];
+  const items = [];
+
+  for (const item of flagged) {
+    const acId = item.criterion_id || '';
+    let screenshotSrc = '';
+    for (const j of journeys) {
+      if (j.ac_ids && j.ac_ids.includes(acId)) {
+        const steps = j.steps || [];
+        const lastStep = steps[steps.length - 1];
+        if (lastStep && lastStep.screenshot) {
+          const ssPath = path.join(absArtifacts, lastStep.screenshot);
+          if (fs.existsSync(ssPath)) {
+            screenshotSrc = `data:image/png;base64,${fs.readFileSync(ssPath).toString('base64')}`;
+          }
+          break;
+        }
+      }
+    }
+
+    items.push({
+      id: acId,
+      tier: item.tier || '',
+      text: item.criterion_text || '',
+      rationale: item.rationale || item.evidence || '',
+      humanAction: item.human_action || '',
+      screenshot: screenshotSrc
+    });
+  }
+
+  return JSON.stringify(items);
+}
+
+function buildIterationTimelineHtml() {
+  const iterLog = readJsonOr(path.join(absArtifacts, 'iteration-log.json'), null);
+  if (!iterLog || !iterLog.iterations || !iterLog.iterations.length) return '';
+
+  let html = '';
+
+  for (let idx = 0; idx < iterLog.iterations.length; idx++) {
+    const iter = iterLog.iterations[idx];
+    const isFirst = idx === 0;
+    const isLast = idx === iterLog.iterations.length - 1;
+    const hasFails = iter.fail_count > 0;
+    const cardClass = isLast ? 'iteration-card iteration-card-current' : 'iteration-card';
+
+    html += `<div class="${cardClass}">`;
+    html += `<div class="iter-card-header">`;
+    html += `<div>`;
+    if (isFirst && !isLast) {
+      html += `<strong style="font-size:0.875rem">Original</strong>`;
+      html += ` <span style="font-size:0.7rem;color:var(--text2)">(MR baseline)</span>`;
+      html += ` <a href="evaluation-report-original.html" style="font-size:0.7rem;margin-left:0.3rem">(full report)</a>`;
+    } else if (isLast && !isFirst) {
+      html += `<strong style="font-size:0.875rem">Iteration ${iter.iteration - 1}</strong>`;
+      html += ` <span style="font-size:0.7rem;color:var(--accent)">(current)</span>`;
+    } else if (isFirst && isLast) {
+      html += `<strong style="font-size:0.875rem">Current</strong>`;
+      html += ` <span style="font-size:0.7rem;color:var(--accent)">(single run, no loop)</span>`;
+    } else {
+      html += `<strong style="font-size:0.875rem">Iteration ${iter.iteration - 1}</strong>`;
+      html += ` <a href="evaluation-report-iter-${iter.iteration}.html" style="font-size:0.7rem;margin-left:0.3rem">(view report)</a>`;
+    }
+    html += `<span class="iter-counts" style="margin-left:0.75rem">${iter.pass_count}P / ${iter.fail_count}F / ${iter.flagged_count}FL</span>`;
+    if (iter.iteration > 1) {
+      const prev = iterLog.iterations[iter.iteration - 2];
+      if (prev) {
+        const delta = iter.pass_count - prev.pass_count;
+        if (delta > 0) html += `<span class="iter-delta iter-delta-up">+${delta} fixed</span>`;
+        else if (delta < 0) html += `<span class="iter-delta iter-delta-down">${delta} regressed</span>`;
+      }
+    }
+    html += `</div>`;
+    html += `</div>`;
+
+    // Fail summary for non-final iterations
+    if (hasFails && iter.details) {
+      let failIds = [];
+      if (Array.isArray(iter.details.fail_criteria)) {
+        failIds = iter.details.fail_criteria;
+      } else if (typeof iter.details === 'object') {
+        failIds = Object.entries(iter.details)
+          .filter(([, v]) => String(v).toUpperCase().startsWith('FAIL'))
+          .map(([k]) => k);
+      }
+      if (failIds.length) {
+        html += `<div class="iter-fail-summary">`;
+        html += `<strong style="font-size:0.7rem;color:var(--status-danger)">FAILED:</strong> `;
+        html += escapeHtml(failIds.join(', '));
+        html += `</div>`;
+      }
+    }
+
+    // Changes applied (for iterations after the first)
+    const fixes = iter.changes_applied || iter.fixes_applied;
+    if (fixes && fixes.length) {
+      html += `<div class="iter-fixes-list">`;
+      html += `<span style="font-size:0.7rem;font-weight:600;color:var(--status-success)">FIXED:</span>`;
+      html += `<table style="margin:0.3rem 0 0;width:100%;font-size:0.8rem;border-collapse:collapse">`;
+      for (const change of fixes) {
+        const criterion = change.criterion || '';
+        const file = change.file ? change.file.split('/').pop() : '';
+        const desc = change.change || change.description || '';
+        html += `<tr style="border-bottom:1px solid var(--border)">`;
+        html += `<td style="padding:0.25rem 0.5rem 0.25rem 0;width:5rem;vertical-align:top">`;
+        if (criterion) html += `<code style="font-size:0.7rem;color:var(--accent);font-weight:600">${escapeHtml(criterion)}</code>`;
+        html += `</td>`;
+        html += `<td style="padding:0.25rem 0;font-size:0.8rem;color:var(--text)">${escapeHtml(desc.slice(0, 100))}${desc.length > 100 ? '...' : ''}</td>`;
+        html += `<td style="padding:0.25rem 0 0.25rem 0.5rem;text-align:right;vertical-align:top"><code style="font-size:0.65rem;color:var(--text2)">${escapeHtml(file)}</code></td>`;
+        html += `</tr>`;
+      }
+      html += `</table></div>`;
+    }
+
+    // Root cause (before state — why things failed)
+    if (iter.root_cause) {
+      html += `<div style="margin-top:0.5rem;font-size:0.75rem;padding:0.5rem 0.75rem;background:rgba(239,68,68,0.04);border-radius:0.375rem;border-left:2px solid var(--status-danger)">`;
+      html += `<strong style="font-size:0.65rem;color:var(--status-danger)">ROOT CAUSE:</strong> `;
+      html += `<span style="color:var(--text)">${escapeHtml(iter.root_cause)}</span>`;
+      html += `</div>`;
+    }
+
+    // Flagged resolution (items determined unfixable in prototype scope)
+    if (iter.flagged_resolution && Object.keys(iter.flagged_resolution).length) {
+      html += `<div style="margin-top:0.5rem;font-size:0.75rem;padding:0.5rem 0.75rem;background:rgba(234,179,8,0.04);border-radius:0.375rem;border-left:2px solid var(--status-warning)">`;
+      html += `<strong style="font-size:0.65rem;color:var(--status-warning)">UNFIXABLE (out of scope):</strong>`;
+      html += `<ul style="margin:0.25rem 0 0 1rem;padding:0;font-size:0.75rem;color:var(--text2)">`;
+      for (const [id, info] of Object.entries(iter.flagged_resolution)) {
+        const reason = typeof info === 'string' ? info : (info.reason || '');
+        html += `<li><code>${escapeHtml(id)}</code> — ${escapeHtml(reason)}</li>`;
+      }
+      html += `</ul></div>`;
+    }
+
+    // Verification (before/after)
+    if (iter.verification) {
+      html += `<div style="margin-top:0.5rem;font-size:0.75rem;padding:0.5rem 0.75rem;background:rgba(22,163,74,0.04);border-radius:0.375rem;border-left:2px solid var(--status-success)">`;
+      for (const [key, val] of Object.entries(iter.verification)) {
+        const label = key.replace(/_/g, ' ');
+        html += `<div style="margin:0.15rem 0"><strong>${escapeHtml(label)}:</strong> ${escapeHtml(val)}</div>`;
+      }
+      html += `</div>`;
+    }
+
+    html += `</div>`;
+  }
+
+  // Loop summary
+  const exitSuccess = iterLog.exit_reason === 'all_pass' || iterLog.exit_reason === 'all_fixable_pass' || iterLog.exit_reason === 'unfixable_flagged' || iterLog.exit_reason === 'all_fixable_resolved';
+  const exitBg = exitSuccess ? 'rgba(22,163,74,0.04)' : 'var(--bg2)';
+  const exitBorder = exitSuccess ? 'var(--status-success)' : 'var(--border)';
+
+  html += `<div style="margin-top:0.75rem;padding:0.75rem 1rem;background:${exitBg};border-radius:0.375rem;border:1px solid var(--border);border-left:3px solid ${exitBorder}">`;
+  html += `<div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.35rem">`;
+  html += `<span style="color:${exitSuccess ? 'var(--status-success)' : 'var(--text2)'};font-size:1rem">${exitSuccess ? '&#x2713;' : '&#x25CF;'}</span>`;
+  html += `<strong style="font-size:0.85rem">Loop complete</strong>`;
+  html += `</div>`;
+
+  // Summary of what was accomplished
+  const totalFixes = iterLog.total_criteria_fixed || 0;
+  const lastIter = iterLog.iterations[iterLog.iterations.length - 1];
+  const firstIter = iterLog.iterations[0];
+  html += `<p style="font-size:0.8rem;color:var(--text);margin:0 0 0.35rem">`;
+  html += `<strong>${firstIter.pass_count}P → ${lastIter.pass_count}P</strong> over ${iterLog.iterations.length} iterations. `;
+  if (totalFixes > 0) html += `${totalFixes} criteria fixed. `;
+  html += `${lastIter.flagged_count || 0} items remain for human review.`;
+  html += `</p>`;
+
+  // Exit reason detail
+  html += `<p style="font-size:0.75rem;color:var(--text2);margin:0 0 0.35rem">${escapeHtml(iterLog.exit_details || iterLog.exit_detail || iterLog.exit_reason)}</p>`;
+
+  // Files changed
+  if (iterLog.files_modified && iterLog.files_modified.length) {
+    html += `<details style="margin:0.35rem 0 0"><summary style="font-size:0.7rem;color:var(--text2);cursor:pointer">Files changed (${iterLog.files_modified.length})</summary>`;
+    html += `<ul style="margin:0.25rem 0 0 1rem;font-size:0.7rem;color:var(--text2)">`;
+    for (const f of iterLog.files_modified) {
+      html += `<li><code>${escapeHtml(f)}</code></li>`;
+    }
+    html += `</ul></details>`;
+  }
+
+  html += `</div>`;
+
+  return html;
+}
+
+function buildReviewItemsHtml(csvRows, journeyLog, screenshots) {
+  const flagged = csvRows.filter(r => (r.verdict || '').toUpperCase() === 'FLAGGED');
+  if (!flagged.length) return '<p class="muted">No items flagged for review.</p>';
+
+  const journeys = journeyLog ? journeyLog.journeys || [] : [];
+
+  let html = '';
+  for (const item of flagged) {
+    const acId = item.criterion_id || '';
+    const tier = item.tier || '';
+    const criterion = item.criterion_text || '';
+    const rationale = item.rationale || item.evidence || '';
+    const humanAction = item.human_action || '';
+
+    // Find a relevant screenshot from journeys that test this AC
+    let screenshotSrc = '';
+    for (const j of journeys) {
+      if (j.ac_ids && j.ac_ids.includes(acId)) {
+        const steps = j.steps || [];
+        const lastStep = steps[steps.length - 1];
+        if (lastStep && lastStep.screenshot) {
+          const ssPath = path.join(absArtifacts, lastStep.screenshot);
+          if (fs.existsSync(ssPath)) {
+            const b64 = fs.readFileSync(ssPath).toString('base64');
+            screenshotSrc = `data:image/png;base64,${b64}`;
+          }
+          break;
+        }
+      }
+    }
+
+    html += `<div class="review-item">`;
+    html += `<div class="review-item-header">`;
+    html += `<span class="review-item-id">${escapeHtml(acId)}</span>`;
+    html += `<span class="badge badge-flagged">FLAGGED</span>`;
+    html += `<span class="review-item-tier">Tier ${escapeHtml(tier)}</span>`;
+    html += `</div>`;
+    html += `<div class="review-item-body">`;
+    html += `<div class="review-item-criterion">${escapeHtml(criterion)}</div>`;
+
+    if (rationale) {
+      html += `<div class="review-item-evidence"><strong>Why flagged:</strong> ${escapeHtml(rationale)}</div>`;
+    }
+    if (humanAction) {
+      html += `<p style="font-size:0.75rem;color:var(--accent);margin:0.5rem 0"><strong>Action needed:</strong> ${escapeHtml(humanAction)}</p>`;
+    }
+
+    if (screenshotSrc) {
+      html += `<div class="review-item-screenshot"><img loading="lazy" src="${screenshotSrc}" alt="Screenshot for ${escapeHtml(acId)}"></div>`;
+    }
+
+    html += `<div class="review-override" data-override-ac="${escapeHtml(acId)}">`;
+    html += `<span style="font-size:0.75rem;color:var(--text2);align-self:center">Override:</span>`;
+    html += `<button data-verdict="PASS" onclick="overrideVerdict('${escapeHtml(acId)}','PASS')">PASS</button>`;
+    html += `<button data-verdict="FAIL" onclick="overrideVerdict('${escapeHtml(acId)}','FAIL')">FAIL</button>`;
+    html += `<input type="hidden" id="override-${escapeHtml(acId)}" value="">`;
+    html += `</div>`;
+
+    html += `<textarea class="review-textarea" data-ac="${escapeHtml(acId)}" placeholder="Your assessment — what did you observe when testing this in the prototype?"></textarea>`;
+    html += `<div style="margin-top:0.5rem;display:flex;gap:0.5rem">`;
+    html += `<a href="#ac-results" onclick="scrollToSection('ac-results');return false" style="font-size:0.7rem;color:var(--accent)">View in AC table</a>`;
+    html += `<a href="#" onclick="openReviewModal('${escapeHtml(acId)}');return false" style="font-size:0.7rem;color:var(--accent)">Open review modal</a>`;
+    html += `</div>`;
+    html += `</div></div>`;
+  }
+  return html;
+}
+
 function buildConsistencyHtml() {
   const report = readJsonOr(path.join(absArtifacts, 'consistency-report.json'), null);
   if (!report) return '<p class="muted small">No consistency data. Run with `.context/consistency-checker/` bootstrapped to enable.</p>';
@@ -742,7 +1157,7 @@ function buildExplorationHtml() {
           if (fs.existsSync(ssPath)) {
             const data = fs.readFileSync(ssPath);
             const src = 'data:image/png;base64,' + data.toString('base64');
-            html += `<div class="screenshot"><img src="${src}" alt="Step ${step.step}"></div>`;
+            html += `<div class="screenshot"><img loading="lazy" src="${src}" alt="Step ${step.step}"></div>`;
           }
         }
 
@@ -864,7 +1279,7 @@ function buildExternalUsabilityHtml() {
         const data = fs.readFileSync(path.join(extScreensDir, file));
         const src = 'data:image/png;base64,' + data.toString('base64');
         const label = file.replace('.png', '').replace(/-/g, ' ').replace(/_/g, ' ');
-        html += `<div style="text-align:center"><img src="${src}" alt="${escapeHtml(label)}" style="width:100%;border-radius:0.375rem;border:1px solid var(--border)"><p class="small muted" style="margin:0.25rem 0">${escapeHtml(label)}</p></div>`;
+        html += `<div style="text-align:center"><img loading="lazy" src="${src}" alt="${escapeHtml(label)}" style="width:100%;border-radius:0.375rem;border:1px solid var(--border)"><p class="small muted" style="margin:0.25rem 0">${escapeHtml(label)}</p></div>`;
       }
       html += `</div></details>`;
     }
@@ -922,12 +1337,12 @@ function parseTaExternalSteps(md) {
   return steps;
 }
 
-function buildTokens() {
+function buildTokens(opts = {}) {
   const protoId = extractPrototypeId();
-  const csvRaw = readFileOr(path.join(absArtifacts, 'evaluation-report.csv'), '');
-  const journeyLog = readJsonOr(path.join(absArtifacts, 'journey-log.json'), null);
+  const csvRaw = readFileOr(opts.csvPath || path.join(absArtifacts, 'evaluation-report.csv'), '');
+  const journeyLog = readJsonOr(opts.journeyLogPath || path.join(absArtifacts, 'journey-log.json'), null);
   const extractState = readJsonOr(path.join(absArtifacts, 'extract-state.json'), null);
-  const screenshotsDir = path.join(absArtifacts, 'screenshots');
+  const screenshotsDir = opts.screenshotsDir || path.join(absArtifacts, 'screenshots');
   const screenshots = loadScreenshots(screenshotsDir);
 
   const csvRows = parseCsv(csvRaw);
@@ -963,7 +1378,8 @@ function buildTokens() {
 
   // Usability
   const ud = journeyLog ? journeyLog.usability_dimensions : null;
-  const usabilityScore = ud ? ud.overall_score || '—' : '—';
+  const rawUsability = ud ? ud.overall_score || '—' : '—';
+  const usabilityScore = String(rawUsability).replace(/\/21$/, '').trim();
 
   // Metadata from JSON artifacts (no MD dependency)
   const storyTitle = (extractState && extractState.ticket_summary) || protoId;
@@ -1014,15 +1430,15 @@ function buildTokens() {
   const acTableRowsJira = jiraRows.map(r => {
     const id = escapeHtml(r.criterion_id);
     const criterion = escapeHtml(r.criterion_text);
-    const verdict = badgeHtml(r.verdict);
+    const verdict = badgeHtml(r.verdict, r.criterion_id);
     const evidence = escapeHtml(r.rationale || r.evidence || '');
-    return `<tr><td><strong>${id}</strong></td><td>${criterion}</td><td>${verdict}</td><td class="small">${evidence}</td><td><input type="text" class="human-review-input" data-ac="${id}" placeholder="Add note..." style="width:100%;border:1px solid var(--border);border-radius:0.25rem;padding:0.2rem 0.4rem;font-size:0.75rem;font-family:var(--font-body)"></td></tr>`;
+    return `<tr><td><strong>${id}</strong></td><td>${criterion}</td><td>${verdict}</td><td class="small">${evidence}</td></tr>`;
   }).join('\n');
 
   const acTableRowsInferred = inferredRows.map(r => {
     const id = escapeHtml(r.criterion_id);
     const criterion = escapeHtml(r.criterion_text);
-    const verdict = badgeHtml(r.verdict);
+    const verdict = badgeHtml(r.verdict, r.criterion_id);
     const evidence = escapeHtml(r.rationale || r.evidence || '');
     return `<tr><td><strong>${id}</strong></td><td>${criterion}</td><td>${verdict}</td><td class="small">${evidence}</td></tr>`;
   }).join('\n');
@@ -1365,7 +1781,7 @@ function buildTokens() {
         const idx = registerScreenshot(ssFilename, mergedNarrations, stepCtx);
         if (idx >= 0) {
           block += `<div class="screenshot-card">`;
-          block += `<div class="screenshot" data-idx="${idx}"><img src="${screenshots[ssFilename]}" alt="Step ${step.step}"></div>`;
+          block += `<div class="screenshot" data-idx="${idx}"><img loading="lazy" src="${screenshots[ssFilename]}" alt="Step ${step.step}"></div>`;
 
           if (mergedNarrations) {
             block += `<div class="narration">${escapeHtml(mergedNarrations)}</div>`;
@@ -1475,7 +1891,7 @@ function buildTokens() {
           const idx = registerScreenshot(ssFile, step.narration || '', exploCtx);
           if (idx >= 0) {
             block += `<div class="screenshot-card">`;
-            block += `<div class="screenshot" data-idx="${idx}"><img src="${screenshots[ssFile]}" alt="Explore step ${step.step}"></div>`;
+            block += `<div class="screenshot" data-idx="${idx}"><img loading="lazy" src="${screenshots[ssFile]}" alt="Explore step ${step.step}"></div>`;
             if (step.narration) block += `<div class="narration">${escapeHtml(step.narration)}</div>`;
             if (step.persona_reaction) {
               block += `<div class="screenshot-persona"><strong>${pName}:</strong> <em>${escapeHtml(step.persona_reaction)}</em></div>`;
@@ -1730,8 +2146,9 @@ function buildTokens() {
     `{src:${JSON.stringify(s.src)},narration:${JSON.stringify(s.narration)},filename:${JSON.stringify(s.filename)},step:${JSON.stringify(s.step || null)}}`
   ).join(',\n');
 
-  // ---- CSV data for download ----
-  const csvDataEscaped = csvRaw.replace(/`/g, '\\`').replace(/\\/g, '\\\\').replace(/\$/g, '\\$');
+  // ---- CSV data for download (full 3-section format) ----
+  const fullCsv = buildFullCsv(csvRaw, journeyLog, passCount, failCount, flaggedCount);
+  const csvDataEscaped = fullCsv.replace(/`/g, '\\`').replace(/\\/g, '\\\\').replace(/\$/g, '\\$');
 
   // Build link URLs
   const rfeKey = (extractState && extractState.rfe_key) || '';
@@ -1780,6 +2197,7 @@ function buildTokens() {
     '{{FAIL_COUNT}}': String(failCount),
     '{{FLAGGED_COUNT}}': String(flaggedCount),
     '{{JOURNEY_RATIO}}': journeyRatio,
+    '{{STAT_DELTAS}}': buildStatDeltas(passCount, failCount, flaggedCount, usabilityScore, journeyLog),
     '{{BREADCRUMB_HTML}}': breadcrumbHtml,
     '{{AC_TABLE_ROWS_JIRA}}': acTableRowsJira,
     '{{AC_TABLE_ROWS_INFERRED}}': acTableRowsInferred,
@@ -1799,8 +2217,11 @@ function buildTokens() {
     '{{AI_INSIGHTS_DISPLAY}}': aiInsightsDisplay,
     '{{DELTA_HTML}}': buildDeltaHtml(),
     '{{DELTA_DISPLAY}}': fs.existsSync(path.join(absArtifacts, 'mr-delta.json')) ? '' : 'display:none',
+    '{{ITERATION_DISPLAY}}': fs.existsSync(path.join(absArtifacts, 'iteration-log.json')) ? '' : 'display:none',
+    '{{ITERATION_TIMELINE_HTML}}': buildIterationTimelineHtml(),
     '{{CSV_DATA}}': csvDataEscaped,
     '{{SCREENSHOT_ARRAY}}': screenshotArrayStr,
+    '{{FLAGGED_DATA}}': buildFlaggedDataArray(csvRows, journeyLog, screenshots),
     '{{PERSONAS_TAB_DISPLAY}}': (ud && ud.personas_evaluated && ud.personas_evaluated.length) ? '' : 'display:none',
     '{{DELTAS_TAB_DISPLAY}}': fs.existsSync(path.join(absArtifacts, 'mr-delta.json')) ? '' : 'display:none',
     '{{PERSONA_SELECTION_HTML}}': buildPersonaSelectionHtml(),
@@ -1808,9 +2229,12 @@ function buildTokens() {
     '{{CODE_DELTAS_HTML}}': buildCodeDeltasHtml(),
     '{{CONSISTENCY_HTML}}': buildConsistencyHtml(),
     '{{CONSISTENCY_TAB_DISPLAY}}': fs.existsSync(path.join(absArtifacts, 'consistency-report.json')) ? '' : 'display:none',
+    '{{REVIEW_TAB_DISPLAY}}': flaggedCount > 0 ? '' : 'display:none',
+    '{{REVIEW_ITEMS_HTML}}': buildReviewItemsHtml(csvRows, journeyLog, screenshots),
     '{{EXTERNAL_USABILITY_HTML}}': buildExternalUsabilityHtml(),
     '{{EXTERNAL_USABILITY_DISPLAY}}': fs.existsSync(path.join(absArtifacts, 'zack-skill-output')) ? '' : 'display:none',
     '{{OUTCOME_DISPLAY}}': outcomeContext ? '' : 'display:none',
+    '{{OUTCOME_LINK_URL}}': outcomeContext ? jiraUrlForKey(outcomeContext.key) : '',
     '{{OUTCOME_LINK}}': outcomeContext ? `<a href="${escapeHtml(jiraUrlForKey(outcomeContext.key))}" target="_blank">${escapeHtml(outcomeContext.key)}</a> — ${escapeHtml((outcomeContext.title || '').slice(0, 60))}` : '',
     '{{STORY_SOURCE}}': rfeKey
       ? `<a href="${escapeHtml(rfeUrl)}" target="_blank">${escapeHtml(rfeKey)}</a> (RFE)${outcomeContext ? ` → <a href="${escapeHtml(jiraUrlForKey(outcomeContext.key))}" target="_blank">${escapeHtml(outcomeContext.key)}</a> (Outcome)` : ''}`
@@ -1933,26 +2357,167 @@ function renderTaStep(step) {
 // Main
 // ---------------------------------------------------------------------------
 
+function renderTemplate(tokens) {
+  let template = fs.readFileSync(templatePath, 'utf8');
+  for (const [token, value] of Object.entries(tokens)) {
+    template = template.split(token).join(value);
+  }
+  template = template.replace(/\{\{[A-Z_]+\}\}/g, '');
+  return template;
+}
+
+function generateIterationReports() {
+  // Find archived iteration CSVs
+  const iterFiles = [];
+  try {
+    const files = fs.readdirSync(absArtifacts);
+    for (const f of files) {
+      const match = f.match(/^evaluation-report-iter-(\d+)\.csv$/);
+      if (match) iterFiles.push({ iteration: parseInt(match[1]), csvFile: f });
+    }
+  } catch {}
+
+  if (!iterFiles.length) return;
+  iterFiles.sort((a, b) => a.iteration - b.iteration);
+
+  console.log(`  Generating ${iterFiles.length} iteration snapshot(s)...`);
+
+  for (const { iteration, csvFile } of iterFiles) {
+    const iterCsv = readFileOr(path.join(absArtifacts, csvFile), '');
+    const iterScreenshotsDir = path.join(absArtifacts, `screenshots-iter-${iteration}`);
+    const iterScreenshots = fs.existsSync(iterScreenshotsDir) ? loadScreenshots(iterScreenshotsDir) : {};
+
+    // Build a minimal token set for the iteration snapshot
+    const iterRows = parseCsv(iterCsv);
+    let passCount = 0, failCount = 0, flaggedCount = 0;
+    for (const r of iterRows) {
+      const v = (r.verdict || '').toUpperCase();
+      if (v === 'PASS') passCount++;
+      else if (v === 'FAIL') failCount++;
+      else if (v === 'FLAGGED') flaggedCount++;
+    }
+
+    const iterLog = readJsonOr(path.join(absArtifacts, 'iteration-log.json'), null);
+    const extractState = readJsonOr(path.join(absArtifacts, 'extract-state.json'), null);
+    const protoId = extractPrototypeId();
+    const storyTitle = (extractState && extractState.ticket_summary) || protoId;
+
+    // Iteration snapshot HTML — shows journey flows with screenshots
+    let html = `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">`;
+    html += `<title>Iteration ${iteration}: ${escapeHtml(protoId)}</title>`;
+    html += `<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Red+Hat+Display:wght@400;500;700&family=Red+Hat+Text:wght@400;500&family=Red+Hat+Mono&display=swap">`;
+    html += `<style>:root{--bg:#fff;--bg2:#f9f9f9;--text:#1a1a1a;--text2:#6b7280;--border:#eaeaea;--accent:#0066cc;--status-success:#16a34a;--status-danger:#dc2626;--status-warning:#d97706;--font-heading:'Red Hat Display',sans-serif;--font-body:'Red Hat Text',sans-serif;--font-mono:'Red Hat Mono',monospace}`;
+    html += `*{box-sizing:border-box}body{margin:0;font-family:var(--font-body);font-size:0.9375rem;line-height:1.6;color:var(--text)}`;
+    html += `.header{position:sticky;top:0;z-index:10;background:var(--bg);border-bottom:1px solid var(--border);padding:0.6rem 2rem;display:flex;align-items:center;gap:1.5rem}`;
+    html += `.header a{font-size:0.8125rem;color:var(--accent)}`;
+    html += `.header h1{font-family:var(--font-heading);font-size:1.1rem;margin:0;flex:1}`;
+    html += `.content{padding:1.5rem 2.5rem;max-width:100%}`;
+    html += `h2{font-family:var(--font-heading);font-size:1rem;margin:1.5rem 0 0.5rem}`;
+    html += `.badge{display:inline-block;padding:0.12rem 0.55rem;border-radius:999px;font-size:0.7rem;font-weight:600;text-transform:uppercase}`;
+    html += `.badge-pass{background:rgba(22,163,74,0.12);color:#16a34a}.badge-fail{background:rgba(220,38,38,0.12);color:#dc2626}.badge-flagged{background:rgba(217,119,6,0.12);color:#d97706}`;
+    html += `.stats{display:flex;gap:1.25rem;margin:0.75rem 0}.stat-n{font-family:var(--font-heading);font-size:1.25rem;font-weight:700}.stat-l{font-size:0.65rem;color:var(--text2);text-transform:uppercase}`;
+    html += `table{width:100%;border-collapse:collapse;font-size:0.8125rem;margin:0.75rem 0}th,td{padding:0.4rem 0.6rem;text-align:left;border-bottom:1px solid var(--border)}th{font-size:0.65rem;color:var(--text2);text-transform:uppercase}`;
+    html += `.journey-flow{margin:1.5rem 0;border:1px solid var(--border);border-radius:0.5rem;overflow:hidden}`;
+    html += `.journey-header{padding:0.6rem 1rem;background:var(--bg2);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}`;
+    html += `.journey-header strong{font-size:0.875rem}`;
+    html += `.journey-steps{display:flex;overflow-x:auto;gap:0;scroll-snap-type:x mandatory}`;
+    html += `.journey-step{min-width:500px;max-width:600px;scroll-snap-align:start;border-right:1px solid var(--border);flex-shrink:0}`;
+    html += `.journey-step:last-child{border-right:none}`;
+    html += `.journey-step img{width:100%;display:block}`;
+    html += `.journey-step-label{padding:0.3rem 0.6rem;font-size:0.7rem;color:var(--text2);background:var(--bg2);border-top:1px solid var(--border)}`;
+    html += `</style></head><body>`;
+
+    // Sticky header — back link on LEFT
+    html += `<div class="header">`;
+    html += `<a href="evaluation-report.html">← Final report</a>`;
+    html += `<h1>Iteration ${iteration} — ${escapeHtml(storyTitle)}</h1>`;
+    html += `</div>`;
+
+    html += `<div class="content">`;
+
+    html += `<div class="stats">`;
+    html += `<div><div class="stat-n" style="color:var(--status-success)">${passCount}</div><div class="stat-l">Pass</div></div>`;
+    html += `<div><div class="stat-n" style="color:var(--status-danger)">${failCount}</div><div class="stat-l">Fail</div></div>`;
+    html += `<div><div class="stat-n" style="color:var(--status-warning)">${flaggedCount}</div><div class="stat-l">Flagged</div></div>`;
+    html += `</div>`;
+
+    // AC table (compact)
+    html += `<h2>Criteria</h2>`;
+    html += `<table><thead><tr><th>ID</th><th>Verdict</th><th>Evidence</th></tr></thead><tbody>`;
+    for (const r of iterRows) {
+      const v = (r.verdict || '').toUpperCase();
+      const cls = v === 'PASS' ? 'badge-pass' : v === 'FAIL' ? 'badge-fail' : 'badge-flagged';
+      html += `<tr><td><strong>${escapeHtml(r.criterion_id)}</strong></td><td><span class="badge ${cls}">${v}</span></td><td style="font-size:0.75rem;color:var(--text2)">${escapeHtml((r.rationale || r.evidence || '').slice(0, 200))}</td></tr>`;
+    }
+    html += `</tbody></table>`;
+
+    // Screenshots organized by journey flow (horizontal scroll per journey)
+    const ssFiles = Object.keys(iterScreenshots).sort();
+    if (ssFiles.length) {
+      // Group screenshots by journey
+      const journeyGroups = {};
+      for (const ssFile of ssFiles) {
+        const match = ssFile.match(/^(journey-\d+|explore-[^-]+-[^-]+)/);
+        const group = match ? match[1] : 'other';
+        if (!journeyGroups[group]) journeyGroups[group] = [];
+        journeyGroups[group].push(ssFile);
+      }
+
+      html += `<h2>Journey Flows</h2>`;
+      for (const [group, files] of Object.entries(journeyGroups)) {
+        const label = group.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+        html += `<div class="journey-flow">`;
+        html += `<div class="journey-header"><strong>${escapeHtml(label)}</strong><span style="font-size:0.7rem;color:var(--text2)">${files.length} steps</span></div>`;
+        html += `<div class="journey-steps">`;
+        for (const ssFile of files) {
+          html += `<div class="journey-step">`;
+          html += `<img loading="lazy" src="${iterScreenshots[ssFile]}" alt="${escapeHtml(ssFile)}">`;
+          html += `<div class="journey-step-label">${escapeHtml(ssFile.replace('.png', '').replace(/journey-\d+-/, ''))}</div>`;
+          html += `</div>`;
+        }
+        html += `</div></div>`;
+      }
+    }
+
+    html += `</div>`;
+    html += `</body></html>`;
+
+    const iterOutPath = path.join(absArtifacts, `evaluation-report-iter-${iteration}.html`);
+    fs.writeFileSync(iterOutPath, html, 'utf8');
+    console.log(`  ✓ Iteration ${iteration} snapshot: ${iterOutPath} (${(Buffer.byteLength(html) / 1024).toFixed(0)} KB)`);
+  }
+}
+
 function main() {
   if (!fs.existsSync(templatePath)) {
     console.error(`Template not found: ${templatePath}`);
     process.exit(1);
   }
 
-  let template = fs.readFileSync(templatePath, 'utf8');
   const tokens = buildTokens();
-
-  for (const [token, value] of Object.entries(tokens)) {
-    template = template.split(token).join(value);
-  }
-
-  // Clean up any remaining unreplaced tokens
-  template = template.replace(/\{\{[A-Z_]+\}\}/g, '');
+  const template = renderTemplate(tokens);
 
   const outPath = path.join(absArtifacts, 'evaluation-report.html');
   fs.writeFileSync(outPath, template, 'utf8');
   console.log(`✓ Report written to ${outPath}`);
   console.log(`  Size: ${(Buffer.byteLength(template) / 1024).toFixed(0)} KB`);
+
+  // Generate per-iteration snapshot reports (shortened versions for intermediates)
+  generateIterationReports();
+
+  // Generate FULL original report (same template as final, but using iter-1 data)
+  const origCsvPath = path.join(absArtifacts, 'evaluation-report-iter-1.csv');
+  const origScreenshotsDir = path.join(absArtifacts, 'screenshots-iter-1');
+  if (fs.existsSync(origCsvPath)) {
+    const origTokens = buildTokens({
+      csvPath: origCsvPath,
+      screenshotsDir: origScreenshotsDir,
+    });
+    const origHtml = renderTemplate(origTokens);
+    const origTarget = path.join(absArtifacts, 'evaluation-report-original.html');
+    fs.writeFileSync(origTarget, origHtml, 'utf8');
+    console.log(`  ✓ Original (full): ${origTarget} (${(Buffer.byteLength(origHtml) / 1024).toFixed(0)} KB)`);
+  }
 }
 
 main();

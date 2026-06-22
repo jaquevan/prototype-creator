@@ -26,7 +26,7 @@ details[open] summary::before{transform:rotate(90deg)}
 .badge{display:inline-block;padding:0.12rem 0.55rem;border-radius:999px;font-size:0.7rem;font-weight:600;text-transform:uppercase;letter-spacing:0.03em}
 .badge-pass{background:rgba(22,163,74,0.12);color:#16a34a}
 .badge-fail{background:rgba(220,38,38,0.12);color:#dc2626}
-.badge-flagged{background:rgba(217,119,6,0.12);color:#d97706}
+.badge-flagged{background:rgba(217,119,6,0.12);color:#d97706;text-decoration:underline;text-decoration-style:dotted;text-underline-offset:2px}
 
 /* Card */
 .card{background:var(--bg2);border:1px solid var(--border);border-radius:0.5rem;padding:1.25rem;margin:1rem 0}
@@ -119,13 +119,14 @@ details[open] summary::before{transform:rotate(90deg)}
 .header-toggle:hover{color:var(--text)}
 
 /* Header details */
-.header-details{background:var(--bg2);border-bottom:1px solid var(--border);padding:1.25rem 2rem;display:none}
+.header-details{background:var(--bg2);border-bottom:1px solid var(--border);padding:0.85rem 2rem;display:none}
 .header-details.open{display:block}
 .header-details p{margin:0.25rem 0;font-size:0.9375rem;color:var(--text)}
-.meta-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:1.5rem;margin-top:1rem}
-.meta-item{font-size:0.8125rem}
-.meta-label{color:var(--text2);font-size:0.7rem;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:0.15rem}
-.meta-value{color:var(--text);font-weight:500}
+.meta-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:1rem 1.5rem;margin:0}
+.meta-item{font-size:0.8125rem;overflow:hidden}
+.meta-label{color:var(--text2);font-size:0.65rem;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:0.1rem}
+.meta-value{color:var(--text);font-weight:500;font-size:0.8125rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.meta-value a{font-size:inherit}
 
 /* Breadcrumb */
 .breadcrumb-bar{background:var(--bg);border-bottom:1px solid var(--border);padding:0.5rem 2rem;font-size:0.75rem;color:var(--text2)}
@@ -171,6 +172,62 @@ details[open] summary::before{transform:rotate(90deg)}
 .ta-confidence-high{color:var(--status-success)}
 .ta-confidence-low{color:var(--status-warning)}
 .ta-confidence-none{color:var(--status-danger)}
+
+/* Quick Nav */
+.quick-nav{display:flex;gap:0.5rem;flex-wrap:wrap;margin:0 0 1.5rem}
+.quick-nav-btn{display:inline-flex;align-items:center;gap:0.3rem;padding:0.4rem 0.85rem;border-radius:999px;font-size:0.75rem;font-weight:500;border:1px solid var(--border);color:var(--text);text-decoration:none;transition:all 0.15s;background:var(--bg)}
+.quick-nav-btn:hover{border-color:var(--accent);color:var(--accent);text-decoration:none}
+.quick-nav-primary{background:var(--accent);color:#fff;border-color:var(--accent)}
+.quick-nav-primary:hover{background:#0052a3;color:#fff}
+
+/* Review section accent */
+#human-review-section{background:rgba(0,102,204,0.03);border:1px solid rgba(0,102,204,0.12);border-radius:0.75rem;padding:1.5rem;margin:2rem 0}
+
+/* Iteration Cards */
+.iteration-card{border-bottom:1px solid var(--border);padding:0.75rem 0;margin:0}
+.iteration-card:last-of-type{border-bottom:none}
+.iteration-card-current{border-bottom:none}
+.iter-card-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:0.25rem}
+.iter-fail-summary{font-size:0.8rem;color:var(--status-danger);margin:0.2rem 0}
+.iter-fixes-list{margin:0.3rem 0;font-size:0.8rem}
+
+/* Iteration Timeline (legacy support) */
+.iter-timeline{display:flex;flex-direction:column;gap:0.75rem}
+.iter-step{display:flex;gap:1rem;align-items:flex-start;position:relative;padding-left:1.5rem}
+.iter-step::before{content:'';position:absolute;left:0.45rem;top:1.5rem;bottom:-0.75rem;width:2px;background:var(--border)}
+.iter-step:last-child::before{display:none}
+.iter-dot{width:0.75rem;height:0.75rem;border-radius:50%;position:absolute;left:0.1rem;top:0.35rem;border:2px solid var(--border);background:var(--bg)}
+.iter-dot-pass{border-color:var(--status-success);background:var(--status-success)}
+.iter-dot-fail{border-color:var(--status-danger);background:var(--status-danger)}
+.iter-dot-active{border-color:var(--accent);background:var(--accent)}
+.iter-body{flex:1}
+.iter-header{display:flex;align-items:center;gap:0.5rem;margin-bottom:0.25rem}
+.iter-label{font-family:var(--font-heading);font-size:0.875rem;font-weight:600}
+.iter-counts{font-size:0.75rem;color:var(--text2);font-family:var(--font-mono)}
+.iter-changes{margin:0.35rem 0 0;font-size:0.75rem;color:var(--text2);line-height:1.5}
+.iter-changes li{margin:0.15rem 0}
+.iter-delta{display:inline-block;padding:0.1rem 0.4rem;border-radius:0.25rem;font-size:0.65rem;font-weight:600;margin-left:0.3rem}
+.iter-delta-up{background:rgba(22,163,74,0.1);color:var(--status-success)}
+.iter-delta-down{background:rgba(220,38,38,0.1);color:var(--status-danger)}
+
+/* Human Review panel */
+.review-item{border:1px solid var(--border);border-radius:0.5rem;margin:0.75rem 0;overflow:hidden;background:var(--bg)}
+.review-item-header{padding:0.75rem 1rem;background:var(--bg2);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:0.5rem}
+.review-item-id{font-family:var(--font-mono);font-size:0.8rem;font-weight:600}
+.review-item-tier{font-size:0.65rem;color:var(--text2);text-transform:uppercase;letter-spacing:0.03em}
+.review-item-body{padding:1rem}
+.review-item-criterion{font-size:0.8125rem;line-height:1.6;color:var(--text);margin-bottom:0.75rem}
+.review-item-evidence{font-size:0.75rem;color:var(--text2);line-height:1.5;padding:0.5rem 0.75rem;background:var(--bg2);border-radius:0.375rem;margin-bottom:0.75rem;border-left:2px solid var(--status-warning)}
+.review-item-screenshot{margin:0.75rem 0;border-radius:0.375rem;overflow:hidden;border:1px solid var(--border);cursor:pointer}
+.review-item-screenshot img{width:100%;display:block}
+.review-override{display:flex;gap:0.5rem;margin:0.75rem 0 0.5rem}
+.review-override button{padding:0.3rem 0.75rem;border-radius:0.375rem;font-size:0.75rem;font-weight:600;cursor:pointer;border:1px solid var(--border);background:var(--bg);color:var(--text);font-family:var(--font-body);transition:all 0.15s}
+.review-override button:hover{border-color:var(--accent)}
+.review-override button.override-active-pass{background:rgba(22,163,74,0.12);border-color:var(--status-success);color:var(--status-success)}
+.review-override button.override-active-fail{background:rgba(220,38,38,0.12);border-color:var(--status-danger);color:var(--status-danger)}
+.review-textarea{width:100%;min-height:80px;border:1px solid var(--border);border-radius:0.375rem;padding:0.6rem 0.75rem;font-family:var(--font-body);font-size:0.8125rem;line-height:1.5;resize:vertical;background:var(--bg);color:var(--text)}
+.review-textarea:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 2px rgba(0,102,204,0.1)}
+.review-textarea::placeholder{color:var(--text2)}
 
 /* Screenshot cards with annotations */
 .screenshot-card{margin:0.6rem 0 1rem;border:1px solid var(--border);border-radius:0.5rem;overflow:hidden;background:var(--bg2)}
@@ -223,7 +280,12 @@ details[open] summary::before{transform:rotate(90deg)}
 .inf-ta-box{background:rgba(0,102,204,0.04);border:1px solid rgba(0,102,204,0.15);border-radius:0.5rem;padding:1rem 1.25rem;margin:0.75rem 0;font-size:0.8125rem;line-height:1.6}
 
 /* Footer */
-.report-footer{border-top:1px solid var(--border);padding:1.5rem 2rem;font-size:0.75rem;color:var(--text2);text-align:center;background:var(--bg2)}
+.report-footer{border-top:1px solid var(--border);padding:1.25rem 2.5rem;font-size:0.7rem;color:var(--text2);background:var(--bg2)}
+.report-footer a{color:var(--accent);font-size:0.65rem}
+.report-footer details{margin:0.5rem 0}
+.report-footer details summary{list-style:none;user-select:none;font-size:0.7rem}
+.report-footer details summary::before{content:'+ ';font-weight:700;color:var(--accent)}
+.report-footer details[open] summary::before{content:'- '}
 
 /* Persona cards */
 .persona-card{background:var(--bg2);border:1px solid var(--border);border-radius:0.5rem;padding:1rem 1.25rem;margin:0.75rem 0}
@@ -339,6 +401,8 @@ details[open] summary .section-icon{opacity:0.8}
 <div class="header-bar">
   <h1>{{PROTOTYPE_ID}}</h1>
   <div class="header-links">
+    <a href="{{OUTCOME_LINK_URL}}" target="_blank" style="{{OUTCOME_DISPLAY}}">Outcome</a>
+    <span class="arrow" style="{{OUTCOME_DISPLAY}}">→</span>
     <a href="{{RFE_URL}}" target="_blank">RFE</a>
     <span class="arrow">→</span>
     <a href="{{JIRA_URL}}" target="_blank">STRAT</a>
@@ -357,15 +421,14 @@ details[open] summary .section-icon{opacity:0.8}
 
 <!-- Header Details (collapsible) -->
 <div class="header-details" id="headerDetails">
-  <p style="margin-bottom:0.75rem">{{DESCRIPTION}}</p>
-  <div class="meta-grid">
-    <div class="meta-item"><div class="meta-label">Story</div><div class="meta-value">{{STORY_TITLE}}</div></div>
-    <div class="meta-item"><div class="meta-label">Depth</div><div class="meta-value"><span class="depth-badge depth-badge-{{DEPTH}}">{{DEPTH}}</span></div></div>
-    <div class="meta-item"><div class="meta-label">Evaluated</div><div class="meta-value">{{EVAL_DATE}}</div></div>
-    <div class="meta-item"><div class="meta-label">Usability</div><div class="meta-value">{{USABILITY_SCORE}} / 21</div></div>
-    <div class="meta-item" style="{{OUTCOME_DISPLAY}}"><div class="meta-label">Outcome</div><div class="meta-value">{{OUTCOME_LINK}}</div></div>
-    <div class="meta-item"><div class="meta-label">Journeys</div><div class="meta-value">{{JOURNEY_SUMMARY}}</div></div>
-    <div class="meta-item"><div class="meta-label">Source</div><div class="meta-value">{{STORY_SOURCE}}</div></div>
+  <div style="display:flex;gap:2rem;align-items:flex-start;flex-wrap:wrap">
+    <div style="flex:1;min-width:200px">
+      <p style="font-size:0.8125rem;color:var(--text);line-height:1.6;margin:0">{{DESCRIPTION}}</p>
+    </div>
+    <div style="display:flex;gap:1.5rem;flex-shrink:0">
+      <div class="meta-item"><div class="meta-label">Depth</div><div class="meta-value"><span class="depth-badge depth-badge-{{DEPTH}}">{{DEPTH}}</span></div></div>
+      <div class="meta-item"><div class="meta-label">Evaluated</div><div class="meta-value">{{EVAL_DATE}}</div></div>
+    </div>
   </div>
 </div>
 
@@ -416,60 +479,26 @@ details[open] summary .section-icon{opacity:0.8}
       </div>
     </div>
 
-    <!-- What Changed (MR Delta) -->
-    <div id="what-changed" style="{{DELTA_DISPLAY}}">
-      <details>
-        <summary><span class="section-icon"><svg viewBox="0 0 16 16"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg></span>What Changed in This MR</summary>
-        <div class="card card-compact">
-          {{DELTA_HTML}}
-        </div>
-      </details>
+    {{STAT_DELTAS}}
+
+    <!-- Quick Nav -->
+    <div class="quick-nav">
+      <a href="#human-review" onclick="scrollToSection('human-review');return false" class="quick-nav-btn quick-nav-primary">Review Flagged ({{FLAGGED_COUNT}})</a>
+      <a href="#ac-results" onclick="scrollToSection('ac-results');return false" class="quick-nav-btn">Criteria</a>
     </div>
 
-    <!-- Methodology -->
-    <details>
-      <summary><span class="section-icon"><svg viewBox="0 0 16 16"><path d="M8 1.5c-2.363 0-4 1.69-4 3.75 0 .984.424 1.625.984 2.304l.214.253c.223.264.47.556.673.848.284.411.537.896.621 1.49a.75.75 0 01-1.484.211c-.04-.282-.163-.547-.37-.847a8.456 8.456 0 00-.542-.68c-.084-.1-.173-.205-.268-.32C3.201 7.75 2.5 6.766 2.5 5.25 2.5 2.31 4.863 0 8 0s5.5 2.31 5.5 5.25c0 1.516-.701 2.5-1.328 3.259-.095.115-.184.22-.268.319-.207.245-.383.453-.541.681-.208.3-.33.565-.37.847a.75.75 0 01-1.485-.212c.084-.593.337-1.078.621-1.489.203-.292.45-.584.673-.848l.213-.253c.561-.679.985-1.32.985-2.304 0-2.06-1.637-3.75-4-3.75zM6 15.25a.75.75 0 01.75-.75h2.5a.75.75 0 010 1.5h-2.5a.75.75 0 01-.75-.75zM5.75 12a.75.75 0 000 1.5h4.5a.75.75 0 000-1.5h-4.5z"/></svg></span>How This Evaluation Was Conducted</summary>
-      <div class="card">
-        {{METHODOLOGY_HTML}}
-      </div>
-    </details>
-
-    <!-- Usability Scoring Explanation -->
-    <details>
-      <summary><span class="section-icon"><svg viewBox="0 0 16 16"><path d="M8 0a8 8 0 100 16A8 8 0 008 0zm-.5 4.75a.75.75 0 011.5 0v3.5a.75.75 0 01-1.5 0v-3.5zM8 12a1 1 0 110-2 1 1 0 010 2z"/></svg></span>How Usability Scores Are Calculated</summary>
-      <div class="card">
-        <div class="inf-ta-box">
-          <strong>Two scoring layers:</strong>
-          <p><strong>INF (Inference)</strong> — fast, structural analysis. The evaluator applies persona knowledge constraints to the Playwright journey evidence and scores each dimension based on observable UI patterns. Good for CI and regression testing.</p>
-          <p><strong>TA (Think-Aloud)</strong> — slow, diagnostic analysis. The evaluator role-plays as a persona navigating the prototype step by step, producing a first-person internal monologue. Reveals false confidence, wrong mental models, guess-and-pray patterns, and cumulative frustration that inference misses.</p>
-        </div>
-        <table class="tbl mt1">
-          <thead>
-            <tr><th>Dimension</th><th>What It Measures</th><th>0 = Broken</th><th>3 = Seamless</th></tr>
-          </thead>
-          <tbody>
-            <tr><td>Workflow Continuity</td><td>Can the user complete the flow without infrastructure cliffs?</td><td>Dead ends, crashes</td><td>Uninterrupted flow</td></tr>
-            <tr><td>Cross-Persona Handoffs</td><td>Is context preserved across roles and workflow stages?</td><td>Context lost on handoff</td><td>Seamless transitions</td></tr>
-            <tr><td>Scalability &amp; Complexity</td><td>Does it serve both novices and experts?</td><td>One-size-fits-none</td><td>Progressive disclosure</td></tr>
-            <tr><td>System Status &amp; Trust</td><td>Does the UI explain what's happening?</td><td>Silent failures</td><td>Clear feedback always</td></tr>
-            <tr><td>Technical Abstraction</td><td>Relevant info or infrastructure leaks?</td><td>Raw infrastructure</td><td>Domain-native terms</td></tr>
-            <tr><td>Mental Model Fidelity</td><td>Does the UI speak the user's language?</td><td>System language</td><td>User language</td></tr>
-            <tr><td>Accessibility</td><td>Keyboard nav, screen readers, constrained environments?</td><td>Inaccessible</td><td>WCAG compliant</td></tr>
-          </tbody>
-        </table>
-        <p class="small muted mt1"><strong>Composite score</strong>: average across evaluated personas per dimension. Overall is sum of composites out of 21.</p>
-        <p class="small muted"><strong>Confidence levels</strong>: High = structural blocker directly observed. Medium = friction consistent with persona profile. Low = logical inference from constraints.</p>
-        <p class="small muted"><strong>Patience model</strong>: each persona starts at 100%. Confusion costs 5-15%, dead ends cost 10-30%, successful sub-tasks recover 5-10%. At 0% the persona abandons.</p>
-        <p class="small muted mt1">Scoring rubric from <a href="https://gitlab.cee.redhat.com/zbodnar/automated-usability-testing" target="_blank">automated-usability-testing</a>.</p>
-      </div>
-    </details>
+    <!-- Iteration History (always open) -->
+    <div id="iteration-timeline" style="{{ITERATION_DISPLAY}}">
+      <h2 style="margin-top:0.5rem">Iteration History</h2>
+      {{ITERATION_TIMELINE_HTML}}
+    </div>
 
     <!-- AC Results: Jira ACs -->
     <h2 id="ac-results">Acceptance Criteria</h2>
     <p class="small muted" style="margin:-0.5rem 0 1rem">Source: <a href="{{JIRA_URL}}" target="_blank">{{PROTOTYPE_ID}}</a> — {{AC_JIRA_COUNT}} criteria extracted verbatim from ticket</p>
     <table class="tbl" id="ac-table-jira">
       <thead>
-        <tr><th style="width:3.5rem">ID</th><th>Acceptance Criterion</th><th style="width:5.5rem">Verdict</th><th>Evidence</th><th style="width:7rem">Human Review</th></tr>
+        <tr><th style="width:3.5rem">ID</th><th>Acceptance Criterion</th><th style="width:5.5rem">Verdict</th><th>Evidence</th></tr>
       </thead>
       <tbody>
         {{AC_TABLE_ROWS_JIRA}}
@@ -507,6 +536,30 @@ details[open] summary .section-icon{opacity:0.8}
     <!-- Flagged -->
     <h2 id="flagged">Flagged for Human Review</h2>
     {{FLAGGED_HTML}}
+
+    <!-- Human Review Section -->
+    <div id="human-review-section" style="{{REVIEW_TAB_DISPLAY}}">
+      <h2 id="human-review">Your Review</h2>
+      <p class="small muted" style="margin:-0.25rem 0 1rem">Override verdicts and add notes. Click any FLAGGED badge above to review in a modal. Your annotations persist in the browser and export to CSV.</p>
+
+      <div id="review-items">
+        {{REVIEW_ITEMS_HTML}}
+      </div>
+
+      <div style="margin-top:1rem;display:flex;gap:0.75rem">
+        <button onclick="downloadCSV()" style="background:var(--accent);border:none;color:#fff;padding:0.45rem 1.25rem;border-radius:0.375rem;cursor:pointer;font-family:var(--font-body);font-size:0.8125rem;font-weight:500;flex:1">Download Review CSV</button>
+      </div>
+    </div>
+
+    <!-- What Changed (MR Delta) — near bottom for context -->
+    <div id="what-changed" style="{{DELTA_DISPLAY}}">
+      <details open>
+        <summary style="font-size:0.875rem">What Changed in This MR</summary>
+        <div class="card card-compact" style="margin-top:0.5rem">
+          {{DELTA_HTML}}
+        </div>
+      </details>
+    </div>
 
     <!-- Conclusion -->
     <h2>Conclusion</h2>
@@ -576,8 +629,30 @@ details[open] summary .section-icon{opacity:0.8}
 </div>
 
 <!-- Footer -->
-<div class="report-footer">
-  Report by prototype-evaluate. Usability scoring powered by <a href="https://gitlab.cee.redhat.com/zbodnar/automated-usability-testing">automated-usability-testing</a>.
+<div class="report-footer" style="text-align:left;padding:2rem 2.5rem">
+  <details style="margin:0 0 1rem">
+    <summary style="font-size:0.8rem;font-weight:500;cursor:pointer">How This Evaluation Was Conducted</summary>
+    <div style="margin-top:0.5rem;font-size:0.75rem;line-height:1.6;color:var(--text)">
+      {{METHODOLOGY_HTML}}
+    </div>
+  </details>
+
+  <details style="margin:0 0 1.5rem">
+    <summary style="font-size:0.8rem;font-weight:500;cursor:pointer">How Usability Scores Are Calculated</summary>
+    <div style="margin-top:0.5rem;font-size:0.75rem;line-height:1.6;color:var(--text)">
+      <p><strong>INF (Inference)</strong> — fast, structural analysis from Playwright journey evidence. <strong>TA (Think-Aloud)</strong> — slow, diagnostic persona narration.</p>
+      <p>7 dimensions scored 0-3: Workflow Continuity, Cross-Persona Handoffs, Scalability, System Status, Technical Abstraction, Mental Model Fidelity, Accessibility. Composite = 21.</p>
+      <p>Patience model: starts 100%, confusion costs 5-15%, dead ends cost 10-30%, successes recover 5-10%. At 0% the persona abandons.</p>
+    </div>
+  </details>
+
+  <div style="border-top:1px solid var(--border);padding-top:0.75rem;font-size:0.65rem;color:var(--text2);display:flex;flex-wrap:wrap;gap:1rem;align-items:center">
+    <span>Built with:</span>
+    <a href="https://github.com/andybraren/prototype-creator" target="_blank">prototype-creator</a>
+    <a href="https://gitlab.cee.redhat.com/zbodnar/automated-usability-testing" target="_blank">automated-usability-testing</a>
+    <a href="https://gitlab.cee.redhat.com/bmorley/consistency-checker" target="_blank">consistency-checker</a>
+    <a href="https://www.patternfly.org" target="_blank">PatternFly</a>
+  </div>
 </div>
 
 <!-- Screenshot Modal — split view -->
@@ -606,39 +681,58 @@ details[open] summary .section-icon{opacity:0.8}
   </div>
 </div>
 
+<!-- Review Modal (for FLAGGED items) -->
+<div class="modal-overlay" id="reviewModal">
+  <button onclick="closeReviewModal()" class="modal-overlay-close" title="Close">×</button>
+  <div class="modal-content" style="max-width:640px;height:auto;max-height:85vh;flex-direction:column">
+    <div style="padding:1.5rem;overflow-y:auto;flex:1">
+      <div id="reviewModalContent"></div>
+    </div>
+  </div>
+</div>
+
 <script>
 var csvData = `{{CSV_DATA}}`;
 
 var screenshotData = [{{SCREENSHOT_ARRAY}}];
+var flaggedData = {{FLAGGED_DATA}};
 var currentScreenshotIdx = 0;
 
 function downloadCSV() {
-  // Collect human review annotations from editable fields
+  // Collect human review notes from the Review tab
   var annotations = {};
-  var inputs = document.querySelectorAll('.human-review-input');
-  for (var i = 0; i < inputs.length; i++) {
-    var val = inputs[i].value.trim();
-    if (val) annotations[inputs[i].getAttribute('data-ac')] = val;
-  }
+  var overrides = {};
+  document.querySelectorAll('.review-textarea').forEach(function(el) {
+    var val = el.value.trim();
+    if (val) annotations[el.getAttribute('data-ac')] = val;
+  });
+  document.querySelectorAll('[id^="override-"]').forEach(function(el) {
+    if (el.value) overrides[el.id.replace('override-', '')] = el.value;
+  });
 
   var exportCsv = csvData;
-  // Append human_notes column to AC section rows if any annotations exist
-  if (Object.keys(annotations).length > 0) {
+  var hasAnnotations = Object.keys(annotations).length > 0 || Object.keys(overrides).length > 0;
+
+  if (hasAnnotations) {
     var lines = exportCsv.split('\n');
     var inAcSection = false;
+    var headerIdx = -1;
     for (var li = 0; li < lines.length; li++) {
       if (lines[li].startsWith('# ACCEPTANCE CRITERIA')) { inAcSection = true; continue; }
       if (lines[li].startsWith('#')) { inAcSection = false; continue; }
       if (!inAcSection || !lines[li].trim()) continue;
-      if (li === lines.indexOf('prototype_id,source,criterion_id,criterion_text,verdict,evidence,fix_action,fix_file,consistency_violations') ||
-          lines[li].startsWith('prototype_id,')) {
-        lines[li] += ',human_notes';
+      // Detect header row
+      if (lines[li].match(/^criterion_id,/) || lines[li].startsWith('prototype_id,')) {
+        lines[li] += ',human_verdict,human_notes';
+        headerIdx = li;
         continue;
       }
-      // Find the criterion_id in this row (3rd field)
-      var fields = lines[li].split(',');
-      var acId = (fields[2] || '').replace(/"/g, '');
-      lines[li] += ',"' + (annotations[acId] || '').replace(/"/g, '""') + '"';
+      // Data rows — find criterion_id (first field)
+      var fields = lines[li].match(/(".*?"|[^,]*)/g) || [];
+      var acId = (fields[0] || '').replace(/"/g, '');
+      var humanVerdict = overrides[acId] || '';
+      var humanNote = (annotations[acId] || '').replace(/"/g, '""');
+      lines[li] += ',"' + humanVerdict + '","' + humanNote + '"';
     }
     exportCsv = lines.join('\n');
   }
@@ -723,6 +817,73 @@ function switchTab(tab) {
   document.querySelectorAll('.panel-content').forEach(function(c) { c.classList.remove('active'); });
   document.querySelector('[onclick="switchTab(\'' + tab + '\')"]').classList.add('active');
   document.getElementById('panel-' + tab).classList.add('active');
+}
+
+function overrideVerdict(acId, verdict) {
+  // Clear all buttons for this AC (both in Review tab and modal)
+  document.querySelectorAll('[data-override-ac="' + acId + '"] button').forEach(function(b) { b.className = ''; });
+  // Activate the matching verdict button in ALL instances
+  var cls = verdict === 'PASS' ? 'override-active-pass' : 'override-active-fail';
+  document.querySelectorAll('[data-override-ac="' + acId + '"] [data-verdict="' + verdict + '"]').forEach(function(b) { b.className = cls; });
+  // Update all hidden inputs for this AC
+  document.querySelectorAll('[id="override-' + acId + '"]').forEach(function(el) { el.value = verdict; });
+  saveReviewState();
+}
+
+function openReviewModal(acId) {
+  var item = flaggedData.find(function(f) { return f.id === acId; });
+  if (!item) return;
+  var el = document.getElementById('reviewModalContent');
+  var html = '';
+  html += '<div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:1rem">';
+  html += '<span class="badge badge-flagged">FLAGGED</span>';
+  html += '<strong style="font-family:var(--font-mono);font-size:0.9rem">' + escH(item.id) + '</strong>';
+  html += '<span style="font-size:0.7rem;color:var(--text2);text-transform:uppercase">Tier ' + escH(item.tier) + '</span>';
+  html += '</div>';
+  html += '<p style="font-size:0.875rem;line-height:1.6;margin:0 0 1rem;color:var(--text)">' + escH(item.text) + '</p>';
+  if (item.rationale) {
+    html += '<div style="font-size:0.8rem;color:var(--text2);padding:0.6rem 0.8rem;background:var(--bg2);border-radius:0.375rem;border-left:2px solid var(--status-warning);margin:0 0 0.75rem">';
+    html += '<strong style="font-size:0.7rem;text-transform:uppercase;letter-spacing:0.03em;color:var(--status-warning)">Why flagged</strong><br>';
+    html += escH(item.rationale);
+    html += '</div>';
+  }
+  if (item.humanAction) {
+    html += '<p style="font-size:0.8rem;color:var(--accent);margin:0 0 0.75rem"><strong>Action needed:</strong> ' + escH(item.humanAction) + '</p>';
+  }
+  if (item.screenshot) {
+    html += '<div style="margin:0.75rem 0;border-radius:0.375rem;overflow:hidden;border:1px solid var(--border)">';
+    html += '<img src="' + item.screenshot + '" style="width:100%;display:block" alt="Screenshot for ' + escH(item.id) + '">';
+    html += '</div>';
+  }
+  html += '<div style="margin:1rem 0 0.5rem"><strong style="font-size:0.8rem;color:var(--text2)">Your verdict:</strong></div>';
+  html += '<div class="review-override" data-override-ac="' + escH(acId) + '">';
+  html += '<button data-verdict="PASS" onclick="overrideVerdict(\'' + escH(acId) + '\',\'PASS\')">PASS</button>';
+  html += '<button data-verdict="FAIL" onclick="overrideVerdict(\'' + escH(acId) + '\',\'FAIL\')">FAIL</button>';
+  html += '<input type="hidden" id="override-' + escH(acId) + '" value="">';
+  html += '</div>';
+  html += '<textarea class="review-textarea" data-ac="' + escH(acId) + '" placeholder="Your assessment — what did you observe?" oninput="saveReviewState()"></textarea>';
+  html += '<button onclick="closeReviewModal()" style="margin-top:0.75rem;background:var(--accent);border:none;color:#fff;padding:0.4rem 1rem;border-radius:0.375rem;cursor:pointer;font-family:var(--font-body);font-size:0.8125rem;width:100%">Save & Close</button>';
+  el.innerHTML = html;
+  // Restore any existing state
+  try {
+    var raw = localStorage.getItem(reviewStorageKey);
+    if (raw) {
+      var state = JSON.parse(raw);
+      if (state.notes && state.notes[acId]) {
+        var ta = el.querySelector('.review-textarea[data-ac="' + acId + '"]');
+        if (ta) ta.value = state.notes[acId];
+      }
+      if (state.overrides && state.overrides[acId]) {
+        overrideVerdict(acId, state.overrides[acId]);
+      }
+    }
+  } catch(e) {}
+  document.getElementById('reviewModal').classList.add('active');
+}
+
+function closeReviewModal() {
+  document.getElementById('reviewModal').classList.remove('active');
+  saveReviewState();
 }
 
 function scrollToSection(id) {
@@ -1076,15 +1237,54 @@ document.getElementById('screenshotModal').addEventListener('click', function(e)
 });
 
 document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape') { closeModal(); closeReviewModal(); return; }
   var modal = document.getElementById('screenshotModal');
   if (!modal.classList.contains('active')) return;
-  if (e.key === 'Escape') closeModal();
   if (e.key === 'ArrowLeft') modalNavigate(-1);
   if (e.key === 'ArrowRight') modalNavigate(1);
 });
 
+// Persist human review annotations in localStorage
+var reviewStorageKey = 'eval-review-{{PROTOTYPE_ID}}';
+function saveReviewState() {
+  var state = { notes: {}, overrides: {} };
+  document.querySelectorAll('.review-textarea').forEach(function(el) {
+    var val = el.value.trim();
+    if (val) state.notes[el.getAttribute('data-ac')] = val;
+  });
+  document.querySelectorAll('[id^="override-"]').forEach(function(el) {
+    if (el.value) state.overrides[el.id.replace('override-', '')] = el.value;
+  });
+  try { localStorage.setItem(reviewStorageKey, JSON.stringify(state)); } catch(e) {}
+}
+function restoreReviewState() {
+  try {
+    var raw = localStorage.getItem(reviewStorageKey);
+    if (!raw) return;
+    var state = JSON.parse(raw);
+    if (state.notes) {
+      Object.keys(state.notes).forEach(function(acId) {
+        var el = document.querySelector('.review-textarea[data-ac="' + acId + '"]');
+        if (el) el.value = state.notes[acId];
+      });
+    }
+    if (state.overrides) {
+      Object.keys(state.overrides).forEach(function(acId) {
+        overrideVerdict(acId, state.overrides[acId]);
+      });
+    }
+  } catch(e) {}
+}
+
 // Wire up screenshot clicks
 document.addEventListener('DOMContentLoaded', function() {
+  // Restore saved review state
+  restoreReviewState();
+  // Auto-save on input changes
+  document.querySelectorAll('.review-textarea').forEach(function(el) {
+    el.addEventListener('input', saveReviewState);
+  });
+
   document.querySelectorAll('.screenshot').forEach(function(el) {
     var idx = parseInt(el.getAttribute('data-idx'), 10);
     if (!isNaN(idx)) {

@@ -42,12 +42,25 @@ make context
 | `--depth` | `quick` or `thorough` | No | `quick` |
 | `--usability` | `deep` or `thorough` | No | Inference only (Step 3b) |
 | `--feed-to-refine` | flag | No | Off |
+| `--skip-extract` | flag | No | Off |
 
 Parse from `$ARGUMENTS`.
 
+### Re-iteration Optimization: `--skip-extract`
+
+When `--skip-extract` is passed (used by `prototype-iterate` on iterations 2+):
+
+- **Skip Phase 1 entirely.** Do NOT fetch Jira tickets, extract ACs, discover RFEs/Outcomes, or build breadcrumbs.
+- **Read cached state** from `.artifacts/<KEY>/extract-state.json` instead. This file was written on iteration 1 and contains all the data Phase 1 would produce (AC list, journey definitions, breadcrumb, persona selection).
+- **Also read cached** `.artifacts/<KEY>/mr-delta.json` and `.artifacts/<KEY>/outcome-context.json` if they exist.
+- **Proceed directly to Phase 2** (evaluate-journey) using the cached data.
+- **Update mr-delta.json only** if `--workspace` is provided — run a fresh `git diff` to pick up files changed by the refine step. The other Phase 1 artifacts (ACs, journeys, breadcrumb) are static.
+
+This optimization eliminates 5-12 redundant Jira MCP API calls and all Phase 1 LLM reasoning on re-iterations. The extract-state.json output is identical across iterations because the Jira ticket content does not change.
+
 ## Pipeline Flow
 
-This skill executes Phase 1, then chains to Phase 2 and Phase 3:
+This skill executes Phase 1, then chains to Phase 2, Phase 3, and Phase 4:
 
 ```
 Phase 1 (this file): Extract ACs, personas, journeys, breadcrumb, outcome
@@ -62,6 +75,24 @@ Phase 4: Run report scripts:
 ```
 
 **After completing Phase 1 below, continue by reading and executing Phase 2, then Phase 3, then Phase 4.**
+
+### What Flows Between Phases
+
+| From → To | Data passed | Key file |
+|-----------|-------------|----------|
+| Phase 1 → Phase 2 | AC list, journey definitions, persona selection, breadcrumb | `extract-state.json` |
+| Phase 1 → Phase 2 | Git diff of changed files (workspace mode only) | `mr-delta.json` |
+| Phase 2 → Phase 3 | Playwright step log with screenshots, AC verdicts | `journey-log.json`, `screenshots/` |
+| Phase 2 → Phase 4 | Per-criterion verdicts with tier, rationale, evidence | `evaluation-report.csv` |
+| Phase 3 → Phase 4 | 7-dimension usability scores, persona overlays | appended to `journey-log.json` |
+| Phase 2+3 → Iterate | Consistency violations, FAIL criteria, low usability scores | `refinement-suggestions.json` |
+
+### What's Optional
+
+- **Phase 3 (Usability)** — skipped entirely if `.context/usability-testing/` is not bootstrapped. Phase 2 results still produce a valid report.
+- **Think-aloud narration** (Phase 3, Step 3c) — only runs with `--usability=deep` or `--usability=thorough`. Without the flag, only inference-based dimension scoring runs.
+- **MR delta analysis** (Phase 1, Step 0b) — only runs when `--workspace` is provided. Standalone HTML prototypes skip this.
+- **Design consistency check** (Phase 2, Step 3e) — skipped if `.context/consistency-checker/` is not bootstrapped.
 
 ## Outputs (Phase 1)
 
@@ -82,6 +113,8 @@ If the user invokes without both inputs, ask:
 ---
 
 ## Phase 1 Steps
+
+**If `--skip-extract` is set:** Read `.artifacts/<KEY>/extract-state.json` and skip to "Phase 1 Complete — Continue Pipeline". Only refresh mr-delta.json (Step 0b) if `--workspace` is provided.
 
 ---
 
