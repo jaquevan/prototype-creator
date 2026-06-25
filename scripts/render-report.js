@@ -794,7 +794,7 @@ function buildIterationTimelineHtml() {
     if (isFirst && !isLast) {
       html += `<strong style="font-size:0.875rem">Original</strong>`;
       html += ` <span style="font-size:0.7rem;color:var(--text2)">(MR baseline)</span>`;
-      html += ` <a href="evaluation-report-original.html" style="font-size:0.7rem;margin-left:0.3rem">(full report)</a>`;
+      html += ` <a href="evaluation-report-original.html" target="_blank" style="font-size:0.7rem;margin-left:0.3rem">(full report ↗)</a>`;
     } else if (isLast && !isFirst) {
       html += `<strong style="font-size:0.875rem">Iteration ${iter.iteration - 1}</strong>`;
       html += ` <span style="font-size:0.7rem;color:var(--accent)">(current)</span>`;
@@ -1760,11 +1760,15 @@ function buildTokens(opts = {}) {
             severity: cf.severity, file: (cf.file || '').replace('src/app/', '').replace('src/', ''),
             line: cf.line, description: cf.description || '', suggestion: cf.suggestion || '', pfDocUrl: cf.pf_doc_url || '', category: cf.category || '', isShell: true
           })),
-          personaReaction: reaction ? { name: reaction.persona, text: reaction.reaction } : null,
+          personaReaction: reaction ? { name: reaction.persona, text: reaction.reaction }
+            : step.persona_reaction ? { name: journey.persona || 'Persona', text: step.persona_reaction }
+            : null,
           scoreImpacts: scoreImpacts.slice(0, 5),
           outcomeContext: outcomeContext ? { key: outcomeContext.key || '', problem: (outcomeContext.problem_statement || '').slice(0, 200), criteria: (outcomeContext.acceptance_criteria || []).slice(0, 5) } : null,
-          // All persona patience states at this step
-          personaPatience: (ud && ud.persona_overlays || []).map(ov => {
+          // Persona patience states at this step — filtered to overlays matching this journey
+          personaPatience: (ud && ud.persona_overlays || [])
+            .filter(ov => !ov.journey_id || ov.journey_id === journey.id)
+            .map(ov => {
             const priorCosts = (ov.confusion_events || []).filter(e => (e.step || 0) <= (mergedSteps[mergedSteps.length - 1].step || 0)).reduce((sum, e) => sum + (e.patience_cost || 0), 0);
             const patienceNow = Math.max(0, (ov.patience_start || 100) + priorCosts);
             const confAtStep = (ov.confusion_events || []).find(e => mergedSteps.some(ms => e.step === ms.step || e.step === parseFloat(ms.step)));
@@ -2148,7 +2152,7 @@ function buildTokens(opts = {}) {
 
   // ---- CSV data for download (full 3-section format) ----
   const fullCsv = buildFullCsv(csvRaw, journeyLog, passCount, failCount, flaggedCount);
-  const csvDataEscaped = fullCsv.replace(/`/g, '\\`').replace(/\\/g, '\\\\').replace(/\$/g, '\\$');
+  const csvDataEscaped = fullCsv.replace(/\\/g, '\\\\').replace(/`/g, '\\`').replace(/\$/g, '\\$');
 
   // Build link URLs
   const rfeKey = (extractState && extractState.rfe_key) || '';
@@ -2513,7 +2517,14 @@ function main() {
       csvPath: origCsvPath,
       screenshotsDir: origScreenshotsDir,
     });
-    const origHtml = renderTemplate(origTokens);
+    let origHtml = renderTemplate(origTokens);
+    // Inject distinct title so it's clear this is the baseline/original report
+    const origTitle = `${extractPrototypeId()} — ORIGINAL (MR Baseline, Iteration 1)`;
+    origHtml = origHtml.replace(/<title>[^<]*<\/title>/, `<title>${origTitle}</title>`);
+    origHtml = origHtml.replace(
+      /(<header[^>]*>[\s\S]*?<[^>]*id=["']?proto-id["']?[^>]*>)([^<]*)/,
+      `$1$2 <span style="background:var(--status-warning);color:#000;padding:0.125rem 0.5rem;border-radius:3px;font-size:0.7rem;margin-left:0.5rem;font-weight:600">ORIGINAL — MR BASELINE</span>`
+    );
     const origTarget = path.join(absArtifacts, 'evaluation-report-original.html');
     fs.writeFileSync(origTarget, origHtml, 'utf8');
     console.log(`  ✓ Original (full): ${origTarget} (${(Buffer.byteLength(origHtml) / 1024).toFixed(0)} KB)`);

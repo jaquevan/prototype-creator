@@ -158,7 +158,7 @@ make test
 
 ### Fetching Context
 
-**Required before running prototype-evaluate.** These bootstrap external repos into `.context/` for usability scoring and design consistency checking. Requires VPN for GitLab repos.
+**Required before running eval-iterate.** These bootstrap external repos into `.context/` for usability scoring and design consistency checking. Requires VPN for GitLab repos.
 
 ```bash
 # All at once:
@@ -175,7 +175,7 @@ bash scripts/bootstrap-consistency-checker.sh         # PatternFly design guidel
 |-----------|--------|---------|
 | `.context/design-system/` | PatternFly docs | prototype-create |
 | `.context/decision-kit/` | [decision-kit](https://github.com/jnemargut/decision-kit) | prototype-create |
-| `.context/usability-testing/` | [automated-usability-testing](https://gitlab.cee.redhat.com/zbodnar/automated-usability-testing) | prototype-evaluate (Steps 3b, 3c) |
-| `.context/consistency-checker/` | [consistency-checker](https://gitlab.cee.redhat.com/bmorley/consistency-checker) | prototype-evaluate (Step 3e) |
+| `.context/usability-testing/` | [automated-usability-testing](https://gitlab.cee.redhat.com/zbodnar/automated-usability-testing) | eval-usability |
+| `.context/consistency-checker/` | [consistency-checker](https://gitlab.cee.redhat.com/bmorley/consistency-checker) | eval-consistency |
 
 $ARGUMENTS

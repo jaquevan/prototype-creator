@@ -150,7 +150,14 @@ function main() {
       }).trim().split('\n').pop();
       console.log(`  Report URL: ${reportUrl}`);
     } catch (e) {
-      console.log(`  Report publish skipped (GitLab auth not configured or failed)`);
+      const msg = (e.stderr || e.message || '').toString().trim();
+      if (msg.includes('Authentication') || msg.includes('could not read') || msg.includes('fatal:')) {
+        console.log(`  ⚠ Report publish FAILED — GitLab auth not configured.`);
+        console.log(`    Fix: ensure git credentials for gitlab.cee.redhat.com are configured (SSH key or HTTPS token).`);
+        console.log(`    Config: config/publish.yaml → gitlab_pages_repo`);
+      } else {
+        console.log(`  ⚠ Report publish failed: ${msg || 'unknown error'}`);
+      }
     }
   }
 

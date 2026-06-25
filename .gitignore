@@ -30,6 +30,9 @@ build/
 # Test fixtures — oversized files (>20MB) excluded from git
 tests/fixtures/images/oversized-test.png
 
+# Presentation drafts and personal notes
+docs/drafts/
+
 # OS
 .DS_Store
 Thumbs.db
