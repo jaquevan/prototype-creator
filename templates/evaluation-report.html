@@ -173,13 +173,6 @@ details[open] summary::before{transform:rotate(90deg)}
 .ta-confidence-low{color:var(--status-warning)}
 .ta-confidence-none{color:var(--status-danger)}
 
-/* Quick Nav */
-.quick-nav{display:flex;gap:0.5rem;flex-wrap:wrap;margin:0 0 1.5rem}
-.quick-nav-btn{display:inline-flex;align-items:center;gap:0.3rem;padding:0.4rem 0.85rem;border-radius:999px;font-size:0.75rem;font-weight:500;border:1px solid var(--border);color:var(--text);text-decoration:none;transition:all 0.15s;background:var(--bg)}
-.quick-nav-btn:hover{border-color:var(--accent);color:var(--accent);text-decoration:none}
-.quick-nav-primary{background:var(--accent);color:#fff;border-color:var(--accent)}
-.quick-nav-primary:hover{background:#0052a3;color:#fff}
-
 /* Review section accent */
 #human-review-section{background:rgba(0,102,204,0.03);border:1px solid rgba(0,102,204,0.12);border-radius:0.75rem;padding:1.5rem;margin:2rem 0}
 
@@ -481,16 +474,20 @@ details[open] summary .section-icon{opacity:0.8}
 
     {{STAT_DELTAS}}
 
-    <!-- Quick Nav -->
-    <div class="quick-nav">
-      <a href="#human-review" onclick="scrollToSection('human-review');return false" class="quick-nav-btn quick-nav-primary">Review Flagged ({{FLAGGED_COUNT}})</a>
-      <a href="#ac-results" onclick="scrollToSection('ac-results');return false" class="quick-nav-btn">Criteria</a>
-    </div>
-
     <!-- Iteration History (always open) -->
     <div id="iteration-timeline" style="{{ITERATION_DISPLAY}}">
       <h2 style="margin-top:0.5rem">Iteration History</h2>
       {{ITERATION_TIMELINE_HTML}}
+    </div>
+
+    <!-- What Changed (MR Delta) -->
+    <div id="what-changed" style="{{DELTA_DISPLAY}}">
+      <details open>
+        <summary style="font-size:0.875rem">What Changed in This MR</summary>
+        <div class="card card-compact" style="margin-top:0.5rem">
+          {{DELTA_HTML}}
+        </div>
+      </details>
     </div>
 
     <!-- AC Results: Jira ACs -->
@@ -505,24 +502,20 @@ details[open] summary .section-icon{opacity:0.8}
       </tbody>
     </table>
 
-    <!-- AC Results: Evaluator Checks -->
+    <!-- AC Results: Evaluator Checks (collapsed by default) -->
     <div id="evaluator-checks" style="{{INFERRED_CHECKS_DISPLAY}}">
-      <h3 style="margin-top:1.5rem;color:var(--text2)">Evaluator Checks</h3>
-      <p class="small muted" style="margin:-0.25rem 0 0.5rem">Additional quality checks identified from the code changes — these supplement the Jira acceptance criteria.</p>
-      <details style="margin:0 0 0.75rem">
-        <summary style="font-size:0.75rem;color:var(--accent);font-weight:500;padding:0">What are these?</summary>
-        <div style="font-size:0.75rem;color:var(--text2);padding:0.5rem 0;line-height:1.6">
-          The evaluator automatically derives these from the MR diff to catch things the acceptance criteria might miss — navigation reachability (can users actually get to the new pages?), feature flag configuration, accessibility basics, and error state handling. They use IDs like NAV-1, FLAG-1, EVAL-1 to distinguish them from Jira-sourced criteria.
-        </div>
+      <details style="margin-top:1.5rem">
+        <summary style="font-size:0.9375rem;font-weight:500">Evaluator Checks</summary>
+        <p class="small muted" style="margin:0.25rem 0 0.5rem">Additional quality checks identified from the code changes — these supplement the Jira acceptance criteria.</p>
+        <table class="tbl" style="opacity:0.85">
+          <thead>
+            <tr><th style="width:3.5rem">ID</th><th>Check</th><th style="width:5.5rem">Verdict</th><th>Evidence</th></tr>
+          </thead>
+          <tbody>
+            {{AC_TABLE_ROWS_INFERRED}}
+          </tbody>
+        </table>
       </details>
-      <table class="tbl" style="opacity:0.85">
-        <thead>
-          <tr><th style="width:3.5rem">ID</th><th>Check</th><th style="width:5.5rem">Verdict</th><th>Evidence</th></tr>
-        </thead>
-        <tbody>
-          {{AC_TABLE_ROWS_INFERRED}}
-        </tbody>
-      </table>
     </div>
 
     <!-- Usability Dimensions -->
@@ -551,16 +544,6 @@ details[open] summary .section-icon{opacity:0.8}
       </div>
     </div>
 
-    <!-- What Changed (MR Delta) — near bottom for context -->
-    <div id="what-changed" style="{{DELTA_DISPLAY}}">
-      <details open>
-        <summary style="font-size:0.875rem">What Changed in This MR</summary>
-        <div class="card card-compact" style="margin-top:0.5rem">
-          {{DELTA_HTML}}
-        </div>
-      </details>
-    </div>
-
     <!-- Conclusion -->
     <h2>Conclusion</h2>
     <div class="card">
@@ -583,38 +566,33 @@ details[open] summary .section-icon{opacity:0.8}
 
     <div class="panel-tabs">
       <button class="panel-tab active" onclick="switchTab('journeys')">Journeys</button>
-      <button class="panel-tab" onclick="switchTab('personas')" style="{{PERSONAS_TAB_DISPLAY}}">Personas</button>
+      <button class="panel-tab" onclick="switchTab('fixes')" style="{{FIXES_TAB_DISPLAY}}">Fixes</button>
       <button class="panel-tab" onclick="switchTab('consistency')" style="{{CONSISTENCY_TAB_DISPLAY}}">Consistency</button>
     </div>
 
     <!-- Tab: Journeys -->
     <div class="panel-content active" id="panel-journeys">
-      <h2 id="path-comparison">Path Comparison</h2>
-      {{PATH_COMPARISON_TABLE}}
-      {{JOURNEY_BLOCKS}}
-    </div>
-
-    <!-- Tab: Personas & Think-Aloud -->
-    <div class="panel-content" id="panel-personas">
-      <h2>Personas</h2>
+      <h2>Persona Walkthroughs</h2>
+      <p class="small muted" style="margin:-0.5rem 0 1rem">Each persona navigated the prototype independently at their own competence level. Click a persona to view their full step-by-step walkthrough with think-aloud narrative.</p>
 
       <div class="card card-compact" style="margin-bottom:1rem">
-        <h4 style="margin-top:0">Why These Personas Were Selected</h4>
         {{PERSONA_SELECTION_HTML}}
       </div>
 
-      {{PERSONA_PROFILES_HTML}}
+      {{PERSONA_WALKTHROUGHS_HTML}}
 
-      {{PERSONA_SENSITIVITY}}
+      <details open style="margin-top:2rem">
+        <summary class="small muted">Phase A: AC Verification Summary</summary>
+        <p class="small muted" style="margin:0.5rem 0">Informed evaluator path comparison — which ACs passed and how many steps each journey took. <a href="#" onclick="switchTab('fixes');return false" style="font-weight:500">View fixes and screenshots →</a></p>
+        {{PATH_COMPARISON_TABLE}}
+      </details>
+    </div>
 
-      {{THINK_ALOUD_NARRATIVES}}
-
-      <!-- External Usability (Zack's skill output) -->
-      <div id="external-usability" style="{{EXTERNAL_USABILITY_DISPLAY}}">
-        <h2 style="margin-top:2rem;padding-top:1.5rem;border-top:2px solid var(--border)">External Usability Evaluation</h2>
-        <p class="small muted" style="margin-bottom:1rem">Independent evaluation from <a href="https://gitlab.cee.redhat.com/zbodnar/automated-usability-testing" target="_blank">automated-usability-testing</a>. Uses the same 7-dimension rubric with a full exploratory think-aloud protocol — the persona wanders freely rather than following prescribed journeys.</p>
-        {{EXTERNAL_USABILITY_HTML}}
-      </div>
+    <!-- Tab: Fixes -->
+    <div class="panel-content" id="panel-fixes">
+      <h2>Fixes</h2>
+      <p class="small muted" style="margin:-0.5rem 0 1rem">Code changes applied during Phase A to resolve failing acceptance criteria.</p>
+      {{FIXES_HTML}}
     </div>
 
     <!-- Tab: Consistency -->
@@ -696,7 +674,10 @@ var csvData = `{{CSV_DATA}}`;
 
 var screenshotData = [{{SCREENSHOT_ARRAY}}];
 var flaggedData = {{FLAGGED_DATA}};
+var personaWalkthroughData = {{PERSONA_WALKTHROUGH_DATA}};
 var currentScreenshotIdx = 0;
+var currentPersonaId = null;
+var currentPersonaStep = 0;
 
 function downloadCSV() {
   // Collect human review notes from the Review tab
@@ -819,6 +800,138 @@ function switchTab(tab) {
   document.getElementById('panel-' + tab).classList.add('active');
 }
 
+function openPersonaModal(personaId) {
+  var data = personaWalkthroughData[personaId];
+  if (!data || !data.steps || !data.steps.length) return;
+  currentPersonaId = personaId;
+  currentPersonaStep = 0;
+  renderPersonaModalStep();
+  document.getElementById('screenshotModal').classList.add('active');
+}
+
+function renderPersonaModalStep() {
+  var data = personaWalkthroughData[currentPersonaId];
+  if (!data) return;
+  var step = data.steps[currentPersonaStep];
+  if (!step) return;
+
+  var img = document.getElementById('modalImg');
+  img.src = step.screenshot || '';
+
+  var counter = document.getElementById('modalCounter');
+  counter.textContent = 'Step ' + step.step + ' of ' + data.steps.length + ' · ' + currentPersonaId;
+
+  document.getElementById('modalPrev').disabled = currentPersonaStep === 0;
+  document.getElementById('modalNext').disabled = currentPersonaStep >= data.steps.length - 1;
+
+  var ctx = document.getElementById('modalCtx');
+  var html = '';
+
+  if (currentPersonaStep === 0 && data.goals && data.goals.length) {
+    html += '<div style="margin-bottom:1rem;padding:0.75rem;background:var(--bg2);border-radius:0.375rem">';
+    html += '<p style="margin:0 0 0.5rem;font-weight:600;font-size:0.8125rem">Verifying Acceptance Criteria</p>';
+    for (var gi = 0; gi < data.goals.length; gi++) {
+      var g = data.goals[gi];
+      html += '<div style="margin:0.25rem 0;padding:0.25rem 0;' + (gi > 0 ? 'border-top:1px solid var(--border);' : '') + '">';
+      if (g.ac_ids && g.ac_ids.length) html += '<span style="color:var(--accent);font-family:var(--font-mono);font-size:0.7rem;font-weight:600">' + escH(g.ac_ids.join(', ')) + '</span><br>';
+      html += '<span style="font-size:0.8rem">' + escH(g.title) + '</span>';
+      html += '</div>';
+    }
+    html += '</div>';
+  }
+
+  // Step header with patience meter
+  var patienceVal = step.patience ? parseInt(step.patience) : null;
+  html += '<div style="margin-bottom:1rem">';
+  html += '<h3 style="margin:0 0 0.5rem;font-size:1rem">Step ' + step.step + '</h3>';
+  if (patienceVal !== null) {
+    var pColor = patienceVal > 60 ? 'var(--status-success)' : patienceVal > 30 ? 'var(--status-warning)' : 'var(--status-danger)';
+    html += '<div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.5rem">';
+    html += '<span class="small" style="font-weight:500">Patience</span>';
+    html += '<div style="flex:1;height:6px;background:var(--border);border-radius:3px;overflow:hidden">';
+    html += '<div style="width:' + patienceVal + '%;height:100%;background:' + pColor + ';border-radius:3px;transition:width 0.3s"></div>';
+    html += '</div>';
+    html += '<span style="font-size:0.75rem;font-weight:600;color:' + pColor + ';font-family:var(--font-mono)">' + patienceVal + '%</span>';
+    html += '</div>';
+    // Show confusion event inline with patience if this step has one
+    if (step.confusionEvents && step.confusionEvents.length) {
+      for (var ci = 0; ci < step.confusionEvents.length; ci++) {
+        var evt = step.confusionEvents[ci];
+        html += '<div style="display:flex;align-items:center;gap:0.5rem;margin:0.25rem 0;padding:0.25rem 0.5rem;background:rgba(220,38,38,0.04);border-radius:3px">';
+        html += '<span style="font-size:0.7rem;font-weight:600;color:var(--status-danger)">CONFUSION</span>';
+        html += '<span style="font-size:0.8rem">' + escH(evt.trigger || '') + '</span>';
+        if (evt.patience_cost) html += '<span style="font-size:0.7rem;color:var(--status-danger);margin-left:auto">' + evt.patience_cost + '%</span>';
+        html += '</div>';
+      }
+    }
+  }
+  if (step.confidence) {
+    html += '<span class="badge" style="font-size:0.65rem;background:var(--bg2);color:var(--text2);border:1px solid var(--border)">Confidence: ' + escH(step.confidence) + '</span>';
+  }
+  html += '</div>';
+
+  // Think-aloud content
+  if (step.trying) {
+    html += '<div style="margin-bottom:0.75rem;padding:0.4rem 0.6rem;background:rgba(0,102,204,0.04);border-radius:4px">';
+    html += '<p class="small" style="margin:0;font-weight:600;color:var(--accent)">Testing: ' + escH(step.trying) + '</p>';
+    html += '</div>';
+  }
+
+  if (step.thinking) {
+    html += '<div style="margin-bottom:1rem;padding:0.75rem;background:var(--bg2);border-radius:0.375rem;border-left:2px solid var(--accent)">';
+    html += '<p style="margin:0;font-size:0.8125rem;line-height:1.6;font-style:italic">"' + escH(step.thinking) + '"</p>';
+    html += '</div>';
+  }
+
+  if (step.see) {
+    html += '<div style="margin-bottom:0.75rem">';
+    html += '<p class="small" style="margin:0 0 0.15rem;font-weight:600;color:var(--text2)">What they see</p>';
+    html += '<p style="margin:0;font-size:0.8125rem;line-height:1.5;color:var(--text)">' + escH(step.see) + '</p>';
+    html += '</div>';
+  }
+
+  // Show dimension scores on the last step
+  if (currentPersonaStep === data.steps.length - 1 && data.dimensions) {
+    html += '<div style="margin-top:1rem;padding-top:0.75rem;border-top:1px solid var(--border)">';
+    html += '<p class="small" style="margin:0 0 0.5rem;font-weight:600;color:var(--text2)">Final Dimension Scores</p>';
+    for (var dimId in data.dimensions) {
+      var dim = data.dimensions[dimId];
+      var scoreColor = dim.score <= 1 ? 'var(--status-danger)' : dim.score === 2 ? 'var(--status-warning)' : 'var(--status-success)';
+      html += '<div style="display:flex;justify-content:space-between;align-items:center;padding:0.25rem 0">';
+      html += '<span style="font-size:0.8125rem">' + escH(dim.name || dimId) + '</span>';
+      html += '<span style="font-weight:600;font-family:var(--font-mono);color:' + scoreColor + '">' + dim.score + '/3</span>';
+      html += '</div>';
+      if (dim.finding) html += '<p class="small muted" style="margin:-0.1rem 0 0.25rem;font-size:0.7rem">' + escH(dim.finding) + '</p>';
+    }
+    html += '</div>';
+  }
+
+  ctx.innerHTML = html;
+}
+
+function modalNavigate(dir) {
+  if (currentPersonaId) {
+    var data = personaWalkthroughData[currentPersonaId];
+    if (!data) return;
+    var newIdx = currentPersonaStep + dir;
+    if (newIdx >= 0 && newIdx < data.steps.length) {
+      currentPersonaStep = newIdx;
+      renderPersonaModalStep();
+    }
+  } else {
+    currentScreenshotIdx += dir;
+    if (currentScreenshotIdx < 0) currentScreenshotIdx = 0;
+    if (currentScreenshotIdx >= screenshotData.length) currentScreenshotIdx = screenshotData.length - 1;
+    renderModal();
+  }
+}
+
+function closeModal() {
+  document.getElementById('screenshotModal').classList.remove('active');
+  currentPersonaId = null;
+  currentPersonaStep = 0;
+}
+
 function overrideVerdict(acId, verdict) {
   // Clear all buttons for this AC (both in Review tab and modal)
   document.querySelectorAll('[data-override-ac="' + acId + '"] button').forEach(function(b) { b.className = ''; });
@@ -925,15 +1038,12 @@ function scrollToSection(id) {
   }
 })();
 
-// Screenshot modal
+// Screenshot modal (legacy — used by Phase A journey screenshots)
 function openModal(idx) {
   currentScreenshotIdx = idx;
+  currentPersonaId = null;
   renderModal();
   document.getElementById('screenshotModal').classList.add('active');
-}
-
-function closeModal() {
-  document.getElementById('screenshotModal').classList.remove('active');
 }
 
 function boldKeys(text) {
@@ -1044,31 +1154,6 @@ function renderModal() {
         if (si.note) html += '<p style="font-size:0.7rem;color:var(--text2);margin:0 0 0.35rem">' + escH(si.note) + '</p>';
       }
       html += '</div>';
-    }
-
-    // 2b. Outcome Context (if available) — auto-open with link
-    if (st.outcomeContext) {
-      var outcomeUrl = '';
-      if (st.outcomeContext.key) {
-        outcomeUrl = st.outcomeContext.key.startsWith('RHOAIUX-') ? 'https://redhat.atlassian.net/browse/' + st.outcomeContext.key : 'https://issues.redhat.com/browse/' + st.outcomeContext.key;
-      }
-      html += '<div class="modal-ctx-section"><details open><summary style="cursor:pointer;user-select:none"><h4 style="display:inline">Outcome</h4> ';
-      if (outcomeUrl) {
-        html += '<a href="' + escH(outcomeUrl) + '" target="_blank" style="font-size:0.7rem">' + escH(st.outcomeContext.key) + '</a>';
-      } else {
-        html += '<span style="font-size:0.7rem;color:var(--text2)">' + escH(st.outcomeContext.key) + '</span>';
-      }
-      html += '</summary>';
-      if (st.outcomeContext.problem) html += '<p style="font-size:0.75rem;color:var(--text);margin:0.35rem 0;line-height:1.5"><strong>Working towards:</strong> ' + escH(st.outcomeContext.problem) + '</p>';
-      if (st.outcomeContext.criteria && st.outcomeContext.criteria.length) {
-        html += '<p style="font-size:0.7rem;color:var(--text2);margin:0.25rem 0;font-weight:600">Outcome success criteria:</p>';
-        html += '<ul style="font-size:0.7rem;color:var(--text2);margin:0.2rem 0;padding-left:1rem">';
-        for (var ci = 0; ci < st.outcomeContext.criteria.length; ci++) {
-          html += '<li>' + escH(st.outcomeContext.criteria[ci]) + '</li>';
-        }
-        html += '</ul>';
-      }
-      html += '</details></div>';
     }
 
     // 3. Violations — page-specific open, shell collapsed
@@ -1222,14 +1307,6 @@ function copyContext() {
 
 function copyComposite() {
   copyContext();
-}
-
-function modalNavigate(dir) {
-  var next = currentScreenshotIdx + dir;
-  if (next >= 0 && next < screenshotData.length) {
-    currentScreenshotIdx = next;
-    renderModal();
-  }
 }
 
 document.getElementById('screenshotModal').addEventListener('click', function(e) {

@@ -1,13 +1,15 @@
 ---
 name: eval-usability
-description: Score 7 usability dimensions using persona constraints, track patience, and optionally run think-aloud narration. Reads journey evidence, does not launch Playwright.
+description: "Phase B of the eval pipeline. Runs per-persona Playwright walkthroughs, scores 7 usability dimensions, and produces think-aloud traces. Only fires after Phase A AC validation passes."
 user-invocable: false
 allowed-tools: Read, Write, Bash, Glob, Grep
 ---
 
 # eval-usability
 
-Phase 3 of the eval pipeline. Layers persona-based usability scoring on top of journey walkthroughs from eval-journey. Does NOT launch Playwright — reads existing journey-log.json and screenshots.
+Phase B of the eval pipeline. Runs blind per-persona Playwright walkthroughs against a known-good prototype (ACs already validated in Phase A), then scores 7 usability dimensions using persona constraints and think-aloud narration.
+
+Each persona navigates at their own competence level — an experienced user explores differently than a junior one. Navigation behavior is driven by the persona YAML fields: `exploration_tendency`, `experience_level`, `domain_knowledge`, and `constraints[]`.
 
 **Skip entirely if `.context/usability-testing/` does not exist.** Add a note: "Usability scoring skipped. Run `make context` to bootstrap."
 
@@ -15,13 +17,13 @@ Phase 3 of the eval pipeline. Layers persona-based usability scoring on top of j
 
 | Input | Description | Required |
 |-------|-------------|----------|
-| `.artifacts/<KEY>/journey-log.json` | Playwright step log with screenshots from eval-journey | Yes |
-| `.artifacts/<KEY>/screenshots/` | Journey screenshots | Yes |
-| `.artifacts/<KEY>/extract-state.json` | Persona selection, journey definitions | Yes |
+| `.artifacts/<KEY>/journey-log.json` | Phase A Playwright step log with AC screenshots | Yes |
+| `.artifacts/<KEY>/screenshots/` | Phase A journey screenshots (for reference) | Yes |
+| `.artifacts/<KEY>/extract-state.json` | Persona selection, journey definitions, goals | Yes |
 | `.context/usability-testing/personas/` | Persona YAML files | Yes |
 | `.context/usability-testing/prompts/evaluate-flow.md` | 7-dimension rubric | Yes |
-| `--usability` | `deep` (default) or `skip` (inference only) | No |
-| `--iteration` | Current iteration number (from eval-iterate) | No |
+| `.artifacts/<KEY>/navigation-hints.json` | Fallback hints for stuck personas | No |
+| Prototype URL | Live URL (from eval-state.yaml) | Yes |
 
 ## Outputs
 
@@ -29,7 +31,9 @@ Phase 3 of the eval pipeline. Layers persona-based usability scoring on top of j
 |------|-------------|
 | `.artifacts/<KEY>/journey-log.json` | Updated with `usability_dimensions` section |
 | `.artifacts/<KEY>/evaluation-report.csv` | Appended Section 2 (USABILITY DIMENSIONS) |
-| `.artifacts/<KEY>/usability-thinkaloud-<persona-id>.md` | Per-persona think-aloud (unless skipped) |
+| `.artifacts/<KEY>/usability-thinkaloud-<persona-id>.md` | Per-persona think-aloud trace |
+| `.artifacts/<KEY>/screenshots/persona-<persona-id>-step-N.png` | Per-persona walkthrough screenshots |
+| `.artifacts/<KEY>/usability-eval-output/` | External usability evaluation output |
 | `.artifacts/<KEY>/refinement-suggestions.json` | Appended with usability suggestions for scores 0-1 |
 
 ## Procedure
@@ -62,11 +66,12 @@ For each selected persona, read the full file:
 ```
 
 Extract and use these sections throughout scoring:
-- **`domain_knowledge`** — map of topics to skill levels (none/minimal/moderate/expert). Use this in Step 2 to determine what the persona would understand vs. find confusing.
+- **`domain_knowledge`** — map of topics to skill levels (none/minimal/basic/intermediate/competent/strong/expert). Use this in Step 2 to determine what the persona would understand vs. find confusing.
 - **`behavioral_attributes.patience`** — High/Medium/Low. Determines patience drain rates in Step 2.
-- **`constraints[]`** — specific limitations (e.g., "Cannot interpret Kubernetes terminology"). Each constraint is a potential confusion trigger.
-- **`jobs_to_be_done[]`** — what the persona is trying to accomplish. Use to evaluate whether the UI supports their actual goals.
-- **`response_strategies`** — how the persona reacts to confusion (help-seeking, guess-and-continue, abandon). Informs the patience model.
+- **`behavioral_attributes.exploration_tendency`** — Low/Medium/High. Determines how aggressively the persona explores the UI during their walkthrough.
+- **`constraints[]`** — specific limitations and behavioral rules (e.g., "Cannot interpret Kubernetes terminology", "After 3 confusion events, abandon"). Each constraint is injected into the persona sub-agent's prompt.
+- **`primary_jobs[]`** — what the persona is trying to accomplish (JTBD). Use to evaluate whether the UI supports their actual goals.
+- **`experience_level`** — junior/senior/experienced. Combined with `exploration_tendency` and `domain_knowledge`, this drives how the persona navigates.
 
 #### 1c: Read the scoring rubric
 
@@ -93,18 +98,122 @@ This file defines the specific scoring criteria for each dimension (0-3 scale). 
 }
 ```
 
+### Step 1d: Per-Persona Playwright Walkthroughs
+
+Each persona runs their OWN Playwright walkthrough as an independent sub-agent. Navigation behavior is driven by the persona's YAML fields — not a shared script.
+
+**How persona fields drive navigation:**
+
+| YAML Field | Navigation Effect |
+|---|---|
+| `exploration_tendency: low` | Sticks to obvious path. Won't open Advanced Settings, won't expand optional sections. |
+| `exploration_tendency: high` | Proactively checks Advanced Settings, YAML views, logs, events. Drills into everything. |
+| `experience_level: junior` | Slower reading, confused by patterns without labels, misses non-obvious affordances. |
+| `experience_level: senior` | Efficient navigation, recognizes UI patterns (accordions, tabs), tries shortcuts. |
+| `domain_knowledge: {k8s: none}` | Nav items with K8s jargon ("Pods", "PVCs") trigger confusion events. |
+| `domain_knowledge: {k8s: expert}` | Understands all terminology, navigates directly to target. |
+| `constraints[]` | Hard behavioral rules: "After 3 confusion events, abandon", "CANNOT use mouse" (Sam). |
+| `behavioral_attributes.patience` | How fast frustration builds — Low drains 3x faster than High. |
+
+**Launch each persona as a forked sub-agent (run in background, parallel):**
+
+Each persona agent receives ONLY:
+- Their persona YAML file (full — domain_knowledge, patience, constraints, primary_jobs)
+- The prototype URL
+- Their goal (primary journey goal from extract-state.json, rephrased as a user task)
+- The navigation hints as FALLBACK ONLY (see Step 1e below)
+
+Each persona agent does NOT receive:
+- The AC list (they don't know what criteria are being tested)
+- Source code or file contents
+- Other persona's results
+- The evaluation rubric (they're users, not evaluators)
+
+**Prompt for each persona sub-agent:**
+
+```
+Read the persona file at .context/usability-testing/personas/<persona-id>.yaml.
+You ARE this persona. Your experience level, domain knowledge, exploration tendency,
+patience, and constraints define exactly how you navigate.
+
+Navigate to <prototype-url>.
+Your goal: <goal from journey definition, rephrased as user task>
+
+Navigate the UI as this persona would, respecting your constraints:
+- If exploration_tendency is low: stick to the obvious path, don't explore side menus
+- If exploration_tendency is high: check Advanced Settings, expand optional sections
+- If domain_knowledge shows a topic as none/minimal: be confused by jargon for that topic
+- If experience_level is junior: read labels carefully, take time, miss non-obvious affordances
+- If experience_level is senior/experienced: navigate efficiently, recognize UI patterns
+
+At each step:
+1. Describe what you see (from the persona's perspective and domain knowledge)
+2. Decide what to do next (based on your exploration tendency and constraints)
+3. Take a screenshot
+4. Note your confidence level and current patience
+
+If you get stuck (can't find where to go after reasonable exploration for your type):
+- Read .artifacts/<KEY>/navigation-hints.json for a hint
+- Mark the step as "navigate-assisted" in your log
+- Note: "I had to ask a colleague where this was"
+- Continue from the assisted location
+
+If your constraints say to abandon after N confusion events, do so.
+
+Save screenshots to: .artifacts/<KEY>/screenshots/persona-<persona-id>-step-N.png
+Write your think-aloud trace to: .artifacts/<KEY>/usability-thinkaloud-<persona-id>.md
+```
+
+**Wait for all persona agents to complete.** Then read their output files.
+
+### Step 1d-verify: BLOCKING — Verify persona screenshots exist
+
+**Do NOT proceed to Step 2 without completing this check.**
+
+After persona walkthroughs should complete, verify that per-persona screenshots were actually produced:
+
+```bash
+ls .artifacts/<KEY>/screenshots/persona-*.png
+```
+
+For each selected persona, at least ONE file matching `persona-<persona-id>-step-*.png` MUST exist.
+
+**If persona screenshots do NOT exist:**
+- Step 1d was NOT completed — the persona walkthroughs did not actually run
+- Do NOT score from Phase A journey evidence alone — that produces inference-only results, not authentic persona traces
+- **Fallback:** If sub-agent forking is not available in the current execution context, run persona walkthroughs SEQUENTIALLY in the same Playwright session:
+  1. Create a new browser context for each persona
+  2. Navigate to the prototype URL
+  3. Follow the persona prompt (from Step 1d) to navigate as that persona
+  4. Take screenshots at each step: `persona-<persona-id>-step-N.png`
+  5. Write the think-aloud trace to `usability-thinkaloud-<persona-id>.md`
+  6. Close the context, move to next persona
+
+**This step is BLOCKING.** Usability scoring without persona-specific screenshots produces inferior results — scores will be based on what the persona agent actually saw, not what a shared Phase A journey showed.
+
+### Step 1e: Hints as Fallback (the "colleague" pattern)
+
+Navigation hints from `navigation-hints.json` are available to persona agents but ONLY as a fallback after they get stuck. This models the real-world situation where a colleague tells you "it's under the Gen AI Studio section."
+
+The persona agent:
+1. First attempts navigation using visible UI + their domain expertise
+2. If stuck (element not found, timeout): consults hints
+3. Logs `navigate-assisted` on the step
+4. Usability impact: assisted steps cap dimension scores at 1
+
+This preserves the discoverability signal while preventing walkthroughs from being completely blocked.
+
 ### Step 2: Apply Persona Constraints to Journey Evidence
 
-For each selected persona, re-evaluate journey steps through their lens. Do NOT re-run Playwright.
+After persona walkthroughs complete, read each persona's output:
+- `.artifacts/<KEY>/usability-thinkaloud-<persona-id>.md`
+- `.artifacts/<KEY>/screenshots/persona-<persona-id>-step-*.png`
 
-**Re-iteration shortcut (when `--iteration` > 1):** Carry forward persona overlays for journeys NOT re-run. Only re-evaluate steps from re-run journeys.
-
-**Assisted navigation rule:** Steps with `url_fallback` or `navigate-assisted` are FAIL evidence for usability — even if the page loaded. Score based on what a real user would experience via normal UI navigation.
-
-For each journey step, assess:
-1. **Comprehension** — would this persona understand the UI elements? Check domain_knowledge map.
+For each persona's trace, assess:
+1. **Comprehension** — did the persona understand the UI elements? Check against domain_knowledge map.
 2. **Patience drain** — apply persona's patience model (High: -5%/-10%, Medium: -10%/-20%, Low: -15%/-30%)
-3. **Knowledge gaps** — specific moments where persona constraints cause confusion
+3. **Knowledge gaps** — moments where persona constraints caused confusion
+4. **Assisted navigation** — steps marked `navigate-assisted` are FAIL evidence for usability
 
 Produce per-persona journey overlay with `patience_start`, `patience_end`, `confusion_events`, `cli_escapes`, `would_complete`.
 
@@ -139,11 +248,9 @@ dimension_id,dimension_name,score,confidence,evidence,persona_scores
 workflow_continuity,Workflow Continuity,2,high,"journey-1 steps 1-4","{""deena-junior"":1,""deena-senior"":3}"
 ```
 
-### Step 5: Think-Aloud Narration (conditional)
+### Step 5: Think-Aloud Narration
 
-**Skip if:** `--usability=skip` OR (`--iteration` < max_iterations and `--iteration` is set)
-
-For each selected persona (1-2), produce first-person think-aloud:
+For each selected persona (1-2), produce first-person think-aloud from the persona walkthrough evidence:
 
 **Phase 1 — The Actor:** Walk through journey evidence in-character. Track patience, confusion events, CLI escapes. Log special events: `[CLI ESCAPE]`, `[CONTEXT LOSS]`, `[EXPECTED vs ACTUAL]`, `[MISSING FEEDBACK]`.
 
@@ -204,8 +311,6 @@ This file is what renders in the report's Personas tab. If it doesn't exist, the
 
 ### Step 6: External Usability Evaluation (REQUIRED when .context/usability-testing/ exists)
 
-**Skip ONLY if:** `--iteration` is set AND is NOT the final iteration (mid-loop optimization). On initial eval or final iteration, this step is MANDATORY.
-
 This step produces the richest usability data — an independent exploratory evaluation where the persona navigates freely with no prescribed path.
 
 #### Procedure:
@@ -218,7 +323,7 @@ This step produces the richest usability data — an independent exploratory eva
 #### REQUIRED outputs (these files MUST be created):
 
 ```
-.artifacts/<KEY>/zack-skill-output/
+.artifacts/<KEY>/usability-eval-output/
   summary.md              — persona, outcome, patience, overall score, dimension scores
   phase1-thinkaloud.md    — full think-aloud trace from Actor phase
   phase2-evaluation.md    — evaluator scoring with evidence citations

@@ -1,13 +1,16 @@
 ---
 name: eval-journey
-description: Run Playwright persona journey walkthroughs against the live prototype. Captures screenshots, logs step results, and writes AC verdicts.
+description: Run Playwright walkthroughs against the live prototype. Supports two modes — informed (Phase A, fast AC verification) and blind (Phase B, persona-driven usability discovery).
 user-invocable: false
 allowed-tools: Read, Write, Bash, Glob, Grep
 ---
 
 # eval-journey
 
-Phase 2b of the eval pipeline. Executes Playwright walkthroughs for each journey defined by eval-extract. This skill ONLY runs Playwright — tier classification happens upstream in eval-classify.
+Executes Playwright walkthroughs for each journey defined by eval-extract. Supports two modes depending on the eval phase:
+
+- **`--mode=informed`** (Phase A): Informed evaluator with full source access. Uses workspace selectors/routes eagerly for fast AC verification. No persona simulation.
+- **`--mode=blind`** (Phase B / default): Blind-first navigation. Personas discover the UI through click-first exploration with hints as fallback only.
 
 ## Inputs
 
@@ -15,9 +18,10 @@ Phase 2b of the eval pipeline. Executes Playwright walkthroughs for each journey
 |-------|-------------|----------|
 | `.artifacts/<KEY>/extract-state.json` | Journey definitions, persona selection, AC list | Yes |
 | `.artifacts/<KEY>/evaluation-report.csv` | Tier-classified ACs from eval-classify (Section 1 with tiers, no verdicts) | Yes |
-| `.artifacts/<KEY>/navigation-hints.json` | Selectors, routes, nav hierarchy from eval-hint | No (but strongly recommended) |
+| `.artifacts/<KEY>/navigation-hints.json` | Selectors, routes, nav hierarchy from eval-hint | No |
 | `.artifacts/<KEY>/mr-delta.json` | Changed files (for nav gap detection, URL fallback hints) | No |
 | Prototype URL | Live URL to test against (e.g., `http://localhost:4200`) | Yes |
+| `--mode` | `informed` (Phase A) or `blind` (Phase B, default) | No |
 | `--depth` | `deep` (default) | No |
 | `--rerun-only` | Comma-separated AC IDs — only run journeys testing these ACs | No |
 | `tests/fixtures/manifest.json` | Test fixtures for file uploads and chat input | No |
@@ -34,17 +38,72 @@ Phase 2b of the eval pipeline. Executes Playwright walkthroughs for each journey
 
 ## Procedure
 
+### Mode Selection
+
+**`--mode=informed` (Phase A — X-Ray AC Validation):**
+
+The informed evaluator has full workspace access and uses it for speed. The goal is to verify acceptance criteria as fast as possible, not to test discoverability.
+
+- Read workspace source files directly for selectors, routes, and page structure
+- Use `page.goto` freely for navigation (speed over realism)
+- Use CSS selectors from source code to locate elements
+- No brute-force expansion, no blind-first pretense
+- No persona simulation, no exploration phase
+- Screenshots are evidence of PASS/FAIL only
+- Produces: verdicts, refinement-suggestions, screenshots
+
+Navigation strategy for informed mode:
+```javascript
+async function navigateInformed(page, route, selector) {
+  await page.goto(`${baseUrl}${route}`);
+  await page.waitForLoadState('domcontentloaded');
+  if (selector) {
+    await page.waitForSelector(selector, { timeout: 5000 }).catch(() => null);
+  }
+  // ALWAYS wait for page content to render before screenshots
+  await page.waitForTimeout(1000);
+}
+```
+
+**INFORMED MODE VERDICT RULE — Visual truth overrides source analysis:**
+
+Even in informed mode, the Playwright visual result is the SOURCE OF TRUTH for verdict assignment.
+- If Playwright shows empty table / broken UI / feature not visible → **FAIL** (regardless of what source code says)
+- Source code analysis can UPGRADE a FLAGGED to PASS (e.g., Tier 3 backend verification where UI portion is confirmed working)
+- Source code analysis can NEVER upgrade a visual FAIL to PASS
+- If all screenshots show the same empty/broken state, the feature is NOT working — source code existence doesn't matter
+
+The informed evaluator has code access for NAVIGATION speed, not for verdict override. The verdict still comes from what the user would see.
+
+When `--mode=informed`, skip Steps 3 and 3b below (hint fallback logic is unnecessary — read source directly). Go straight to Step 4 with informed navigation.
+
+**`--mode=blind` (Phase B — Persona Walkthroughs / default):**
+
+The blind walker navigates using only visible UI elements. Hints are a fallback safety net, not pre-loaded knowledge. This is the default mode and the original behavior documented in the rest of this skill.
+
+---
+
 ### Step 1: Setup Playwright
 
 ```bash
 if ! npx playwright --version >/dev/null 2>&1; then
   npm init -y 2>/dev/null
   npm install --save-dev @playwright/test
-  npx playwright install chromium
+  npx playwright install chromium firefox
 else
   echo "Playwright already installed, skipping setup"
 fi
 ```
+
+**Browser selection:** Use Firefox by default (more reliable CSS rendering for PatternFly expandable components). Chromium's headless mode can incorrectly collapse `isExpanded={false}` rows to zero height.
+
+```javascript
+import { firefox } from 'playwright';  // preferred
+// fallback: import { chromium } from 'playwright';
+const browser = await firefox.launch({ headless: true });
+```
+
+If Firefox is not installed, fall back to Chromium. The script should import and try Firefox first.
 
 ### Step 2: Prepare screenshots directory
 
@@ -55,19 +114,29 @@ mkdir -p .artifacts/<KEY>/screenshots
 
 On re-iterations with `--rerun-only`, only clear screenshots for re-run journeys (preserve PASS journey screenshots).
 
-### Step 3: Load navigation hints (when available)
+### Step 3: Load navigation hints as FALLBACK (the "colleague" pattern)
 
-If `.artifacts/<KEY>/navigation-hints.json` exists (produced by eval-hint), read it and use it to inform the Playwright script generation:
+If `.artifacts/<KEY>/navigation-hints.json` exists (produced by eval-hint), it is available as a **fallback safety net** — NOT pre-loaded knowledge.
 
-**From `nav_sections`:** Instead of brute-forcing all expandable sections, target the specific parent. If hints say `"Gen AI studio"` contains `"Playground"`, the script expands that section directly.
+**How hints work (try blind first, consult only when stuck):**
 
-**From `selectors`:** Use the real CSS selectors from source code instead of generic patterns. If hints provide `".pf-chatbot__message-bar-attach"`, use that instead of guessing `button:has-text("Upload")`.
+The generated Playwright script navigates using ONLY visible UI elements first. Hints are consulted ONLY after an unassisted attempt fails:
 
-**From `routes`:** After a click-first navigation FAILS, use the route as the diagnostic `page.goto` URL. This distinguishes "orphaned page" from "page doesn't exist." Routes are NEVER used proactively — only as post-failure diagnostics.
+1. **First attempt:** Navigate using click-first (visible buttons, links, expandable sections found by brute-force)
+2. **If stuck (timeout after 5s):** Consult `navigation-hints.json` for a targeted hint
+3. **Mark the step as `navigate-assisted`:** The navigation succeeded but only with help
+4. **Usability impact:** Assisted steps cap dimension scores at 1 for affected dimensions
 
-**From `page_structure`:** Know what elements to verify on each page. If hints say the playground has `["textarea", "select", "input[type=file]"]`, the script knows what to look for after navigation succeeds.
+**What each hint type provides as fallback:**
 
-If `navigation-hints.json` does not exist, fall back to generic selectors and brute-force nav expansion (the skill still works without hints, just less precisely).
+- **`nav_sections`:** ONLY used after brute-force expansion fails. If the script tried all visible nav buttons and still can't find the target, THEN use the hint to expand the specific parent. Log: `"navigate-assisted: hint revealed target in 'Gen AI studio' section"`
+- **`selectors`:** Used to VERIFY elements after navigation succeeds (confirmation, not discovery). If the generic selector finds nothing, try the hint selector as a fallback check.
+- **`routes`:** Used as diagnostic `page.goto` ONLY after click-first fails completely. Distinguishes "orphaned page" from "doesn't exist." NEVER marks a step PASS.
+- **`page_structure`:** Used to set expectations for what should be on the page — helps write better narrations, not navigate.
+
+**If `navigation-hints.json` does not exist**, the script works with brute-force only (slower but honest).
+
+**The key principle:** A persona who needs a hint to find something is revealing a discoverability problem. The hint prevents the walkthrough from being totally blocked while preserving the signal that "a real user would struggle here."
 
 ### Step 3b: Journey skip check (when `--rerun-only` set)
 
@@ -91,41 +160,21 @@ For each journey from `extract-state.json > journey_definitions`:
 
 PatternFly/RHOAI prototypes use collapsible nav sections. A link inside a collapsed section IS reachable — it just requires expanding the parent first. This is normal click-first navigation, NOT a failure.
 
-**The generated Playwright script MUST include this nav expansion logic:**
+**The generated Playwright script MUST include this nav expansion logic (blind first, hints as fallback):**
 
 ```javascript
-// navHints loaded from navigation-hints.json (if available)
+// navHints loaded ONLY for fallback use
 const navHints = loadHintsOrNull('.artifacts/<KEY>/navigation-hints.json');
 
 async function navigateViaSidebar(page, targetText) {
-  // Strategy 1: Direct click — link is already visible
+  // Strategy 1: Direct click — link is already visible (no hints needed)
   let link = page.locator(`nav a:has-text("${targetText}")`).first();
   if (await link.isVisible({ timeout: 2000 }).catch(() => false)) {
     await link.click();
-    return { success: true, method: 'direct' };
+    return { success: true, method: 'direct', assisted: false };
   }
 
-  // Strategy 2: Use hints to expand the KNOWN parent section
-  if (navHints?.nav_sections) {
-    for (const [sectionName, info] of Object.entries(navHints.nav_sections)) {
-      const children = info.children || info;
-      if (Array.isArray(children) && children.includes(targetText)) {
-        const selector = info.selector || `button:has-text("${sectionName}")`;
-        const sectionBtn = page.locator(selector).first();
-        if (await sectionBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
-          await sectionBtn.click();
-          await page.waitForTimeout(500);
-          link = page.locator(`nav a:has-text("${targetText}")`).first();
-          if (await link.isVisible({ timeout: 1500 }).catch(() => false)) {
-            await link.click();
-            return { success: true, method: 'hint_expand', section: sectionName };
-          }
-        }
-      }
-    }
-  }
-
-  // Strategy 3: Brute-force — expand all visible nav buttons
+  // Strategy 2: Brute-force — try all visible expandable nav buttons (blind)
   const navButtons = page.locator('nav button');
   const btnCount = await navButtons.count();
   for (let i = 0; i < btnCount; i++) {
@@ -139,18 +188,44 @@ async function navigateViaSidebar(page, targetText) {
       if (await link.isVisible({ timeout: 1500 }).catch(() => false)) {
         await link.click();
         const sectionText = await btn.textContent().catch(() => '');
-        return { success: true, method: 'brute_expand', section: sectionText.trim() };
+        return { success: true, method: 'brute_expand', section: sectionText.trim(), assisted: false };
       }
     }
   }
 
-  return { success: false, method: 'none' };
+  // Strategy 3: FALLBACK — consult hints (marks step as navigate-assisted)
+  if (navHints?.nav_sections) {
+    for (const [sectionName, info] of Object.entries(navHints.nav_sections)) {
+      const children = info.children || info;
+      if (Array.isArray(children) && children.includes(targetText)) {
+        const selector = info.selector || `button:has-text("${sectionName}")`;
+        const sectionBtn = page.locator(selector).first();
+        if (await sectionBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
+          await sectionBtn.click();
+          await page.waitForTimeout(500);
+          link = page.locator(`nav a:has-text("${targetText}")`).first();
+          if (await link.isVisible({ timeout: 1500 }).catch(() => false)) {
+            await link.click();
+            // ASSISTED — this is a discoverability finding
+            return { success: true, method: 'hint_assist', section: sectionName, assisted: true };
+          }
+        }
+      }
+    }
+  }
+
+  return { success: false, method: 'none', assisted: false };
 }
 ```
 
-**When hints are available**, Strategy 2 fires first — the script knows exactly which section to expand (e.g., "Gen AI studio" for "Playground"). This eliminates the timeout from brute-forcing.
+**Strategy order: blind first (1, 2), then hint fallback (3).**
 
-**When hints are NOT available**, Strategy 3 (brute force) still works but is slower and may time out on prototypes with many nav sections.
+- `method: 'direct'` — link was visible, no expansion needed (best case)
+- `method: 'brute_expand'` — persona found it by exploring sections (acceptable)
+- `method: 'hint_assist'` — persona got stuck, asked a "colleague" (discoverability issue logged)
+- `method: 'none'` — even hints couldn't help (genuine failure)
+
+When `assisted: true`, the step is logged with `navigate-assisted` and usability dimension scores are capped at 1 for Workflow Continuity and Mental Model Fidelity.
 
 **This is NOT a `page.goto` fallback.** Expanding a parent section is legitimate user behavior — a real user clicks the section header to reveal sub-items. Score it as a PASS with a note about the expansion, not a FAIL.
 
@@ -203,6 +278,22 @@ async function runJourney5(page) {
 
 But the function MUST exist and MUST produce a verdict. No journey definition may be skipped.
 
+#### Journey Step Relevance Rule
+
+Every step in a journey MUST be necessary to verify the AC. Do not add steps that:
+- Test interactions unrelated to the criterion (e.g., project dropdown when AC is about status labels)
+- Attempt to toggle feature flags or change environment state (impossible in prototypes)
+- Navigate to pages not mentioned in the AC
+- Require backend state changes that prototypes can't perform
+
+If an AC describes a disabled/alternative state (e.g., "when Kueue is not enabled"):
+- DO verify the conditional rendering exists in source code
+- DO verify the feature flag gates the UI
+- DO NOT add a step that tries to toggle the flag in the running prototype
+- Mark the journey PASS with note: "Conditional rendering verified via source code"
+
+Extra exploration (checking adjacent pages, testing edge cases) goes in the `exploration[]` section, NOT in the journey steps. Journey steps are the minimum path to verify the AC.
+
 **Phase 2 — Exploratory Navigation** (when `.context/usability-testing/` present):
 
 After prescribed journeys, same browser session:
@@ -238,12 +329,58 @@ Capture at key moments only:
 
 **Narrations for designers:** Describe what a reviewer SEES, not DOM internals.
 
+**CRITICAL: Wait for render before capture.** The generated script MUST include these patterns:
+
+```javascript
+async function screenshotAfterRender(page, path, waitForSelector) {
+  // Wait for the specific content this step is verifying
+  if (waitForSelector) {
+    await page.waitForSelector(waitForSelector, { timeout: 5000 }).catch(() => null);
+  }
+  // Minimum settle time for SPA re-renders
+  await page.waitForTimeout(800);
+  await page.screenshot({ path, fullPage: false });
+}
+```
+
+**CRITICAL: Detect duplicate screenshots.** The generated script MUST check for identical captures:
+
+```javascript
+import { createHash } from 'crypto';
+
+const screenshotHashes = [];
+
+async function captureAndValidate(page, filepath, waitFor) {
+  await screenshotAfterRender(page, filepath, waitFor);
+  const buffer = readFileSync(filepath);
+  const hash = createHash('md5').update(buffer).digest('hex');
+  
+  if (screenshotHashes.length > 0 && screenshotHashes[screenshotHashes.length - 1] === hash) {
+    console.warn(`WARNING: Screenshot ${filepath} is identical to previous — page may not have rendered new content`);
+  }
+  screenshotHashes.push(hash);
+  return hash;
+}
+```
+
+If ALL screenshots in a journey share the same hash, the journey verdict MUST be FAIL with rationale: "All screenshots identical — page content did not render between steps. Feature may not be functional."
+
 ### Step 6: Assign verdicts (EVERY AC must get exactly one verdict)
 
-After all journeys complete, assign verdicts for EVERY AC in the CSV using this precedence:
+After all journeys complete, assign verdicts for EVERY AC in the CSV.
 
-1. If a journey tested this AC and ALL related steps PASSED → **PASS**
-2. If a journey tested this AC and ANY step FAILED → **FAIL** (with rationale citing the failed step)
+**Journey verdict is determined by AC-critical steps only:**
+
+A journey can have steps that directly verify the AC requirement AND extra steps (navigation niceties, project switching, exploration). The verdict is based ONLY on steps that test the actual criterion:
+
+- If all AC-critical steps passed → journey **PASS** (even if a non-critical step like a project dropdown failed)
+- If a non-AC step failed (navigation nicety, exploration) → journey **PASS with note** (the failure is logged but doesn't drag down the verdict)
+- Only **FAIL** the journey if a step that directly tests the AC requirement failed
+
+**AC verdict precedence:**
+
+1. If the journey's AC-critical steps ALL passed → **PASS**
+2. If any AC-critical step FAILED → **FAIL** (with rationale citing the failed step)
 3. If NO journey tested this AC (coverage gap) → **FAIL** with rationale "No journey tested this criterion"
 
 **Tier 3 split verdict rule (prototypes are NOT backends):**
@@ -253,6 +390,12 @@ These are PROTOTYPES — they demonstrate UI flows, not backend logic. Tier 3 AC
 - If the UI part of a T3 AC passes (button exists, form validates, visual feedback present): verdict = **PASS** with a note: "UI component verified. Backend portion noted but not evaluable from prototype."
 - If the UI part fails (no validation UI, no feedback element): verdict = **FAIL**
 - Backend-ONLY ACs with NO UI component at all (e.g., "BFF accepts 50MB bodies", "catalog YAML schema"): verdict = **PASS (N/A)** with rationale "No UI component — backend-only requirement, noted for engineering."
+
+**NEVER FLAGGED for prototype limitations.** These are PASS with notes:
+- "updates within 5 seconds without page refresh" → PASS (UI re-renders from state; WebSocket is backend)
+- "covers both InferenceService and LLMInferenceService" → PASS (UI handles the data model; mock data proves it)
+- "validates inputs" → PASS if the form shows validation UI (backend enforcement is engineering)
+- Real-time behavior, RBAC checks, API integrations → all PASS if the UI demonstrates the flow
 
 Do NOT flag or fail ACs solely because their backend portion cannot be verified. The prototype's job is to demonstrate the UX, not implement the backend. Note backend requirements in the `human_action` column for engineering follow-up.
 

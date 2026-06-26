@@ -1,13 +1,13 @@
 ---
 name: eval-iterate
-description: Orchestrate the full eval pipeline — chains extract, classify, journey, consistency, usability, and report phases. Runs eval-fix loop up to 3 cycles until all criteria pass.
+description: "Orchestrate the two-phase eval pipeline: Phase A validates acceptance criteria with an informed evaluator (fix loop). Phase B runs blind per-persona Playwright walkthroughs for usability scoring."
 user-invocable: true
 allowed-tools: Read, Write, Edit, Glob, Grep, Bash, AskUserQuestion, mcp__atlassian__getJiraIssue, mcp__atlassian__searchJiraIssuesUsingJql, mcp__atlassian__addCommentToJiraIssue
 ---
 
 # eval-iterate
 
-The orchestrator for the eval pipeline. Chains all eval phases in order, then runs a fix loop (max 3 cycles) until the goal condition is met.
+Two-phase eval pipeline orchestrator. Phase A (x-ray) validates acceptance criteria with an informed evaluator that has full code access, fixing until all ACs pass. Phase B (blind) runs per-persona Playwright walkthroughs to score usability on a known-good prototype.
 
 ## Prerequisites
 
@@ -36,55 +36,62 @@ Ensure `.context/usability-testing/`, `.context/consistency-checker/` are bootst
 | `--usability` | `deep` or `skip` | No | `deep` |
 | `--no-iterate` | flag | No | Off |
 
-## Pipeline Flow
+## Pipeline Flow (Two-Phase)
 
 ```
-eval-extract → eval-classify → eval-journey → eval-consistency → eval-usability → eval-report
-                                                                                      ↓
-                                                                              All PASS? → Done
-                                                                              FAIL + cycle ≤ 3 → eval-fix → loop from eval-classify
-                                                                              FAIL + cycle > 3 → Flag for human
+PHASE A (X-Ray — Informed AC Validation Loop):
+  eval-extract → eval-consistency (once) → eval-classify → eval-journey (informed)
+                                                              ↓
+                                                      All PASS? → Phase B
+                                                      FAIL + cycle ≤ max → eval-fix → loop from eval-classify
+                                                      FAIL + cycle > max → Flag for human, then Phase B
+
+PHASE B (Blind — Per-Persona Usability Walkthroughs):
+  eval-usability (per-persona Playwright, think-aloud, 7-dimension scoring) → eval-report
 ```
 
 ## Goal Condition
 
-**Zero FAIL verdicts in evaluation-report.csv Section 1.**
+**Phase A exits when:** zero FAIL verdicts in evaluation-report.csv Section 1, OR max iterations reached.
 
-FLAGGED items are acceptable (they need human review). The loop only targets FAILs.
+**Phase B fires:** always (unless `--usability=skip`). Runs once on the final prototype state.
+
+FLAGGED items are acceptable (they need human review). The Phase A loop only targets FAILs.
 
 ## Orchestration Logic
 
 ```
 iteration = 0
 max_iterations = parse --max-iterations (default: 3)
-original_usability_flag = parse --usability (default: "deep")
+usability_flag = parse --usability (default: "deep")
+
+# Initialize persistent state (survives context compression)
+python3 scripts/eval_state.py init .artifacts/<KEY>/eval-state.yaml \
+  iteration=0 max_iterations=$max_iterations exit_reason=pending \
+  phase=a ac_pass=false key=<KEY> url=<URL> workspace=<workspace>
+
+# ═══════════════════════════════════════════════════════════════════
+# PHASE A: X-Ray AC Validation Loop
+# Question: "Did the code produce what the acceptance criteria specify?"
+# Method: Informed evaluator with full source + hint access
+# ═══════════════════════════════════════════════════════════════════
+
+# ── Setup (runs once) ──────────────────────────────────────────────
+
+Read .claude/skills/eval/eval-extract/SKILL.md and execute it
+# Produces: extract-state.json, mr-delta.json, outcome-context.json
+
+Read .claude/skills/eval/eval-consistency/SKILL.md and execute it
+# Runs ONCE. Produces: consistency-report.json, adds to refinement-suggestions.json
+# PatternFly violations don't change between AC fix iterations.
+
+# ── AC Fix Loop ────────────────────────────────────────────────────
 
 LOOP:
   iteration += 1
+  python3 scripts/eval_state.py set .artifacts/<KEY>/eval-state.yaml iteration=$iteration
 
-  # ── Archive previous iteration ──────────────────────────────────
-  if iteration > 1:
-    cp .artifacts/<KEY>/evaluation-report.csv → .artifacts/<KEY>/evaluation-report-iter-{iteration-1}.csv
-    cp -r .artifacts/<KEY>/screenshots/ → .artifacts/<KEY>/screenshots-iter-{iteration-1}/
-
-  # ── Phase 1: Extract (iteration 1 only) ────────────────────────
-  if iteration == 1:
-    Read .claude/skills/eval/eval-extract/SKILL.md and execute it
-    # Produces: extract-state.json, mr-delta.json, outcome-context.json
-  else:
-    # SKIP Phase 1 — reuse cached extract-state.json
-    # Only refresh mr-delta.json if --workspace provided:
-    if --workspace:
-      cd <workspace> && git diff <base>...HEAD --name-only
-      Update .artifacts/<KEY>/mr-delta.json with new changed files
-
-  # ── Phase 1b: Navigation Hints (iteration 1 only, when --workspace) ─
-  if iteration == 1 AND --workspace:
-    Read .claude/skills/eval/eval-hint/SKILL.md and execute it
-    # Produces: navigation-hints.json (selectors, routes, nav hierarchy)
-    # Runs once — hints are static across iterations
-
-  # ── Phase 2a: Classify ─────────────────────────────────────────
+  # ── Classify ───────────────────────────────────────────────────
   if iteration == 1:
     Read .claude/skills/eval/eval-classify/SKILL.md and execute it
     # Produces: evaluation-report.csv (Section 1, tiers only)
@@ -92,33 +99,21 @@ LOOP:
     Read .claude/skills/eval/eval-classify/SKILL.md and execute it with:
       --rerun-only=<comma-separated FAIL+FLAGGED AC IDs from previous CSV>
 
-  # ── Phase 2b: Journey walkthroughs ─────────────────────────────
+  # ── Journey (informed mode) ────────────────────────────────────
+  # The informed evaluator uses workspace source directly for navigation.
+  # No blind-first pretense — goal is fast AC verification.
   if iteration == 1:
-    Read .claude/skills/eval/eval-journey/SKILL.md and execute it
-    # eval-journey reads navigation-hints.json if it exists (from Phase 1b)
+    Read .claude/skills/eval/eval-journey/SKILL.md and execute it with:
+      --mode=informed
+    # Uses workspace source for selectors/routes. Verifies ACs quickly.
   else:
     Read .claude/skills/eval/eval-journey/SKILL.md and execute it with:
-      --rerun-only=<FAIL+FLAGGED AC IDs>
+      --mode=informed --rerun-only=<FAIL+FLAGGED AC IDs>
     # Only runs Playwright for journeys testing failing criteria
 
-  # ── Phase 2c: Consistency check ────────────────────────────────
-  Read .claude/skills/eval/eval-consistency/SKILL.md and execute it
-  # Skips automatically if .context/consistency-checker/ missing
-
-  # ── Phase 3: Usability scoring ─────────────────────────────────
-  Determine usability depth:
-    if iteration >= max_iterations:
-      usability_flag = original_usability_flag  # Final: honor user's choice
-    else:
-      usability_flag = "skip"  # Mid-loop: inference only, no think-aloud
-
-  Read .claude/skills/eval/eval-usability/SKILL.md and execute it with:
-    --usability=<usability_flag>
-    --iteration=<iteration>
-
-  # ── Phase 4: Report ────────────────────────────────────────────
-  Read .claude/skills/eval/eval-report/SKILL.md and execute it with:
-    --note="Iteration <iteration>"
+  # ── Archive this iteration ─────────────────────────────────────
+  cp .artifacts/<KEY>/evaluation-report.csv → .artifacts/<KEY>/evaluation-report-iter-<iteration>.csv
+  cp -r .artifacts/<KEY>/screenshots/ → .artifacts/<KEY>/screenshots-iter-<iteration>/
 
   # ── Compute counts FROM the CSV (source of truth) ──────────────
   Read .artifacts/<KEY>/evaluation-report.csv Section 1 (ACCEPTANCE CRITERIA)
@@ -133,10 +128,10 @@ LOOP:
   Append to .artifacts/<KEY>/iteration-log.json:
     {
       "iteration": <iteration>,
+      "phase": "a",
       "pass_count": <computed from CSV>,
       "fail_count": <computed from CSV>,
       "flagged_count": <computed from CSV>,
-      "usability_score": <read from journey-log.json usability_dimensions.overall_score>,
       "suggestions_generated": <count of entries in refinement-suggestions.json>,
       "consistency_fixes": <count of type:consistency in refinement-suggestions.json>
     }
@@ -148,33 +143,87 @@ LOOP:
   # ── Exit condition checks ──────────────────────────────────────
   if fail_count == 0:
     Set exit_reason = "all_pass"
-    STOP → "All criteria pass. Loop complete."
+    python3 scripts/eval_state.py set .artifacts/<KEY>/eval-state.yaml \
+      exit_reason=all_pass ac_pass=true
+    BREAK → proceed to Phase B
 
   if iteration > 1:
     Compare current CSV verdicts against previous iteration's archived CSV
     if any criterion flipped PASS → FAIL:
       Set exit_reason = "regression"
-      STOP → "Regression detected: <criterion-id> was PASS, now FAIL."
+      python3 scripts/eval_state.py set .artifacts/<KEY>/eval-state.yaml \
+        exit_reason=regression ac_pass=false
+      BREAK → proceed to Phase B (on current prototype state)
 
   if iteration >= max_iterations:
     Set exit_reason = "max_iterations"
-    STOP → "Max iterations reached. <N> FAIL items remain for human review."
+    python3 scripts/eval_state.py set .artifacts/<KEY>/eval-state.yaml \
+      exit_reason=max_iterations ac_pass=false
+    BREAK → proceed to Phase B (even with remaining FAILs)
 
   if --no-iterate:
     Set exit_reason = "no_iterate"
-    STOP → "Single evaluation run complete. <N> FAIL items remain."
+    python3 scripts/eval_state.py set .artifacts/<KEY>/eval-state.yaml \
+      exit_reason=no_iterate ac_pass=false
+    BREAK → proceed to Phase B
 
-  # ── Phase 5: Fix ───────────────────────────────────────────────
+  # ── Fix ────────────────────────────────────────────────────────
   Read .claude/skills/eval/eval-fix/SKILL.md and execute it
-  # Applies fixes from refinement-suggestions.json
+  # Applies fixes from refinement-suggestions.json (AC failures + consistency)
 
   # Wait for dev server rebuild
   sleep 3
 
   GOTO LOOP
+
+# ═══════════════════════════════════════════════════════════════════
+# PHASE B: Blind Persona Walkthroughs
+# Question: "Can real users actually use this?"
+# Method: Per-persona Playwright, blind navigation, think-aloud scoring
+# ═══════════════════════════════════════════════════════════════════
+
+# Skip Phase B entirely if --usability=skip
+if usability_flag == "skip":
+  python3 scripts/eval_state.py set .artifacts/<KEY>/eval-state.yaml phase=b
+  GOTO REPORT
+
+python3 scripts/eval_state.py set .artifacts/<KEY>/eval-state.yaml phase=b
+
+# Phase B always runs at full depth — the prototype is known-good (or best-effort).
+# No degraded/inference-only mode. Personas run their own Playwright walkthroughs.
+#
+# CRITICAL: Phase B REQUIRES separate Playwright browser sessions for each persona.
+# The prototype URL must be navigated by each persona independently.
+# Phase B is NOT inference-only scoring — it MUST produce new screenshots.
+# Do NOT skip the Playwright walkthroughs and score from Phase A evidence alone.
+
+Read .claude/skills/eval/eval-usability/SKILL.md and execute it
+# Produces: per-persona screenshots, think-aloud traces, 7-dimension scores,
+#           usability suggestions for human review
+
+# VERIFY: Per-persona screenshots must exist after eval-usability completes.
+# Check: ls .artifacts/<KEY>/screenshots/persona-*.png
+# If no persona screenshots exist, Phase B did not run correctly.
+# Go back and re-run eval-usability — ensure Step 1d actually launches Playwright.
+
+# Update iteration log with usability results
+Append to .artifacts/<KEY>/iteration-log.json:
+  {
+    "phase": "b",
+    "usability_score": <read from journey-log.json usability_dimensions.overall_score>,
+    "personas_evaluated": <read from journey-log.json usability_dimensions.personas_evaluated>
+  }
+
+# ═══════════════════════════════════════════════════════════════════
+# REPORT (always runs)
+# ═══════════════════════════════════════════════════════════════════
+
+REPORT:
+Read .claude/skills/eval/eval-report/SKILL.md and execute it with:
+  --note="Phase A: <exit_reason> (<iteration> iterations). Phase B: <usability status>"
 ```
 
-## Selective Rerun (Iterations 2+)
+## Selective Rerun (Phase A Iterations 2+)
 
 On re-iterations, only re-evaluate criteria that FAILED or were FLAGGED:
 
@@ -187,20 +236,23 @@ This reduces Playwright execution proportionally to passing criteria count.
 
 ## Regression Detection
 
-After each iteration (2+), compare verdicts against the previous CSV:
+After each Phase A iteration (2+), compare verdicts against the previous CSV:
 - If a criterion that was PASS becomes FAIL → **regression**
 - Stop immediately, report which criterion regressed and which fix caused it
 - The archived CSVs (`evaluation-report-iter-N.csv`) provide the comparison baseline
+- Phase B still runs after regression (captures usability of current state)
 
 ## Outputs
 
 | File | Description |
 |------|-------------|
-| `.artifacts/<KEY>/evaluation-report.html` | Final HTML report |
-| `.artifacts/<KEY>/evaluation-report.csv` | Final verdicts |
-| `.artifacts/<KEY>/iteration-log.json` | Per-iteration pass/fail/flagged counts |
-| `.artifacts/<KEY>/evaluation-report-iter-N.csv` | Archived CSV per iteration |
-| `.artifacts/<KEY>/screenshots-iter-N/` | Archived screenshots per iteration |
+| `.artifacts/<KEY>/evaluation-report.html` | Final HTML report (both phases) |
+| `.artifacts/<KEY>/evaluation-report.csv` | Final AC verdicts + usability dimensions |
+| `.artifacts/<KEY>/iteration-log.json` | Per-iteration counts + Phase B usability |
+| `.artifacts/<KEY>/evaluation-report-iter-N.csv` | Archived CSV per Phase A iteration |
+| `.artifacts/<KEY>/screenshots-iter-N/` | Archived screenshots per Phase A iteration |
+| `.artifacts/<KEY>/screenshots/persona-<id>-step-N.png` | Phase B per-persona screenshots |
+| `.artifacts/<KEY>/usability-thinkaloud-<id>.md` | Phase B think-aloud traces |
 
 ## iteration-log.json format
 
@@ -211,23 +263,36 @@ After each iteration (2+), compare verdicts against the previous CSV:
   "iterations": [
     {
       "iteration": 1,
+      "phase": "a",
       "pass_count": 4,
       "fail_count": 3,
       "flagged_count": 2,
-      "usability_score": 14.5,
       "suggestions_generated": 5,
       "consistency_fixes": 2
+    },
+    {
+      "iteration": 2,
+      "phase": "a",
+      "pass_count": 7,
+      "fail_count": 0,
+      "flagged_count": 2,
+      "suggestions_generated": 0,
+      "consistency_fixes": 0
     }
   ],
-  "exit_reason": "all_pass | max_iterations | regression | no_iterate",
-  "total_criteria_fixed": 2,
+  "phase_b": {
+    "usability_score": "15.5/21",
+    "personas_evaluated": ["deena-junior", "deena-senior"]
+  },
+  "exit_reason": "all_pass",
+  "total_criteria_fixed": 3,
   "total_regressions": 0
 }
 ```
 
 ## Summary Output
 
-After loop completes, print:
+After pipeline completes, print:
 
 ```
 ────────────────────────────────────────
@@ -235,25 +300,29 @@ Eval Pipeline: <KEY>
 ────────────────────────────────────────
 Story:       <title>
 URL:         <url>
-Iterations:  <N>
-Exit reason: <reason>
 
-Iteration 1: <pass>/<total> PASS, <fail> FAIL, <flagged> FLAGGED
-Iteration 2: ...
+PHASE A — AC Validation:
+  Iterations:  <N>
+  Exit reason: <reason>
+  Iteration 1: <pass>/<total> PASS, <fail> FAIL, <flagged> FLAGGED
+  Iteration 2: ...
+  Criteria:  <total>
+    PASS:    <n>
+    FAIL:    <n>
+    FLAGGED: <n> (needs human review)
 
-Criteria:  <total>
-  PASS:    <n>
-  FAIL:    <n>
-  FLAGGED: <n> (needs human review)
+PHASE B — Usability:
+  Personas:  <list>
+  Score:     <score>/21
+  Key finding: <one-liner from highest-impact dimension>
 
-Usability: <score>/21
-Report:    .artifacts/<KEY>/evaluation-report.html
+Report: .artifacts/<KEY>/evaluation-report.html
 ────────────────────────────────────────
 ```
 
 ## Error Handling
 
 - **Prototype URL unreachable:** Wait 10s, retry once. If still down, stop with error.
-- **eval-fix produces no changes:** Stop — more iterations won't help.
-- **Dev server crashes after fix:** Stop, note which files may have caused it.
-- **Missing .context/ directories:** Run eval without those phases (degrade gracefully).
+- **eval-fix produces no changes:** Stop Phase A — more iterations won't help. Proceed to Phase B.
+- **Dev server crashes after fix:** Stop Phase A, note which files may have caused it. Proceed to Phase B.
+- **Missing .context/ directories:** Phase A runs without consistency. Phase B skipped if usability-testing missing.
