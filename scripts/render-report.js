@@ -324,6 +324,38 @@ function loadScreenshots(screenshotsDir) {
 // Build tokens
 // ---------------------------------------------------------------------------
 
+function buildReportIntroHtml() {
+  const extractState = readJsonOr(path.join(absArtifacts, 'extract-state.json'), null);
+  const delta = readJsonOr(path.join(absArtifacts, 'mr-delta.json'), null);
+  const protoId = extractPrototypeId();
+
+  const knownMRs = { 'RHAISTRAT-1527':168,'RHAISTRAT-133':169,'RHAISTRAT-1492':170,'RHAISTRAT-1267':167,'RHAISTRAT-1536':171,'RHAISTRAT-1535':172,'RHAISTRAT-1745':176,'RHAISTRAT-1474':173,'RHAISTRAT-1740':175,'RHAISTRAT-432':174,'RHAISTRAT-1521':177,'RHAISTRAT-1433':178,'RHAISTRAT-1762':180,'RHAISTRAT-1761':183,'RHAISTRAT-1758':181,'RHAISTRAT-1744':182,'RHAISTRAT-1742':184,'RHAISTRAT-1741':179 };
+  const mrNum = delta ? (delta.mr_number || knownMRs[protoId]) : knownMRs[protoId];
+  const filesChanged = delta ? (delta.stats?.files_changed || (delta.changed_files || []).length || 0) : 0;
+  const baseBranch = delta ? (delta.base_branch || '3.5') : '3.5';
+
+  const title = extractState ? (extractState.story_title || extractState.title || '') : '';
+  const rfeKey = extractState ? (extractState.rfe_key || '') : '';
+  const tasks = extractState ? (extractState.tasks_to_be_done || []) : [];
+  const taskSummary = tasks.length ? tasks[0].task : '';
+
+  let html = '';
+  html += `<p style="margin:0 0 0.25rem;font-size:1rem;font-weight:600">${escapeHtml(title || protoId)}</p>`;
+
+  const meta = [];
+  meta.push(`<strong>${escapeHtml(protoId)}</strong>`);
+  if (rfeKey) meta.push(`from ${escapeHtml(rfeKey)}`);
+  if (mrNum) meta.push(`MR !${mrNum}`);
+  if (filesChanged) meta.push(`${filesChanged} files changed against ${escapeHtml(baseBranch)}`);
+  html += `<p class="small muted" style="margin:0 0 0.35rem">${meta.join(' · ')}</p>`;
+
+  if (taskSummary) {
+    html += `<p class="small" style="margin:0;color:var(--text)"><strong>User task:</strong> ${escapeHtml(taskSummary)}</p>`;
+  }
+
+  return html;
+}
+
 function buildDeltaHtml() {
   const deltaPath = path.join(absArtifacts, 'mr-delta.json');
   const delta = readJsonOr(deltaPath, null);
@@ -628,10 +660,27 @@ function buildPersonaWalkthroughsHtml() {
 
     html += `<div style="display:grid;grid-template-columns:1fr 1fr;gap:0.5rem;margin-bottom:0.75rem">`;
     html += `<div class="small"><strong>${stepCount}</strong> steps</div>`;
-    html += `<div class="small"><strong>${patienceEnd}%</strong> patience</div>`;
+
+    // Patience with explanation
+    const patienceColor = patienceEnd > 60 ? 'var(--status-success)' : patienceEnd > 30 ? 'var(--status-warning)' : 'var(--status-danger)';
+    html += `<div class="small"><strong style="color:${patienceColor}">${patienceEnd}%</strong> patience</div>`;
     html += `<div class="small"><strong>${confusionCount}</strong> confusion events</div>`;
     html += `<div class="small"><strong>${assistedCount}</strong> assisted nav</div>`;
     html += `</div>`;
+
+    // Explain low patience
+    if (patienceEnd < 50) {
+      const confEvents = overlay.confusion_events || [];
+      let reason = '';
+      if (confEvents.length > 0) {
+        reason = confEvents[0].trigger || 'navigation difficulty';
+      } else if (trace.narration_summary) {
+        reason = trace.narration_summary.slice(0, 80);
+      }
+      if (reason) {
+        html += `<p class="small" style="margin:0 0 0.5rem;color:${patienceColor};font-style:italic">Struggled with: ${escapeHtml(reason)}</p>`;
+      }
+    }
 
     html += `<div style="display:flex;justify-content:space-between;align-items:center">`;
     html += `<span class="badge ${outcomeBadge}">${escapeHtml(outcome)}</span>`;
@@ -1203,83 +1252,70 @@ function buildFixesHtml() {
   const fixLog = readJsonOr(path.join(absArtifacts, 'fix-log.json'), null);
   const iterLog = readJsonOr(path.join(absArtifacts, 'iteration-log.json'), null);
   const journeyLog = readJsonOr(path.join(absArtifacts, 'journey-log.json'), null);
-
-  if (!suggestions && !fixLog) return '<p class="muted small">No fixes or suggestions generated during this evaluation run.</p>';
+  const consistencyReport = readJsonOr(path.join(absArtifacts, 'consistency-report.json'), null);
 
   let html = '';
   const iterations = iterLog ? iterLog.iterations || [] : [];
   const totalIterations = iterations.length;
-
   const appliedFixes = fixLog ? (Array.isArray(fixLog) ? fixLog : fixLog.applied || []) : [];
 
+  // Summary of what the eval found
+  const totalFindings = appliedFixes.length + (suggestions ? (Array.isArray(suggestions) ? suggestions.length : 0) : 0);
+  if (totalFindings === 0 && !consistencyReport) {
+    return '<p class="muted small">No findings or changes from this evaluation. All acceptance criteria passed without modification.</p>';
+  }
+
+  // Applied fixes section
   if (appliedFixes.length) {
-    html += `<h3 style="margin-top:0">Applied Fixes</h3>`;
-    html += `<p class="small muted" style="margin:-0.25rem 0 0.75rem">Code changes made during the Phase A iteration loop to resolve failing acceptance criteria.</p>`;
+    html += `<h3 style="margin-top:0">Changes Made</h3>`;
+    html += `<p class="small" style="margin:-0.25rem 0 0.75rem">The evaluation found issues and applied these fixes to make the prototype pass acceptance criteria.</p>`;
     html += `<div style="display:flex;flex-direction:column;gap:1rem">`;
 
     for (const fix of appliedFixes) {
-      const status = fix.status === 'applied' ? '✓ Applied' : fix.status === 'skipped' ? '— Skipped' : '? Unknown';
-      const statusColor = fix.status === 'applied' ? 'var(--status-success)' : 'var(--text2)';
       const iteration = fix.iteration || 1;
+      html += `<div class="card">`;
 
-      html += `<div class="card card-compact" style="border-left:3px solid ${statusColor}">`;
-      html += `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.5rem">`;
-      html += `<span style="font-weight:600;color:${statusColor};font-size:0.8125rem">${status}</span>`;
-      html += `<span class="small muted">Iteration ${iteration}</span>`;
-      html += `</div>`;
-
-      // AC connection
+      // What was wrong and why it was fixed
       if (fix.criterion_id || fix.ac_id) {
         const acId = fix.criterion_id || fix.ac_id;
-        html += `<p class="small" style="margin:0 0 0.5rem"><span style="font-family:var(--font-mono);font-weight:600;color:var(--accent)">${escapeHtml(acId)}</span>`;
         const jIdx = findJourneyForAC(journeyLog, acId);
-        if (jIdx && journeyLog.journeys[jIdx - 1]) {
-          html += ` — ${escapeHtml(journeyLog.journeys[jIdx - 1].title)}`;
-        }
-        html += `</p>`;
-      }
-
-      if (fix.description || fix.rationale) {
-        html += `<p class="small" style="margin:0 0 0.5rem">${escapeHtml(fix.description || fix.rationale)}</p>`;
-      }
-
-      if (fix.file) {
-        html += `<code class="small" style="display:block;margin:0.25rem 0;color:var(--accent)">${escapeHtml(fix.file)}${fix.line ? ':' + fix.line : ''}</code>`;
-      }
-
-      if (fix.before || fix.current) {
-        html += `<div style="margin:0.5rem 0;padding:0.5rem;background:var(--bg2);border-radius:4px;font-family:var(--font-mono);font-size:0.75rem;line-height:1.5;overflow-x:auto">`;
-        html += `<div style="color:var(--status-danger)">− ${escapeHtml(fix.before || fix.current)}</div>`;
-        if (fix.after || fix.fix) {
-          html += `<div style="color:var(--status-success)">+ ${escapeHtml(fix.after || fix.fix)}</div>`;
-        }
+        const journeyTitle = (jIdx && journeyLog.journeys[jIdx - 1]) ? journeyLog.journeys[jIdx - 1].title : '';
+        html += `<div style="margin-bottom:0.75rem">`;
+        html += `<p style="margin:0 0 0.25rem;font-weight:600;font-size:0.9375rem"><span style="color:var(--accent);font-family:var(--font-mono)">${escapeHtml(acId)}</span> ${journeyTitle ? '— ' + escapeHtml(journeyTitle) : ''}</p>`;
+        html += `<span class="badge badge-pass" style="font-size:0.6rem">Fixed in iteration ${iteration}</span>`;
         html += `</div>`;
       }
 
-      // Before/after screenshots from iteration archives
+      // Why — the rationale
+      if (fix.description || fix.rationale || fix.change) {
+        html += `<div style="margin-bottom:0.75rem">`;
+        html += `<p class="small" style="margin:0 0 0.15rem;font-weight:600;color:var(--text2)">Why this was changed</p>`;
+        html += `<p style="margin:0;font-size:0.875rem;line-height:1.5">${escapeHtml(fix.description || fix.rationale || fix.change)}</p>`;
+        html += `</div>`;
+      }
+
+      // Code change
+      if (fix.file) {
+        html += `<code class="small" style="display:block;margin:0.5rem 0 0.25rem;color:var(--accent)">${escapeHtml(fix.file)}${fix.line ? ':' + fix.line : ''}</code>`;
+      }
+      if (fix.before || fix.current) {
+        html += `<div style="margin:0.25rem 0;padding:0.5rem;background:var(--bg2);border-radius:4px;font-family:var(--font-mono);font-size:0.75rem;line-height:1.5;overflow-x:auto">`;
+        html += `<div style="color:var(--status-danger)">- ${escapeHtml(fix.before || fix.current)}</div>`;
+        if (fix.after || fix.fix) html += `<div style="color:var(--status-success)">+ ${escapeHtml(fix.after || fix.fix)}</div>`;
+        html += `</div>`;
+      }
+
+      // Screenshot reference
       if (fix.criterion_id || fix.ac_id) {
         const acId = fix.criterion_id || fix.ac_id;
         const journeyIdx = findJourneyForAC(journeyLog, acId);
         if (journeyIdx !== null) {
-          const beforeDir = path.join(absArtifacts, `screenshots-iter-${iteration}`);
-          const afterDir = iteration < totalIterations
-            ? path.join(absArtifacts, `screenshots-iter-${iteration + 1}`)
-            : path.join(absArtifacts, 'screenshots');
-
-          const beforeFile = findScreenshotForJourney(beforeDir, journeyIdx);
+          const afterDir = path.join(absArtifacts, 'screenshots');
           const afterFile = findScreenshotForJourney(afterDir, journeyIdx);
-
-          if (beforeFile || afterFile) {
-            html += `<div style="display:grid;grid-template-columns:1fr 1fr;gap:0.5rem;margin-top:0.5rem">`;
-            if (beforeFile) {
-              const b64 = fs.readFileSync(beforeFile).toString('base64');
-              html += `<div><span class="small muted">Before (iter ${iteration})</span><img src="data:image/png;base64,${b64}" style="width:100%;border:1px solid var(--border);border-radius:4px;margin-top:0.25rem" /></div>`;
-            }
-            if (afterFile) {
-              const b64 = fs.readFileSync(afterFile).toString('base64');
-              html += `<div><span class="small muted">After (iter ${iteration + 1})</span><img src="data:image/png;base64,${b64}" style="width:100%;border:1px solid var(--border);border-radius:4px;margin-top:0.25rem" /></div>`;
-            }
-            html += `</div>`;
+          if (afterFile) {
+            const b64 = fs.readFileSync(afterFile).toString('base64');
+            html += `<div style="margin-top:0.75rem"><p class="small muted" style="margin:0 0 0.25rem">Result after fix (from Phase A verification)</p>`;
+            html += `<img src="data:image/png;base64,${b64}" style="width:100%;border:1px solid var(--border);border-radius:4px" /></div>`;
           }
         }
       }
@@ -1289,7 +1325,66 @@ function buildFixesHtml() {
     html += `</div>`;
   }
 
-  return html || '<p class="muted small">No fixes were applied during this evaluation run.</p>';
+  // Consistency and usability findings (always shown)
+  const allSuggestions = suggestions ? (Array.isArray(suggestions) ? suggestions : []) : [];
+  const consistencyViols = consistencyReport ? (consistencyReport.source_mode?.violations || []) : [];
+
+  if (allSuggestions.length || consistencyViols.length) {
+    html += `<h3 style="margin-top:${appliedFixes.length ? '2rem' : '0'}">Design Findings</h3>`;
+    html += `<p class="small" style="margin:-0.25rem 0 0.75rem">Issues identified by the consistency checker against PatternFly design guidelines. These weren't blocking acceptance criteria but should be reviewed for design quality.</p>`;
+    html += `<div style="display:flex;flex-direction:column;gap:0.75rem">`;
+
+    // Use consistency report violations (richer data) if available, fall back to suggestions
+    const findings = consistencyViols.length ? consistencyViols : allSuggestions;
+
+    for (const f of findings) {
+      const guideline = f.guideline_id || '';
+      const severity = f.severity || 'warning';
+      const sevColor = severity === 'error' ? 'var(--status-danger)' : 'var(--status-warning)';
+      const file = f.file || '';
+      const line = f.line || '';
+      const description = f.description || f.current || '';
+      const suggestion = f.suggestion || f.fix || '';
+
+      html += `<div class="card card-compact">`;
+
+      // Header with guideline and severity
+      html += `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.5rem">`;
+      html += `<span style="font-weight:600;font-size:0.875rem">${escapeHtml(guideline)}</span>`;
+      html += `<span class="small" style="color:${sevColor};font-weight:500;text-transform:uppercase">${escapeHtml(severity)}</span>`;
+      html += `</div>`;
+
+      // What's wrong and where
+      if (description) {
+        html += `<p style="margin:0 0 0.5rem;font-size:0.875rem;line-height:1.5">${escapeHtml(description)}</p>`;
+      }
+
+      if (file) {
+        html += `<code class="small" style="display:block;margin:0.25rem 0;color:var(--accent)">${escapeHtml(file)}${line ? ':' + line : ''}</code>`;
+      }
+
+      // Current vs suggested
+      if (f.current) html += `<div style="margin:0.25rem 0;padding:0.25rem 0.5rem;background:var(--bg2);border-radius:3px;font-family:var(--font-mono);font-size:0.75rem;color:var(--status-danger)">- ${escapeHtml(f.current)}</div>`;
+      if (suggestion) html += `<div style="margin:0.25rem 0;padding:0.25rem 0.5rem;background:var(--bg2);border-radius:3px;font-family:var(--font-mono);font-size:0.75rem;color:var(--status-success)">+ ${escapeHtml(suggestion)}</div>`;
+
+      // Why this matters
+      if (f.pf_doc_url || f.guideline_title) {
+        const why = f.guideline_title || `PatternFly guideline: ${guideline}`;
+        html += `<p class="small muted" style="margin:0.5rem 0 0;font-style:italic">Why: ${escapeHtml(why)} — ensures visual consistency with the Red Hat design system.</p>`;
+      }
+
+      // Page reference
+      const pageHint = file.match(/\/(\w+)\/(\w+)\.(tsx|jsx)/);
+      if (pageHint) {
+        html += `<p class="small muted" style="margin:0.25rem 0 0">Visible on: ${escapeHtml(pageHint[2])} page</p>`;
+      }
+
+      html += `</div>`;
+    }
+    html += `</div>`;
+  }
+
+  return html || '<p class="muted small">No findings from this evaluation.</p>';
 }
 
 function findJourneyForAC(journeyLog, acId) {
@@ -2259,7 +2354,7 @@ function buildTokens(opts = {}) {
     `</dl></div></details>`;
 
   const pathComparisonTable = pathRows.length
-    ? `<table class="tbl mb1"><thead><tr><th>Journey</th><th>Persona</th><th>Expected</th><th>Actual</th><th>Match</th><th>Drift Notes</th></tr></thead><tbody>${pathRows.join('\n')}</tbody></table>${pathLegend}`
+    ? `<table class="tbl mb1"><thead><tr><th>Journey</th><th>Target Role</th><th>Expected</th><th>Actual</th><th>Match</th><th>Drift Notes</th></tr></thead><tbody>${pathRows.join('\n')}</tbody></table>${pathLegend}`
     : '';
 
   // ---- Usability Table ----
@@ -2607,6 +2702,7 @@ function buildTokens(opts = {}) {
     '{{AI_INSIGHTS}}': aiInsights,
     '{{AI_INSIGHTS_DISPLAY}}': aiInsightsDisplay,
     '{{DELTA_HTML}}': buildDeltaHtml(),
+    '{{REPORT_INTRO_HTML}}': buildReportIntroHtml(),
     '{{DELTA_DISPLAY}}': fs.existsSync(path.join(absArtifacts, 'mr-delta.json')) ? '' : 'display:none',
     '{{ITERATION_DISPLAY}}': fs.existsSync(path.join(absArtifacts, 'iteration-log.json')) ? '' : 'display:none',
     '{{ITERATION_TIMELINE_HTML}}': buildIterationTimelineHtml(),
@@ -2621,7 +2717,7 @@ function buildTokens(opts = {}) {
     '{{PERSONA_WALKTHROUGH_DATA}}': buildPersonaWalkthroughData(),
     '{{CODE_DELTAS_HTML}}': buildCodeDeltasHtml(),
     '{{FIXES_HTML}}': buildFixesHtml(),
-    '{{FIXES_TAB_DISPLAY}}': fs.existsSync(path.join(absArtifacts, 'refinement-suggestions.json')) || fs.existsSync(path.join(absArtifacts, 'fix-log.json')) ? '' : 'display:none',
+    '{{FIXES_TAB_DISPLAY}}': fs.existsSync(path.join(absArtifacts, 'refinement-suggestions.json')) || fs.existsSync(path.join(absArtifacts, 'fix-log.json')) || fs.existsSync(path.join(absArtifacts, 'consistency-report.json')) ? '' : 'display:none',
     '{{CONSISTENCY_HTML}}': buildConsistencyHtml(),
     '{{CONSISTENCY_TAB_DISPLAY}}': fs.existsSync(path.join(absArtifacts, 'consistency-report.json')) ? '' : 'display:none',
     '{{REVIEW_TAB_DISPLAY}}': flaggedCount > 0 ? '' : 'display:none',

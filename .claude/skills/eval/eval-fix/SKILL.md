@@ -128,4 +128,6 @@ If a dev server is running with HMR, 3 seconds is sufficient. For static builds,
 - Apply consistency fixes FIRST (they reduce noise for subsequent iterations)
 - Each fix should be minimal — change the least amount of code needed
 - Do not refactor or restructure — only fix the specific issue
-- If a fix would require significant new code (>50 lines), log it as "requires manual implementation" and skip
+- Every applied fix MUST trace back to a `criterion_id` or `guideline_id` — no speculative improvements
+- Do NOT make changes that aren't backed by a specific suggestion in refinement-suggestions.json
+- Do NOT add features, polish, or enhancements beyond what the failing AC or violated guideline requires

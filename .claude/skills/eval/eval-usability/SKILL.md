@@ -119,8 +119,8 @@ Each persona runs their OWN Playwright walkthrough as an independent sub-agent. 
 
 Each persona agent receives ONLY:
 - Their persona YAML file (full — domain_knowledge, patience, constraints, primary_jobs)
-- The prototype URL
-- Their goal (primary journey goal from extract-state.json, rephrased as a user task)
+- The prototype BASE URL (homepage, not a deep link)
+- Their task-to-be-done (plain-language user goal from extract-state.json `tasks_to_be_done`, NOT AC text)
 - The navigation hints as FALLBACK ONLY (see Step 1e below)
 
 Each persona agent does NOT receive:
@@ -136,10 +136,16 @@ Read the persona file at .context/usability-testing/personas/<persona-id>.yaml.
 You ARE this persona. Your experience level, domain knowledge, exploration tendency,
 patience, and constraints define exactly how you navigate.
 
-Navigate to <prototype-url>.
-Your goal: <goal from journey definition, rephrased as user task>
+Navigate to <prototype-base-url> (the application homepage).
+You see the application's left navigation sidebar — just as a real user would when
+they first open the application. You have NOT been told where to go.
 
-Navigate the UI as this persona would, respecting your constraints:
+Your task: <task-to-be-done from extract-state.json tasks_to_be_done>
+(Example: "Find out why your model deployment is queued and when it will be ready")
+
+Find where to go and complete the task. Think aloud as you navigate.
+
+Respect your persona's constraints:
 - If exploration_tendency is low: stick to the obvious path, don't explore side menus
 - If exploration_tendency is high: check Advanced Settings, expand optional sections
 - If domain_knowledge shows a topic as none/minimal: be confused by jargon for that topic
@@ -159,6 +165,12 @@ If you get stuck (can't find where to go after reasonable exploration for your t
 - Continue from the assisted location
 
 If your constraints say to abandon after N confusion events, do so.
+
+Screenshot rules (these are seen by a human reviewer):
+- Take a screenshot whenever the view changes meaningfully (new page, modal/form opens, content loads)
+- Do NOT take screenshots of identical-looking intermediate navigation (clicking sidebar = skip unless something unexpected happens)
+- Every screenshot should show something the reviewer needs to see to understand your experience
+- In the narration, describe WHAT is visible and WHY it matters for your task
 
 Save screenshots to: .artifacts/<KEY>/screenshots/persona-<persona-id>-step-N.png
 Write your think-aloud trace to: .artifacts/<KEY>/usability-thinkaloud-<persona-id>.md

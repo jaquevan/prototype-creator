@@ -101,6 +101,40 @@ Each journey includes: `id`, `title`, `persona`, `source`, `ac_ids`, `expected_p
 
 **Source labeling:** Use explicit user story text if available. Otherwise: `"Inferred from AC-6: <verbatim text>"`. Never synthesize fake user stories.
 
+### Step 5b: Derive Tasks-to-be-Done (for blind persona walkthroughs)
+
+After journeys are defined, produce a `tasks_to_be_done` array in extract-state.json. These are **plain-language user goals** given to blind personas — NOT acceptance criteria language.
+
+**Sources (priority order):**
+1. `outcome-context.json > problem_statement` — the real user problem being solved
+2. RFE user stories — "As a [role], I want to [goal] so that [benefit]"
+3. Journey titles — rephrased as user tasks
+
+**Rules:**
+- Write as if briefing a usability test participant: "Your task is to..."
+- No internal jargon (no "Given/When/Then", no "DSC", no "AC-1")
+- Should be completable by looking at the UI — not require backend knowledge
+- 1-3 tasks per eval (map to the main user flows, not one per AC)
+
+**Examples:**
+- Bad: "Given Kueue is enabled in the DSC and the namespace has the managed label, verify scheduling status displays"
+- Good: "Find out why your model deployment is queued and when it will be ready"
+- Bad: "Verify that Kueue columns are hidden when feature is not enabled"
+- Good: "Check if there's any scheduling information visible for your deployments"
+
+**Output format in extract-state.json:**
+```json
+{
+  "tasks_to_be_done": [
+    {
+      "task": "Find out why your model deployment is queued and when it will be ready",
+      "source": "Outcome problem statement: ML engineers cannot see why deployments are delayed",
+      "covers_acs": ["AC-1", "AC-4", "AC-6"]
+    }
+  ]
+}
+```
+
 ### Step 6: Build Breadcrumb
 
 Trace: Outcome → RFE → STRAT → Prototype (branch/MR) → Eval Report.

@@ -443,6 +443,11 @@ details[open] summary .section-icon{opacity:0.8}
   <!-- Left Panel: Report -->
   <div class="split-left">
 
+    <!-- Report Intro (what am I looking at) -->
+    <div style="margin-bottom:1.25rem;padding:0.75rem 1rem;background:var(--bg2);border-radius:0.5rem;border:1px solid var(--border)">
+      {{REPORT_INTRO_HTML}}
+    </div>
+
     <!-- Stats row -->
     <div class="stats-row">
       <div class="stat" onclick="scrollToSection('ac-results')">
@@ -566,7 +571,7 @@ details[open] summary .section-icon{opacity:0.8}
 
     <div class="panel-tabs">
       <button class="panel-tab active" onclick="switchTab('journeys')">Journeys</button>
-      <button class="panel-tab" onclick="switchTab('fixes')" style="{{FIXES_TAB_DISPLAY}}">Fixes</button>
+      <button class="panel-tab" onclick="switchTab('fixes')" style="{{FIXES_TAB_DISPLAY}}">Findings</button>
       <button class="panel-tab" onclick="switchTab('consistency')" style="{{CONSISTENCY_TAB_DISPLAY}}">Consistency</button>
     </div>
 
@@ -588,10 +593,10 @@ details[open] summary .section-icon{opacity:0.8}
       </details>
     </div>
 
-    <!-- Tab: Fixes -->
+    <!-- Tab: Findings -->
     <div class="panel-content" id="panel-fixes">
-      <h2>Fixes</h2>
-      <p class="small muted" style="margin:-0.5rem 0 1rem">Code changes applied during Phase A to resolve failing acceptance criteria.</p>
+      <h2>Findings &amp; Changes</h2>
+      <p class="small muted" style="margin:-0.5rem 0 1rem">Everything the evaluation found — fixes applied to pass acceptance criteria, and design consistency issues for human review.</p>
       {{FIXES_HTML}}
     </div>
 
@@ -827,17 +832,27 @@ function renderPersonaModalStep() {
   var ctx = document.getElementById('modalCtx');
   var html = '';
 
-  if (currentPersonaStep === 0 && data.goals && data.goals.length) {
-    html += '<div style="margin-bottom:1rem;padding:0.75rem;background:var(--bg2);border-radius:0.375rem">';
-    html += '<p style="margin:0 0 0.5rem;font-weight:600;font-size:0.8125rem">Verifying Acceptance Criteria</p>';
-    for (var gi = 0; gi < data.goals.length; gi++) {
-      var g = data.goals[gi];
-      html += '<div style="margin:0.25rem 0;padding:0.25rem 0;' + (gi > 0 ? 'border-top:1px solid var(--border);' : '') + '">';
-      if (g.ac_ids && g.ac_ids.length) html += '<span style="color:var(--accent);font-family:var(--font-mono);font-size:0.7rem;font-weight:600">' + escH(g.ac_ids.join(', ')) + '</span><br>';
-      html += '<span style="font-size:0.8rem">' + escH(g.title) + '</span>';
-      html += '</div>';
-    }
+  // Task-to-be-done: persistent visible bar (always shows the primary task)
+  if (data.goals && data.goals.length) {
+    var primaryTask = data.goals[0].title;
+    html += '<div style="margin-bottom:0.75rem;padding:0.5rem 0.75rem;background:var(--bg2);border-radius:0.375rem;border-left:3px solid var(--accent)">';
+    html += '<p class="small" style="margin:0;color:var(--text2);font-weight:500">Task</p>';
+    html += '<p style="margin:0.15rem 0 0;font-size:0.875rem;font-weight:500">' + escH(primaryTask) + '</p>';
     html += '</div>';
+
+    // AC details collapsible (for reference)
+    if (data.goals.length > 1 || (data.goals[0].ac_ids && data.goals[0].ac_ids.length)) {
+      html += '<details style="margin-bottom:0.5rem">';
+      html += '<summary class="small muted" style="cursor:pointer;padding:0.2rem 0">Acceptance criteria being verified</summary>';
+      html += '<div style="padding:0.35rem 0.75rem;margin-top:0.25rem">';
+      for (var gi = 0; gi < data.goals.length; gi++) {
+        var g = data.goals[gi];
+        if (g.ac_ids && g.ac_ids.length) {
+          html += '<p class="small" style="margin:0.15rem 0"><span style="color:var(--accent);font-family:var(--font-mono);font-size:0.7rem;font-weight:600">' + escH(g.ac_ids.join(', ')) + '</span> ' + escH(g.title) + '</p>';
+        }
+      }
+      html += '</div></details>';
+    }
   }
 
   // Step header with patience meter
@@ -873,7 +888,7 @@ function renderPersonaModalStep() {
   // Think-aloud content
   if (step.trying) {
     html += '<div style="margin-bottom:0.75rem;padding:0.4rem 0.6rem;background:rgba(0,102,204,0.04);border-radius:4px">';
-    html += '<p class="small" style="margin:0;font-weight:600;color:var(--accent)">Testing: ' + escH(step.trying) + '</p>';
+    html += '<p class="small" style="margin:0;font-weight:600;color:var(--accent)">Action: ' + escH(step.trying) + '</p>';
     html += '</div>';
   }
 
