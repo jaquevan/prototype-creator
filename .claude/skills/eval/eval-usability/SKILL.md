@@ -115,12 +115,14 @@ Each persona runs their OWN Playwright walkthrough as an independent sub-agent. 
 | `constraints[]` | Hard behavioral rules: "After 3 confusion events, abandon", "CANNOT use mouse" (Sam). |
 | `behavioral_attributes.patience` | How fast frustration builds — Low drains 3x faster than High. |
 
-**Launch each persona as a forked sub-agent (run in background, parallel):**
+**Launch one sub-agent PER PERSONA PER TASK (all in parallel):**
 
-Each persona agent receives ONLY:
+Each persona completes ALL tasks from `extract-state.json > tasks_to_be_done`. For 2 personas and 3 tasks, this means 6 parallel sub-agents.
+
+Each persona-task agent receives ONLY:
 - Their persona YAML file (full — domain_knowledge, patience, constraints, primary_jobs)
 - The prototype BASE URL (homepage, not a deep link)
-- Their task-to-be-done (plain-language user goal from extract-state.json `tasks_to_be_done`, NOT AC text)
+- ONE specific task-to-be-done (plain-language user goal from the tasks array)
 - The navigation hints as FALLBACK ONLY (see Step 1e below)
 
 Each persona agent does NOT receive:
@@ -129,7 +131,7 @@ Each persona agent does NOT receive:
 - Other persona's results
 - The evaluation rubric (they're users, not evaluators)
 
-**Prompt for each persona sub-agent:**
+**Prompt for each persona-task sub-agent:**
 
 ```
 Read the persona file at .context/usability-testing/personas/<persona-id>.yaml.
@@ -140,7 +142,7 @@ Navigate to <prototype-base-url> (the application homepage).
 You see the application's left navigation sidebar — just as a real user would when
 they first open the application. You have NOT been told where to go.
 
-Your task: <task-to-be-done from extract-state.json tasks_to_be_done>
+Your task: <task from tasks_to_be_done[N].task>
 (Example: "Find out why your model deployment is queued and when it will be ready")
 
 Find where to go and complete the task. Think aloud as you navigate.
@@ -172,11 +174,15 @@ Screenshot rules (these are seen by a human reviewer):
 - Every screenshot should show something the reviewer needs to see to understand your experience
 - In the narration, describe WHAT is visible and WHY it matters for your task
 
-Save screenshots to: .artifacts/<KEY>/screenshots/persona-<persona-id>-step-N.png
-Write your think-aloud trace to: .artifacts/<KEY>/usability-thinkaloud-<persona-id>.md
+Save screenshots to: .artifacts/<KEY>/screenshots/persona-<persona-id>-task-<N>-step-<M>.png
+Write your think-aloud trace to: .artifacts/<KEY>/usability-thinkaloud-<persona-id>-task-<N>.md
 ```
 
-**Wait for all persona agents to complete.** Then read their output files.
+**Screenshot naming:** `persona-<id>-task-<N>-step-<M>.png` where N is the task index (1-based) and M is the step number. This separates screenshots by journey.
+
+**Think-aloud naming:** `usability-thinkaloud-<id>-task-<N>.md` — one file per persona per task.
+
+**Wait for all persona-task agents to complete.** Then read their output files.
 
 ### Step 1d-verify: BLOCKING — Verify persona screenshots exist
 

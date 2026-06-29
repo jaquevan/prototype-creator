@@ -87,6 +87,17 @@ After CI finishes, humans use `/prototype.pull` to switch a prototype into local
 prototype-creator/
 ├── .claude/
 │   ├── skills/                        # Claude Code skills (pipeline steps)
+│   │   ├── eval/                      # Eval pipeline (see .claude/skills/eval/README.md)
+│   │   │   ├── eval-iterate/          # Pipeline orchestrator (two-phase)
+│   │   │   ├── eval-extract/          # Pull Jira context, ACs, personas
+│   │   │   ├── eval-classify/         # Classify ACs into eval tiers
+│   │   │   ├── eval-hint/             # Extract navigation hints from source
+│   │   │   ├── eval-journey/          # Playwright walkthroughs (informed/blind)
+│   │   │   ├── eval-fix/              # Apply fixes from suggestions
+│   │   │   ├── eval-usability/        # Phase B persona scoring
+│   │   │   ├── eval-consistency/      # PatternFly guideline checks
+│   │   │   ├── eval-report/           # Render HTML report
+│   │   │   └── eval-review/           # Conversational review entry point
 │   │   ├── prototype-create/          # Generate prototype from RFE
 │   │   ├── prototype-refine/          # Iterate on existing prototype
 │   │   ├── prototype-review/          # Score against UX rubric
@@ -159,6 +170,8 @@ make test
 ### Fetching Context
 
 **Required before running eval-iterate.** These bootstrap external repos into `.context/` for usability scoring and design consistency checking. Requires VPN for GitLab repos.
+
+See `.claude/skills/eval/README.md` for full eval pipeline documentation including flags (`--no-fix`, `--max-iterations`, `--usability`, `--no-iterate`) and designer workflow.
 
 ```bash
 # All at once:

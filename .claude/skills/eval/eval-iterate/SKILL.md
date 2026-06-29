@@ -35,6 +35,7 @@ Ensure `.context/usability-testing/`, `.context/consistency-checker/` are bootst
 | `--depth` | `deep` | No | `deep` |
 | `--usability` | `deep` or `skip` | No | `deep` |
 | `--no-iterate` | flag | No | Off |
+| `--no-fix` | flag | No | Off |
 
 ## Pipeline Flow (Two-Phase)
 
@@ -64,6 +65,7 @@ FLAGGED items are acceptable (they need human review). The Phase A loop only tar
 iteration = 0
 max_iterations = parse --max-iterations (default: 3)
 usability_flag = parse --usability (default: "deep")
+no_fix = parse --no-fix (default: false)
 
 # Initialize persistent state (survives context compression)
 python3 scripts/eval_state.py init .artifacts/<KEY>/eval-state.yaml \
@@ -168,6 +170,13 @@ LOOP:
     BREAK → proceed to Phase B
 
   # ── Fix ────────────────────────────────────────────────────────
+  if no_fix:
+    Set exit_reason = "no_fix"
+    python3 scripts/eval_state.py set .artifacts/<KEY>/eval-state.yaml \
+      exit_reason=no_fix ac_pass=false
+    BREAK → proceed to Phase B
+    # Findings remain in refinement-suggestions.json for human/agent review
+
   Read .claude/skills/eval/eval-fix/SKILL.md and execute it
   # Applies fixes from refinement-suggestions.json (AC failures + consistency)
 
@@ -221,6 +230,31 @@ Append to .artifacts/<KEY>/iteration-log.json:
 REPORT:
 Read .claude/skills/eval/eval-report/SKILL.md and execute it with:
   --note="Phase A: <exit_reason> (<iteration> iterations). Phase B: <usability status>"
+
+# ═══════════════════════════════════════════════════════════════════
+# NOTIFY (open report + present summary)
+# ═══════════════════════════════════════════════════════════════════
+
+# Open the report for the designer
+open .artifacts/<KEY>/evaluation-report.html
+
+# Present narrative summary in chat (same model as eval-review)
+Read .artifacts/<KEY>/evaluation-report.csv and .artifacts/<KEY>/extract-state.json
+Compute pass/fail/flagged counts from CSV
+Present:
+
+  Eval complete for <KEY>: <story title>
+
+  **What passed:** <pass>/<total> acceptance criteria. [Usability: <score>/21]
+  **What needs attention:** <list failed/flagged items, 1 line each>
+  **What to do:** <prioritized actions from refinement-suggestions.json>
+
+  ---
+  How can I help?
+  • "Fix [issue]" — I'll apply the fix
+  • "Tell me more about [finding]"
+  • "Re-run eval"
+  • "Looks good"
 ```
 
 ## Selective Rerun (Phase A Iterations 2+)

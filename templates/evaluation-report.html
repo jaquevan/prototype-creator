@@ -118,10 +118,7 @@ details[open] summary::before{transform:rotate(90deg)}
 .header-toggle{background:none;border:none;cursor:pointer;font-size:0.8125rem;color:var(--text2);padding:0.25rem 0.5rem;font-family:var(--font-body);transition:color 0.15s}
 .header-toggle:hover{color:var(--text)}
 
-/* Header details */
-.header-details{background:var(--bg2);border-bottom:1px solid var(--border);padding:0.85rem 2rem;display:none}
-.header-details.open{display:block}
-.header-details p{margin:0.25rem 0;font-size:0.9375rem;color:var(--text)}
+/* Meta items */
 .meta-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:1rem 1.5rem;margin:0}
 .meta-item{font-size:0.8125rem;overflow:hidden}
 .meta-label{color:var(--text2);font-size:0.65rem;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:0.1rem}
@@ -386,6 +383,21 @@ details[open] summary .section-icon{opacity:0.8}
 .mt1{margin-top:1rem}
 .mt2{margin-top:2rem}
 .mb1{margin-bottom:1rem}
+
+/* Narrative Summary */
+.narrative-summary{margin-bottom:1.5rem;padding:1.25rem;background:var(--bg);border:1px solid var(--border);border-radius:0.5rem;border-left:3px solid var(--accent)}
+.narrative-section{margin-bottom:1rem}
+.narrative-section:last-child{margin-bottom:0}
+.narrative-section h3{font-family:var(--font-heading);font-size:0.8125rem;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:0.03em;margin:0 0 0.35rem}
+.narrative-section p{margin:0;font-size:0.9375rem;line-height:1.6}
+.narrative-finding{margin:0.35rem 0;border-radius:0.375rem}
+.narrative-finding summary{cursor:pointer;padding:0.4rem 0;font-size:0.875rem;line-height:1.5;list-style:none;display:flex;align-items:baseline;gap:0.4rem}
+.narrative-finding summary::-webkit-details-marker{display:none}
+.narrative-finding summary::before{content:'\25B6';display:inline-block;font-size:0.5rem;margin-right:0.25rem;transition:transform 0.15s;color:var(--text2)}
+.narrative-finding[open] summary::before{transform:rotate(90deg)}
+.narrative-evidence{padding:0.5rem 0.75rem 0.75rem 1.5rem;font-size:0.8125rem;color:var(--text2);line-height:1.6;border-left:2px solid var(--border);margin-left:0.5rem}
+.narrative-evidence p{margin:0.25rem 0}
+.narrative-fix{color:var(--text);font-style:italic}
 </style>
 </head>
 <body>
@@ -408,20 +420,6 @@ details[open] summary .section-icon{opacity:0.8}
   </div>
   <div class="header-actions">
     <button onclick="toggleCsvPreview()">CSV Preview</button>
-    <button class="header-toggle" id="detailsToggle" onclick="toggleDetails()" aria-label="Toggle details">Details ▶</button>
-  </div>
-</div>
-
-<!-- Header Details (collapsible) -->
-<div class="header-details" id="headerDetails">
-  <div style="display:flex;gap:2rem;align-items:flex-start;flex-wrap:wrap">
-    <div style="flex:1;min-width:200px">
-      <p style="font-size:0.8125rem;color:var(--text);line-height:1.6;margin:0">{{DESCRIPTION}}</p>
-    </div>
-    <div style="display:flex;gap:1.5rem;flex-shrink:0">
-      <div class="meta-item"><div class="meta-label">Depth</div><div class="meta-value"><span class="depth-badge depth-badge-{{DEPTH}}">{{DEPTH}}</span></div></div>
-      <div class="meta-item"><div class="meta-label">Evaluated</div><div class="meta-value">{{EVAL_DATE}}</div></div>
-    </div>
   </div>
 </div>
 
@@ -442,6 +440,9 @@ details[open] summary .section-icon{opacity:0.8}
 
   <!-- Left Panel: Report -->
   <div class="split-left">
+
+    <!-- Narrative Summary (designer-facing "what" overview) -->
+    {{NARRATIVE_SUMMARY}}
 
     <!-- Report Intro (what am I looking at) -->
     <div style="margin-bottom:1.25rem;padding:0.75rem 1rem;background:var(--bg2);border-radius:0.5rem;border:1px solid var(--border)">
@@ -646,6 +647,7 @@ details[open] summary .section-icon{opacity:0.8}
     <div class="modal-toast" id="modalToast">Copied for AI</div>
 
     <div class="modal-img-pane">
+      <div id="modalTaskTabs" style="display:none"></div>
       <img id="modalImg" src="" alt="Screenshot">
       <div class="modal-nav">
         <button id="modalPrev" onclick="modalNavigate(-1)">← Previous</button>
@@ -683,6 +685,7 @@ var personaWalkthroughData = {{PERSONA_WALKTHROUGH_DATA}};
 var currentScreenshotIdx = 0;
 var currentPersonaId = null;
 var currentPersonaStep = 0;
+var currentPersonaTask = 0;
 
 function downloadCSV() {
   // Collect human review notes from the Review tab
@@ -729,13 +732,6 @@ function downloadCSV() {
   a.download = 'evaluation-{{PROTOTYPE_ID}}.csv';
   a.click();
   URL.revokeObjectURL(a.href);
-}
-
-function toggleDetails() {
-  var details = document.getElementById('headerDetails');
-  var toggle = document.getElementById('detailsToggle');
-  var isOpen = details.classList.toggle('open');
-  toggle.textContent = isOpen ? 'Details ▼' : 'Details ▶';
 }
 
 var csvPreviewBuilt = false;
@@ -807,52 +803,82 @@ function switchTab(tab) {
 
 function openPersonaModal(personaId) {
   var data = personaWalkthroughData[personaId];
-  if (!data || !data.steps || !data.steps.length) return;
+  if (!data) return;
+  // Support both old (data.steps) and new (data.tasks) format
+  var hasTasks = data.tasks && data.tasks.length > 0;
+  if (!hasTasks && (!data.steps || !data.steps.length)) return;
   currentPersonaId = personaId;
+  currentPersonaTask = 0;
   currentPersonaStep = 0;
   renderPersonaModalStep();
   document.getElementById('screenshotModal').classList.add('active');
 }
 
+function switchPersonaTask(taskIdx) {
+  currentPersonaTask = taskIdx;
+  currentPersonaStep = 0;
+  renderPersonaModalStep();
+}
+
 function renderPersonaModalStep() {
   var data = personaWalkthroughData[currentPersonaId];
   if (!data) return;
-  var step = data.steps[currentPersonaStep];
+
+  // Resolve current task and step (backward compat)
+  var hasTasks = data.tasks && data.tasks.length > 0;
+  var currentTaskData = hasTasks ? data.tasks[currentPersonaTask] : { steps: data.steps, task: (data.goals && data.goals[0]) ? data.goals[0].title : '' };
+  var step = currentTaskData.steps[currentPersonaStep];
   if (!step) return;
 
   var img = document.getElementById('modalImg');
   img.src = step.screenshot || '';
 
   var counter = document.getElementById('modalCounter');
-  counter.textContent = 'Step ' + step.step + ' of ' + data.steps.length + ' · ' + currentPersonaId;
+  var taskLabel = hasTasks && data.tasks.length > 1 ? 'Task ' + (currentPersonaTask + 1) + ' \u2014 ' : '';
+  counter.textContent = taskLabel + 'Step ' + step.step + ' of ' + currentTaskData.steps.length + ' \u00b7 ' + currentPersonaId;
 
   document.getElementById('modalPrev').disabled = currentPersonaStep === 0;
-  document.getElementById('modalNext').disabled = currentPersonaStep >= data.steps.length - 1;
+  document.getElementById('modalNext').disabled = currentPersonaStep >= currentTaskData.steps.length - 1;
 
   var ctx = document.getElementById('modalCtx');
   var html = '';
 
-  // Task-to-be-done: persistent visible bar (always shows the primary task)
-  if (data.goals && data.goals.length) {
-    var primaryTask = data.goals[0].title;
-    html += '<div style="margin-bottom:0.75rem;padding:0.5rem 0.75rem;background:var(--bg2);border-radius:0.375rem;border-left:3px solid var(--accent)">';
-    html += '<p class="small" style="margin:0;color:var(--text2);font-weight:500">Task</p>';
-    html += '<p style="margin:0.15rem 0 0;font-size:0.875rem;font-weight:500">' + escH(primaryTask) + '</p>';
-    html += '</div>';
-
-    // AC details collapsible (for reference)
-    if (data.goals.length > 1 || (data.goals[0].ac_ids && data.goals[0].ac_ids.length)) {
-      html += '<details style="margin-bottom:0.5rem">';
-      html += '<summary class="small muted" style="cursor:pointer;padding:0.2rem 0">Acceptance criteria being verified</summary>';
-      html += '<div style="padding:0.35rem 0.75rem;margin-top:0.25rem">';
-      for (var gi = 0; gi < data.goals.length; gi++) {
-        var g = data.goals[gi];
-        if (g.ac_ids && g.ac_ids.length) {
-          html += '<p class="small" style="margin:0.15rem 0"><span style="color:var(--accent);font-family:var(--font-mono);font-size:0.7rem;font-weight:600">' + escH(g.ac_ids.join(', ')) + '</span> ' + escH(g.title) + '</p>';
-        }
-      }
-      html += '</div></details>';
+  // Task tabs (colored filing system) — rendered above the image on the left
+  var tabColors = ['#0066cc', '#16a34a', '#d97706', '#7c3aed', '#0891b2'];
+  var tabsEl = document.getElementById('modalTaskTabs');
+  if (hasTasks && data.tasks.length > 1) {
+    var tabsHtml = '';
+    for (var ti = 0; ti < data.tasks.length; ti++) {
+      var tColor = tabColors[ti % tabColors.length];
+      var isActive = ti === currentPersonaTask;
+      var t = data.tasks[ti];
+      var tabOutcome = t.outcome === 'completed' ? '✓' : t.outcome === 'abandoned' ? '✗' : '?';
+      var tabPat = t.patienceEnd || 100;
+      var tabStyle = isActive
+        ? 'background:' + tColor + ';color:#fff;border-radius:4px 4px 0 0;padding:0.5rem 0.85rem;font-size:0.75rem;font-weight:600;cursor:pointer;border:none;text-align:left'
+        : 'background:rgba(255,255,255,0.08);color:rgba(255,255,255,0.7);border-radius:4px 4px 0 0;padding:0.5rem 0.85rem;font-size:0.75rem;cursor:pointer;border:none;text-align:left';
+      var taskShort = t.task.length > 40 ? t.task.slice(0, 38) + '...' : t.task;
+      tabsHtml += '<button style="' + tabStyle + '" onclick="switchPersonaTask(' + ti + ')">';
+      tabsHtml += '<span style="display:block">' + tabOutcome + ' ' + escH(taskShort) + '</span>';
+      tabsHtml += '<span style="display:block;font-size:0.65rem;opacity:0.8;margin-top:0.15rem">' + t.steps.length + ' steps · ' + tabPat + '% patience</span>';
+      tabsHtml += '</button>';
     }
+    tabsEl.innerHTML = tabsHtml;
+    tabsEl.style.display = 'flex';
+    tabsEl.style.cssText = 'display:flex;gap:2px;padding:0.5rem 0.75rem 0;background:rgba(0,0,0,0.4);flex-wrap:wrap';
+  } else {
+    tabsEl.style.display = 'none';
+  }
+
+  // Persistent task bar
+  if (currentTaskData.task) {
+    html += '<div style="margin-bottom:0.75rem;padding:0.5rem 0.75rem;background:var(--bg2);border-radius:0.375rem;border-left:3px solid ' + tabColors[currentPersonaTask % tabColors.length] + '">';
+    html += '<p class="small" style="margin:0;color:var(--text2);font-weight:500">Task</p>';
+    html += '<p style="margin:0.15rem 0 0;font-size:0.875rem;font-weight:500">' + escH(currentTaskData.task) + '</p>';
+    if (currentTaskData.covers_acs && currentTaskData.covers_acs.length) {
+      html += '<p class="small" style="margin:0.25rem 0 0;color:var(--accent);font-family:var(--font-mono)">' + escH(currentTaskData.covers_acs.join(', ')) + '</p>';
+    }
+    html += '</div>';
   }
 
   // Step header with patience meter
@@ -905,10 +931,11 @@ function renderPersonaModalStep() {
     html += '</div>';
   }
 
-  // Show dimension scores on the last step
-  if (currentPersonaStep === data.steps.length - 1 && data.dimensions) {
-    html += '<div style="margin-top:1rem;padding-top:0.75rem;border-top:1px solid var(--border)">';
-    html += '<p class="small" style="margin:0 0 0.5rem;font-weight:600;color:var(--text2)">Final Dimension Scores</p>';
+  // Dimension scores — always available as collapsible (not hidden on last step only)
+  if (data.dimensions && Object.keys(data.dimensions).length) {
+    html += '<details style="margin-top:1rem;padding-top:0.75rem;border-top:1px solid var(--border)">';
+    html += '<summary style="font-size:0.8rem;font-weight:600;color:var(--text2);cursor:pointer;padding:0.25rem 0">Usability Dimension Scores</summary>';
+    html += '<div style="margin-top:0.5rem">';
     for (var dimId in data.dimensions) {
       var dim = data.dimensions[dimId];
       var scoreColor = dim.score <= 1 ? 'var(--status-danger)' : dim.score === 2 ? 'var(--status-warning)' : 'var(--status-success)';
@@ -918,7 +945,7 @@ function renderPersonaModalStep() {
       html += '</div>';
       if (dim.finding) html += '<p class="small muted" style="margin:-0.1rem 0 0.25rem;font-size:0.7rem">' + escH(dim.finding) + '</p>';
     }
-    html += '</div>';
+    html += '</div></details>';
   }
 
   ctx.innerHTML = html;
@@ -928,8 +955,10 @@ function modalNavigate(dir) {
   if (currentPersonaId) {
     var data = personaWalkthroughData[currentPersonaId];
     if (!data) return;
+    var hasTasks = data.tasks && data.tasks.length > 0;
+    var currentSteps = hasTasks ? data.tasks[currentPersonaTask].steps : data.steps;
     var newIdx = currentPersonaStep + dir;
-    if (newIdx >= 0 && newIdx < data.steps.length) {
+    if (newIdx >= 0 && newIdx < currentSteps.length) {
       currentPersonaStep = newIdx;
       renderPersonaModalStep();
     }
