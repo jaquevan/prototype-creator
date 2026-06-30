@@ -736,12 +736,41 @@ function buildPersonaWalkthroughData() {
         }
       }
 
+      // Load general think-aloud as fallback when task-specific files don't exist
+      const generalTaPath = path.join(absArtifacts, `usability-thinkaloud-${pid}.md`);
+      const generalTaRaw = readFileOr(generalTaPath, '');
+
       for (const [taskIdx, screenshots] of Object.entries(taskScreenshots)) {
         const thinkaloudPath = path.join(absArtifacts, `usability-thinkaloud-${pid}-task-${taskIdx}.md`);
-        const thinkaloudRaw = readFileOr(thinkaloudPath, '');
+        let thinkaloudRaw = readFileOr(thinkaloudPath, '');
+
+        // Fall back to general think-aloud for task 1 if no task-specific file exists
+        if (!thinkaloudRaw && generalTaRaw && parseInt(taskIdx) === 1) {
+          thinkaloudRaw = generalTaRaw;
+        }
+
         const taskDef = tasksDefined[parseInt(taskIdx) - 1] || {};
 
-        const steps = parseThinkAloudSteps(thinkaloudRaw, screenshots, screenshotsDir, confusionEvents, consistencyReport);
+        let steps = parseThinkAloudSteps(thinkaloudRaw, screenshots, screenshotsDir, confusionEvents, consistencyReport);
+
+        // If parsing produced no steps but we have screenshots, create minimal screenshot-only steps
+        if (steps.length === 0 && screenshots.length > 0) {
+          for (const ss of screenshots.sort((a, b) => a.step - b.step)) {
+            const ssB64 = fs.existsSync(path.join(screenshotsDir, ss.file))
+              ? fs.readFileSync(path.join(screenshotsDir, ss.file)).toString('base64')
+              : '';
+            steps.push({
+              step: ss.step,
+              see: '',
+              think: '',
+              tryAction: '',
+              confidence: '',
+              patience: '100',
+              screenshot: ssB64 ? `data:image/png;base64,${ssB64}` : '',
+              confusion: []
+            });
+          }
+        }
 
         tasks.push({
           task: taskDef.task || `Task ${taskIdx}`,
@@ -1912,6 +1941,36 @@ function buildNarrativeSummary() {
     actionsHtml = `<div class="action-bar"><button class="action-btn action-review" onclick="scrollToSection('flagged')">Review Flagged Items</button></div>`;
   }
 
+  // --- RFE / Outcome summary ---
+  const outcomeContext = readJsonOr(path.join(absArtifacts, 'outcome-context.json'), null);
+  const rfeKey = extractState ? extractState.rfe_key : null;
+  let rfeSummaryHtml = '';
+  if (outcomeContext && outcomeContext.problem_statement) {
+    rfeSummaryHtml = `<div class="overview-rfe"><p class="overview-rfe-text">${escapeHtml(outcomeContext.problem_statement)}</p></div>`;
+  }
+
+  // --- Iteration summary ---
+  let iterSummaryHtml = '';
+  if (iterationLog) {
+    const iters = iterationLog.iterations || [];
+    const iterCount = iters.length;
+    const exitReason = iterationLog.exit_reason || '';
+    const totalFixed = iterationLog.total_criteria_fixed || 0;
+    const consistencyFixes = iters.reduce((sum, i) => sum + (i.consistency_fixes || 0), 0);
+    const phaseB = iterationLog.phase_b || {};
+    const personasEvaluated = phaseB.personas_evaluated || [];
+
+    let iterParts = [];
+    if (iterCount > 0) iterParts.push(`${iterCount} iteration${iterCount > 1 ? 's' : ''}`);
+    if (totalFixed > 0) iterParts.push(`${totalFixed} criteria fixed`);
+    if (consistencyFixes > 0) iterParts.push(`${consistencyFixes} consistency fixes applied`);
+    if (personasEvaluated.length > 0) iterParts.push(`${personasEvaluated.length} persona${personasEvaluated.length > 1 ? 's' : ''} tested`);
+
+    if (iterParts.length) {
+      iterSummaryHtml = `<div class="overview-iter"><p class="small" style="color:var(--text2);margin:0">${iterParts.join(' · ')}</p></div>`;
+    }
+  }
+
   // --- Assemble ---
   let html = `<section class="report-overview" data-onboarding="true">`;
 
@@ -1922,8 +1981,11 @@ function buildNarrativeSummary() {
 
   html += `<div class="overview-context">`;
   html += `<p class="overview-title">${escapeHtml(storyTitle)}</p>`;
-  html += `<p class="overview-meta">${escapeHtml(protoId)}${usabilityScore ? ' &middot; Usability: ' + escapeHtml(String(usabilityScore)) : ''}</p>`;
+  html += `<p class="overview-meta">${escapeHtml(protoId)}${rfeKey ? ' · RFE: ' + escapeHtml(rfeKey) : ''}${usabilityScore ? ' · Usability: ' + escapeHtml(String(usabilityScore)) : ''}</p>`;
   html += `</div>`;
+
+  html += rfeSummaryHtml;
+  html += iterSummaryHtml;
 
   html += `<div class="overview-gap" data-tour="gap">`;
   html += `<div class="gap-header">`;
@@ -2032,21 +2094,58 @@ function buildTokens(opts = {}) {
     ? ` <span class="sa-tag sa-error" style="font-size:0.55rem;vertical-align:middle" title="${consistencyViolationIds.size} design guideline violations found on prototype pages">${consistencyViolationIds.size} design issues</span>`
     : '';
 
-  const acTableRowsJira = jiraRows.map(r => {
-    const id = escapeHtml(r.criterion_id);
-    const criterion = escapeHtml(r.criterion_text);
-    const verdict = badgeHtml(r.verdict, r.criterion_id);
-    const evidence = escapeHtml(r.rationale || r.evidence || '');
-    return `<tr><td><strong>${id}</strong></td><td>${criterion}</td><td>${verdict}</td><td class="small">${evidence}</td></tr>`;
-  }).join('\n');
+  // Build AC-to-screenshot map from journeys for clickable evidence
+  const acScreenshotMap = {};
+  for (const journey of journeys) {
+    const acIds = journey.ac_ids || [];
+    const steps = journey.steps || [];
+    for (const acId of acIds) {
+      if (acScreenshotMap[acId]) continue;
+      const lastStep = steps[steps.length - 1];
+      if (lastStep && lastStep.screenshot) {
+        const ssFile = path.basename(lastStep.screenshot);
+        if (screenshots[ssFile]) {
+          acScreenshotMap[acId] = { file: ssFile, journey: journey.title || '', persona: journey.persona || '' };
+        }
+      }
+    }
+  }
 
-  const acTableRowsInferred = inferredRows.map(r => {
+  // Count persona coverage per AC from task definitions
+  const tasksDefined = extractState ? (extractState.tasks_to_be_done || []) : [];
+  const acPersonaCoverage = {};
+  const ud2 = journeyLog ? journeyLog.usability_dimensions : null;
+  const personasEval = (ud2 && ud2.personas_evaluated) ? ud2.personas_evaluated : [];
+  for (const td of tasksDefined) {
+    for (const acId of (td.covers_acs || [])) {
+      if (!acPersonaCoverage[acId]) acPersonaCoverage[acId] = 0;
+      acPersonaCoverage[acId] += personasEval.length;
+    }
+  }
+
+  function buildAcRow(r) {
     const id = escapeHtml(r.criterion_id);
-    const criterion = escapeHtml(r.criterion_text);
+    const rawText = r.criterion_text || '';
+    const truncLen = 120;
+    const needsTrunc = rawText.length > truncLen;
+    const shortText = needsTrunc ? escapeHtml(rawText.slice(0, truncLen).replace(/\s+\S*$/, '')) + '...' : escapeHtml(rawText);
+    const criterionHtml = needsTrunc
+      ? `<span class="ac-text-short">${shortText} <button class="ac-expand" onclick="this.parentElement.style.display='none';this.parentElement.nextElementSibling.style.display=''">[more]</button></span><span class="ac-text-full" style="display:none">${escapeHtml(rawText)} <button class="ac-expand" onclick="this.parentElement.style.display='none';this.parentElement.previousElementSibling.style.display=''">[less]</button></span>`
+      : escapeHtml(rawText);
     const verdict = badgeHtml(r.verdict, r.criterion_id);
     const evidence = escapeHtml(r.rationale || r.evidence || '');
-    return `<tr><td><strong>${id}</strong></td><td>${criterion}</td><td>${verdict}</td><td class="small">${evidence}</td></tr>`;
-  }).join('\n');
+    const hasPersonaEvidence = acPersonaCoverage[r.criterion_id] > 0;
+    const ssInfo = acScreenshotMap[r.criterion_id];
+    let viewLink = '';
+    if (hasPersonaEvidence || ssInfo) {
+      const label = hasPersonaEvidence ? 'View walkthrough' : 'View';
+      viewLink = `<a href="#" class="ac-view-link" onclick="openAcEvidence('${escapeHtml(r.criterion_id)}');return false">${label}</a>`;
+    }
+    return `<tr><td><strong>${id}</strong></td><td>${criterionHtml}</td><td>${verdict}</td><td class="small">${evidence}${evidence && viewLink ? '<br>' : ''}${viewLink}</td></tr>`;
+  }
+
+  const acTableRowsJira = jiraRows.map(buildAcRow).join('\n');
+  const acTableRowsInferred = inferredRows.map(buildAcRow).join('\n');
 
   const acJiraCount = jiraRows.length;
 
@@ -2807,6 +2906,19 @@ function buildTokens(opts = {}) {
     `{src:${JSON.stringify(s.src)},narration:${JSON.stringify(s.narration)},filename:${JSON.stringify(s.filename)},step:${JSON.stringify(s.step || null)}}`
   ).join(',\n');
 
+  // Build AC evidence data for client-side openAcEvidence()
+  const acEvidenceData = {};
+  for (const [acId, info] of Object.entries(acScreenshotMap)) {
+    const idx = screenshotIndexMap[info.file];
+    if (idx !== undefined) {
+      acEvidenceData[acId] = { idx, journey: info.journey, persona: info.persona };
+    } else if (screenshots[info.file]) {
+      const newIdx = registerScreenshot(info.file, `Evidence for ${acId}`, { ac: acId });
+      if (newIdx >= 0) acEvidenceData[acId] = { idx: newIdx, journey: info.journey, persona: info.persona };
+    }
+  }
+  const acEvidenceStr = JSON.stringify(acEvidenceData);
+
   // ---- CSV data for download (full 3-section format) ----
   const fullCsv = buildFullCsv(csvRaw, journeyLog, passCount, failCount, flaggedCount);
   const csvDataEscaped = fullCsv.replace(/\\/g, '\\\\').replace(/`/g, '\\`').replace(/\$/g, '\\$');
@@ -2883,6 +2995,7 @@ function buildTokens(opts = {}) {
     '{{ITERATION_TIMELINE_HTML}}': buildIterationTimelineHtml(),
     '{{CSV_DATA}}': csvDataEscaped,
     '{{SCREENSHOT_ARRAY}}': screenshotArrayStr,
+    '{{AC_EVIDENCE_DATA}}': acEvidenceStr,
     '{{FLAGGED_DATA}}': buildFlaggedDataArray(csvRows, journeyLog, screenshots),
     '{{PERSONAS_TAB_DISPLAY}}': (ud && ud.personas_evaluated && ud.personas_evaluated.length) ? '' : 'display:none',
     '{{DELTAS_TAB_DISPLAY}}': fs.existsSync(path.join(absArtifacts, 'mr-delta.json')) ? '' : 'display:none',

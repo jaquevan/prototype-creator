@@ -98,13 +98,21 @@ details[open] summary::before{transform:rotate(90deg)}
 .modal-toast.show{opacity:1}
 @media(max-width:1200px){.modal-content{flex-direction:column;height:92vh}.modal-img-pane{flex:0 0 55%}.modal-ctx-pane{flex:1;border-left:none;border-top:1px solid var(--border)}}
 
-/* Split layout */
-.split{display:flex;height:calc(100vh - 56px)}
-.split-left{flex:1;overflow-y:auto;padding:2rem 2.5rem;border-right:1px solid var(--border);min-width:300px}
-.split-right{flex:1;overflow-y:auto;padding:2rem 2.5rem;min-width:400px}
-.resizer{width:4px;cursor:col-resize;background:var(--border);flex-shrink:0;transition:background 0.15s}
-.resizer:hover,.resizer.active{background:var(--accent)}
-@media(max-width:900px){.split{flex-direction:column;height:auto}.split-left,.split-right{border-right:none;min-width:0}.resizer{display:none}}
+/* Main content — single column */
+.main-content{max-width:64rem;margin:0 auto;padding:2rem 2.5rem}
+@media(max-width:700px){.main-content{padding:1.5rem 1rem}}
+
+/* Appendix section */
+.appendix{border-top:2px solid var(--border);margin-top:3rem;padding-top:2rem}
+.appendix-label{font-family:var(--font-heading);font-size:0.75rem;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--text2);margin:0 0 1.5rem}
+
+/* Appendix tabs */
+.appendix-tabs{display:flex;border-bottom:2px solid var(--border);margin-bottom:1.5rem;gap:0;flex-wrap:wrap}
+.appendix-tab{padding:0.5rem 1.25rem;font-size:0.875rem;font-weight:500;color:var(--text2);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-2px;background:none;border-top:none;border-left:none;border-right:none;font-family:var(--font-body)}
+.appendix-tab:hover{color:var(--text)}
+.appendix-tab.active{color:var(--accent);border-bottom-color:var(--accent)}
+.appendix-content{display:none}
+.appendix-content.active{display:block}
 
 /* Header bar */
 .header-bar{position:sticky;top:0;z-index:100;background:var(--bg);border-bottom:1px solid var(--border);padding:0.75rem 2rem;display:flex;align-items:center;gap:1.5rem;flex-wrap:wrap}
@@ -392,9 +400,12 @@ details[open] summary .section-icon{opacity:0.8}
 .verdict-pass{background:rgba(22,163,74,0.08);color:var(--status-success);border:1px solid rgba(22,163,74,0.2)}
 .verdict-fail{background:rgba(220,38,38,0.08);color:var(--status-danger);border:1px solid rgba(220,38,38,0.2)}
 .verdict-review{background:rgba(217,119,6,0.08);color:var(--status-warning);border:1px solid rgba(217,119,6,0.2)}
-.overview-context{margin-bottom:1rem}
+.overview-context{margin-bottom:0.75rem}
 .overview-title{font-family:var(--font-heading);font-size:1.1rem;font-weight:600;margin:0}
 .overview-meta{font-size:0.8125rem;color:var(--text2);margin:0.2rem 0 0}
+.overview-rfe{margin-bottom:0.75rem;padding:0.75rem 1rem;background:var(--bg2);border-radius:0.375rem;border-left:3px solid var(--accent)}
+.overview-rfe-text{font-size:0.8125rem;line-height:1.6;color:var(--text);margin:0}
+.overview-iter{margin-bottom:0.75rem}
 .overview-gap{margin-bottom:1rem}
 .gap-header{display:flex;gap:1.5rem;flex-wrap:wrap;font-size:0.875rem;margin-bottom:0.75rem;padding-bottom:0.5rem;border-bottom:1px solid var(--border)}
 .gap-expected,.gap-actual{color:var(--text2)}
@@ -460,8 +471,7 @@ details[open] summary .section-icon{opacity:0.8}
 .help-anchor:hover{border-color:var(--accent);color:var(--accent);text-decoration:none}
 
 /* Post-modal tooltip tour */
-.split-left,.split-right{position:relative}
-.tour-tip{position:absolute;z-index:1500;background:var(--text);color:#fff;padding:0.75rem 1rem;border-radius:0.5rem;font-size:0.8125rem;line-height:1.5;max-width:280px;width:280px;box-shadow:0 8px 24px rgba(0,0,0,0.2);animation:tourTipIn 0.2s ease-out;pointer-events:auto}
+.tour-tip{position:fixed;z-index:1500;background:var(--text);color:#fff;padding:0.75rem 1rem;border-radius:0.5rem;font-size:0.8125rem;line-height:1.5;max-width:280px;width:280px;box-shadow:0 8px 24px rgba(0,0,0,0.2);animation:tourTipIn 0.2s ease-out;pointer-events:auto}
 @keyframes tourTipIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:translateY(0)}}
 .tour-tip::before{content:'';position:absolute;width:0.6rem;height:0.6rem;background:var(--text);transform:rotate(45deg)}
 .tour-tip.arrow-top::before{top:-0.3rem;left:1.5rem}
@@ -474,6 +484,12 @@ details[open] summary .section-icon{opacity:0.8}
 .tour-tip-btn-primary:hover{background:#fff}
 .tour-tip-counter{font-size:0.7rem;opacity:0.5;font-family:var(--font-mono)}
 .tour-highlight{outline:2px solid var(--accent);outline-offset:4px;border-radius:0.25rem;transition:outline-color 0.3s}
+
+/* AC table — truncation and view link */
+.ac-expand{background:none;border:none;color:var(--accent);cursor:pointer;font-size:0.75rem;font-family:var(--font-body);padding:0;margin-left:0.2rem}
+.ac-expand:hover{text-decoration:underline}
+.ac-view-link{display:inline-flex;align-items:center;gap:0.25rem;font-size:0.75rem;font-weight:600;color:var(--accent);text-decoration:none;padding:0.2rem 0;white-space:nowrap}
+.ac-view-link:hover{text-decoration:underline}
 
 .mode-badge{display:inline-block;padding:0.1rem 0.4rem;border-radius:3px;font-size:0.6rem;font-weight:700;letter-spacing:0.03em;text-transform:uppercase;margin-right:0.25rem}
 .mode-xray{background:rgba(109,40,217,0.1);color:#6d28d9}
@@ -517,72 +533,13 @@ details[open] summary .section-icon{opacity:0.8}
   <div class="csv-table-wrap" id="csvTableWrap"></div>
 </div>
 
-<!-- Split Pane -->
-<div class="split">
-
-  <!-- Left Panel: Report -->
-  <div class="split-left">
+<!-- Main Content — single column -->
+<main class="main-content">
 
     <!-- Narrative Summary (designer-facing "what" overview) -->
     {{NARRATIVE_SUMMARY}}
 
-    <!-- Evidence section (hidden by default, shown on click) -->
-    <details id="evidence-section" data-tour="evidence">
-    <summary style="cursor:pointer;font-weight:500;font-size:0.9375rem;padding:0.75rem 0;color:var(--text2);border-top:1px solid var(--border);margin-top:0.5rem">Full Evidence &amp; Details</summary>
-
-    <!-- Report Intro (what am I looking at) -->
-    <div style="margin-bottom:1.25rem;padding:0.75rem 1rem;background:var(--bg2);border-radius:0.5rem;border:1px solid var(--border)">
-      {{REPORT_INTRO_HTML}}
-    </div>
-
-    <!-- Stats row -->
-    <div class="stats-row" data-tour="stats">
-      <div class="stat" onclick="scrollToSection('ac-results')">
-        <div class="stat-n" style="color:var(--status-success)">{{PASS_COUNT}}</div>
-        <div class="stat-l">Criteria Passed</div>
-        <div class="stat-explainer">Acceptance criteria met</div>
-      </div>
-      <div class="stat" onclick="scrollToSection('ac-results')">
-        <div class="stat-n" style="color:var(--status-danger)">{{FAIL_COUNT}}</div>
-        <div class="stat-l">Criteria Failed</div>
-        <div class="stat-explainer">Not implemented or broken</div>
-      </div>
-      <div class="stat" onclick="scrollToSection('flagged')">
-        <div class="stat-n" style="color:var(--status-warning)">{{FLAGGED_COUNT}}</div>
-        <div class="stat-l">Flagged</div>
-        <div class="stat-explainer">Needs human judgment</div>
-      </div>
-      <div class="stat" onclick="scrollToSection('usability-dimensions')">
-        <div class="stat-n">{{USABILITY_SCORE}}</div>
-        <div class="stat-l">Usability</div>
-        <div class="stat-explainer">Score out of 21 (7 dimensions)</div>
-      </div>
-      <div class="stat" onclick="scrollToSection('path-comparison')">
-        <div class="stat-n">{{JOURNEY_RATIO}}</div>
-        <div class="stat-l">Journeys Passed</div>
-        <div class="stat-explainer">Persona walkthroughs completed</div>
-      </div>
-    </div>
-
-    {{STAT_DELTAS}}
-
-    <!-- Iteration History (always open) -->
-    <div id="iteration-timeline" style="{{ITERATION_DISPLAY}}">
-      <h2 style="margin-top:0.5rem">Iteration History</h2>
-      {{ITERATION_TIMELINE_HTML}}
-    </div>
-
-    <!-- What Changed (MR Delta) -->
-    <div id="what-changed" style="{{DELTA_DISPLAY}}">
-      <details open>
-        <summary style="font-size:0.875rem">What Changed in This MR</summary>
-        <div class="card card-compact" style="margin-top:0.5rem">
-          {{DELTA_HTML}}
-        </div>
-      </details>
-    </div>
-
-    <!-- AC Results: Jira ACs -->
+    <!-- Acceptance Criteria — primary content, always visible -->
     <h2 id="ac-results" data-tour="ac-table">Acceptance Criteria</h2>
     <p class="small muted" style="margin:-0.5rem 0 1rem">Source: <a href="{{JIRA_URL}}" target="_blank">{{PROTOTYPE_ID}}</a> — {{AC_JIRA_COUNT}} criteria extracted verbatim from ticket</p>
     <table class="tbl" id="ac-table-jira">
@@ -594,11 +551,11 @@ details[open] summary .section-icon{opacity:0.8}
       </tbody>
     </table>
 
-    <!-- AC Results: Evaluator Checks (collapsed by default) -->
+    <!-- Evaluator Checks (collapsed) -->
     <div id="evaluator-checks" style="{{INFERRED_CHECKS_DISPLAY}}">
       <details style="margin-top:1.5rem">
         <summary style="font-size:0.9375rem;font-weight:500">Evaluator Checks</summary>
-        <p class="small muted" style="margin:0.25rem 0 0.5rem">Additional quality checks identified from the code changes — these supplement the Jira acceptance criteria.</p>
+        <p class="small muted" style="margin:0.25rem 0 0.5rem">Additional quality checks identified from the code changes.</p>
         <table class="tbl" style="opacity:0.85">
           <thead>
             <tr><th style="width:3.5rem">ID</th><th>Check</th><th style="width:5.5rem">Verdict</th><th>Evidence</th></tr>
@@ -610,15 +567,7 @@ details[open] summary .section-icon{opacity:0.8}
       </details>
     </div>
 
-    <!-- Usability Dimensions -->
-    <h2 id="usability-dimensions" data-tour="usability">Usability Dimension Scores (INF) <a class="help-anchor" href="#scoring-methodology" onclick="document.getElementById('scoring-methodology').open=true;return true" title="How scores are calculated">?</a></h2>
-    {{USABILITY_TABLE}}
-    {{PATIENCE_TRACKING}}
-
-    <!-- Think-Aloud Comparison -->
-    {{THINK_ALOUD_COMPARISON}}
-
-    <!-- Flagged -->
+    <!-- Flagged for Human Review -->
     <h2 id="flagged" data-tour="flagged">Flagged for Human Review</h2>
     {{FLAGGED_HTML}}
 
@@ -626,11 +575,9 @@ details[open] summary .section-icon{opacity:0.8}
     <div id="human-review-section" style="{{REVIEW_TAB_DISPLAY}}">
       <h2 id="human-review">Your Review</h2>
       <p class="small muted" style="margin:-0.25rem 0 1rem">Override verdicts and add notes. Click any FLAGGED badge above to review in a modal. Your annotations persist in the browser and export to CSV.</p>
-
       <div id="review-items">
         {{REVIEW_ITEMS_HTML}}
       </div>
-
       <div style="margin-top:1rem;display:flex;gap:0.75rem">
         <button onclick="downloadCSV()" style="background:var(--accent);border:none;color:#fff;padding:0.45rem 1.25rem;border-radius:0.375rem;cursor:pointer;font-family:var(--font-body);font-size:0.8125rem;font-weight:500;flex:1">Download Review CSV</button>
       </div>
@@ -642,74 +589,116 @@ details[open] summary .section-icon{opacity:0.8}
       {{CONCLUSION_HTML}}
     </div>
 
+    <!-- ═══════════════════════════════════════════════════════ -->
+    <!-- Appendix — detailed evidence, organized by tab          -->
+    <!-- ═══════════════════════════════════════════════════════ -->
+    <div class="appendix">
+      <div class="appendix-label">Appendix — Detailed Evidence</div>
+
+      <!-- Stats row -->
+      <div class="stats-row" data-tour="stats">
+        <div class="stat" onclick="scrollToSection('ac-results')">
+          <div class="stat-n" style="color:var(--status-success)">{{PASS_COUNT}}</div>
+          <div class="stat-l">Criteria Passed</div>
+          <div class="stat-explainer">Acceptance criteria met</div>
+        </div>
+        <div class="stat" onclick="scrollToSection('ac-results')">
+          <div class="stat-n" style="color:var(--status-danger)">{{FAIL_COUNT}}</div>
+          <div class="stat-l">Criteria Failed</div>
+          <div class="stat-explainer">Not implemented or broken</div>
+        </div>
+        <div class="stat" onclick="scrollToSection('flagged')">
+          <div class="stat-n" style="color:var(--status-warning)">{{FLAGGED_COUNT}}</div>
+          <div class="stat-l">Flagged</div>
+          <div class="stat-explainer">Needs human judgment</div>
+        </div>
+        <div class="stat" onclick="scrollToSection('usability-dimensions')">
+          <div class="stat-n">{{USABILITY_SCORE}}</div>
+          <div class="stat-l">Usability</div>
+          <div class="stat-explainer">Score out of 21 (7 dimensions)</div>
+        </div>
+        <div class="stat" onclick="scrollToSection('path-comparison')">
+          <div class="stat-n">{{JOURNEY_RATIO}}</div>
+          <div class="stat-l">Journeys Passed</div>
+          <div class="stat-explainer">Persona walkthroughs completed</div>
+        </div>
+      </div>
+
+      {{STAT_DELTAS}}
+
+      <div class="appendix-tabs">
+        <button class="appendix-tab active" onclick="switchAppendixTab('journeys')">Journeys</button>
+        <button class="appendix-tab" onclick="switchAppendixTab('usability')">Usability</button>
+        <button class="appendix-tab" onclick="switchAppendixTab('findings')" style="{{FIXES_TAB_DISPLAY}}">Findings</button>
+        <button class="appendix-tab" onclick="switchAppendixTab('consistency')" style="{{CONSISTENCY_TAB_DISPLAY}}">Consistency</button>
+        <button class="appendix-tab" onclick="switchAppendixTab('iterations')" style="{{ITERATION_DISPLAY}}">Iterations</button>
+      </div>
+
+      <!-- Appendix Tab: Journeys -->
+      <div class="appendix-content active" id="appendix-journeys" data-tour="tab-journeys">
+        <h2>Persona Walkthroughs</h2>
+        <p class="small muted" style="margin:-0.5rem 0 1rem">Each persona navigated the prototype independently at their own competence level. Click a persona to view their full step-by-step walkthrough with think-aloud narrative.</p>
+        <div class="card card-compact" style="margin-bottom:1rem">
+          {{PERSONA_SELECTION_HTML}}
+        </div>
+        {{PERSONA_WALKTHROUGHS_HTML}}
+        <details open style="margin-top:2rem">
+          <summary class="small muted">Phase A: AC Verification Summary</summary>
+          <p class="small muted" style="margin:0.5rem 0">Informed evaluator path comparison — which ACs passed and how many steps each journey took.</p>
+          {{PATH_COMPARISON_TABLE}}
+        </details>
+      </div>
+
+      <!-- Appendix Tab: Usability -->
+      <div class="appendix-content" id="appendix-usability">
+        <h2 id="usability-dimensions" data-tour="usability">Usability Dimension Scores (INF) <a class="help-anchor" href="#scoring-methodology" onclick="document.getElementById('scoring-methodology').open=true;return true" title="How scores are calculated">?</a></h2>
+        {{USABILITY_TABLE}}
+        {{PATIENCE_TRACKING}}
+        {{THINK_ALOUD_COMPARISON}}
+        {{THINK_ALOUD_NARRATIVES}}
+        {{EXTERNAL_USABILITY_HTML}}
+      </div>
+
+      <!-- Appendix Tab: Findings -->
+      <div class="appendix-content" id="appendix-findings" data-tour="tab-findings">
+        <h2>Findings &amp; Changes</h2>
+        <p class="small muted" style="margin:-0.5rem 0 1rem">Everything the evaluation found — fixes applied to pass acceptance criteria, and design consistency issues for human review.</p>
+        {{FIXES_HTML}}
+      </div>
+
+      <!-- Appendix Tab: Consistency -->
+      <div class="appendix-content" id="appendix-consistency" data-tour="tab-consistency">
+        <h2>Design Consistency</h2>
+        <p class="small muted" style="margin:-0.5rem 0 1rem">Checks PatternFly design pattern compliance in source code and captured screenshots. Powered by <a href="https://gitlab.cee.redhat.com/bmorley/consistency-checker" target="_blank">consistency-checker</a> (Beau Morley).</p>
+        {{CONSISTENCY_HTML}}
+      </div>
+
+      <!-- Appendix Tab: Iterations -->
+      <div class="appendix-content" id="appendix-iterations">
+        <div id="iteration-timeline">
+          <h2 style="margin-top:0.5rem">Iteration History</h2>
+          {{ITERATION_TIMELINE_HTML}}
+        </div>
+        <div id="what-changed" style="{{DELTA_DISPLAY}}">
+          <details open>
+            <summary style="font-size:0.875rem">What Changed in This MR</summary>
+            <div class="card card-compact" style="margin-top:0.5rem">
+              {{DELTA_HTML}}
+            </div>
+          </details>
+        </div>
+        {{CODE_DELTAS_HTML}}
+      </div>
+
+    </div><!-- end appendix -->
+
     <!-- AI Insights -->
     <div id="ai-insights" style="{{AI_INSIGHTS_DISPLAY}}">
       <h2>Additional Insights</h2>
       {{AI_INSIGHTS}}
     </div>
 
-    </details><!-- end evidence-section -->
-
-  </div>
-
-  <!-- Resizer -->
-  <div class="resizer" id="resizer"></div>
-
-  <!-- Right Panel: Journeys + Think-Aloud -->
-  <div class="split-right" data-tour="right-panel">
-
-    <!-- Empty state (shown until user clicks something) -->
-    <div id="panel-empty" class="panel-empty">
-      <div style="text-align:center;padding:3rem 1.5rem;color:var(--text2)">
-        <div style="font-size:1.5rem;margin-bottom:0.75rem;opacity:0.3;font-weight:300;color:var(--text2)">&#8212;</div>
-        <p style="font-size:0.9375rem;font-weight:500;margin:0 0 0.5rem;color:var(--text)">Select an item to see details</p>
-        <p style="font-size:0.8125rem;margin:0">Click on a finding, AC result, or action button on the left to view evidence and walkthrough details here.</p>
-      </div>
-    </div>
-
-    <div id="panel-tabs-container" style="display:none">
-    <div class="panel-tabs">
-      <button class="panel-tab active" onclick="switchTab('journeys')">Journeys</button>
-      <button class="panel-tab" onclick="switchTab('fixes')" style="{{FIXES_TAB_DISPLAY}}">Findings</button>
-      <button class="panel-tab" onclick="switchTab('consistency')" style="{{CONSISTENCY_TAB_DISPLAY}}">Consistency</button>
-    </div>
-
-    <!-- Tab: Journeys -->
-    <div class="panel-content active" id="panel-journeys" data-tour="tab-journeys">
-      <h2>Persona Walkthroughs</h2>
-      <p class="small muted" style="margin:-0.5rem 0 1rem">Each persona navigated the prototype independently at their own competence level. Click a persona to view their full step-by-step walkthrough with think-aloud narrative.</p>
-
-      <div class="card card-compact" style="margin-bottom:1rem">
-        {{PERSONA_SELECTION_HTML}}
-      </div>
-
-      {{PERSONA_WALKTHROUGHS_HTML}}
-
-      <details open style="margin-top:2rem">
-        <summary class="small muted">Phase A: AC Verification Summary</summary>
-        <p class="small muted" style="margin:0.5rem 0">Informed evaluator path comparison — which ACs passed and how many steps each journey took. <a href="#" onclick="switchTab('fixes');return false" style="font-weight:500">View fixes and screenshots →</a></p>
-        {{PATH_COMPARISON_TABLE}}
-      </details>
-    </div>
-
-    <!-- Tab: Findings -->
-    <div class="panel-content" id="panel-fixes" data-tour="tab-findings">
-      <h2>Findings &amp; Changes</h2>
-      <p class="small muted" style="margin:-0.5rem 0 1rem">Everything the evaluation found — fixes applied to pass acceptance criteria, and design consistency issues for human review.</p>
-      {{FIXES_HTML}}
-    </div>
-
-    <!-- Tab: Consistency -->
-    <div class="panel-content" id="panel-consistency" data-tour="tab-consistency">
-      <h2>Design Consistency</h2>
-      <p class="small muted" style="margin:-0.5rem 0 1rem">Checks PatternFly design pattern compliance in source code and captured screenshots. Powered by <a href="https://gitlab.cee.redhat.com/bmorley/consistency-checker" target="_blank">consistency-checker</a> (Beau Morley).</p>
-      {{CONSISTENCY_HTML}}
-    </div>
-
-    </div><!-- end panel-tabs-container -->
-  </div>
-
-</div>
+</main>
 
 <!-- Footer -->
 <div class="report-footer" style="text-align:left;padding:2rem 2.5rem">
@@ -781,6 +770,7 @@ var csvData = `{{CSV_DATA}}`;
 var screenshotData = [{{SCREENSHOT_ARRAY}}];
 var flaggedData = {{FLAGGED_DATA}};
 var personaWalkthroughData = {{PERSONA_WALKTHROUGH_DATA}};
+var acEvidenceData = {{AC_EVIDENCE_DATA}};
 var currentScreenshotIdx = 0;
 var currentPersonaId = null;
 var currentPersonaStep = 0;
@@ -893,12 +883,15 @@ function toggleCsvPreview() {
   }
 }
 
-function switchTab(tab) {
-  document.querySelectorAll('.panel-tab').forEach(function(t) { t.classList.remove('active'); });
-  document.querySelectorAll('.panel-content').forEach(function(c) { c.classList.remove('active'); });
-  document.querySelector('[onclick="switchTab(\'' + tab + '\')"]').classList.add('active');
-  document.getElementById('panel-' + tab).classList.add('active');
+function switchAppendixTab(tab) {
+  document.querySelectorAll('.appendix-tab').forEach(function(t) { t.classList.remove('active'); });
+  document.querySelectorAll('.appendix-content').forEach(function(c) { c.classList.remove('active'); });
+  var btn = document.querySelector('[onclick="switchAppendixTab(\'' + tab + '\')"]');
+  if (btn) btn.classList.add('active');
+  var content = document.getElementById('appendix-' + tab);
+  if (content) content.classList.add('active');
 }
+function switchTab(t) { switchAppendixTab(t === 'fixes' ? 'findings' : t); }
 
 function openPersonaModal(personaId) {
   var data = personaWalkthroughData[personaId];
@@ -1144,49 +1137,8 @@ function closeReviewModal() {
 
 function scrollToSection(id) {
   var el = document.getElementById(id);
-  // Reveal evidence section and right panel
-  var evidence = document.getElementById('evidence-section');
-  if (evidence) evidence.open = true;
-  var panelEmpty = document.getElementById('panel-empty');
-  var panelTabs = document.getElementById('panel-tabs-container');
-  if (panelEmpty) panelEmpty.style.display = 'none';
-  if (panelTabs) panelTabs.style.display = '';
   if (el) el.scrollIntoView({behavior: 'smooth', block: 'start'});
 }
-
-// Resizer
-(function() {
-  var resizer = document.getElementById('resizer');
-  var left = resizer.previousElementSibling;
-  var right = resizer.nextElementSibling;
-  var startX, startLeftW;
-
-  resizer.addEventListener('mousedown', function(e) {
-    startX = e.clientX;
-    startLeftW = left.getBoundingClientRect().width;
-    resizer.classList.add('active');
-    document.addEventListener('mousemove', onMouseMove);
-    document.addEventListener('mouseup', onMouseUp);
-    e.preventDefault();
-  });
-
-  function onMouseMove(e) {
-    var dx = e.clientX - startX;
-    var newW = startLeftW + dx;
-    var container = left.parentElement.getBoundingClientRect().width;
-    if (newW < 300) newW = 300;
-    if (container - newW - 4 < 400) newW = container - 404;
-    left.style.flex = 'none';
-    left.style.width = newW + 'px';
-    right.style.flex = '1';
-  }
-
-  function onMouseUp() {
-    resizer.classList.remove('active');
-    document.removeEventListener('mousemove', onMouseMove);
-    document.removeEventListener('mouseup', onMouseUp);
-  }
-})();
 
 // Screenshot modal (legacy — used by Phase A journey screenshots)
 function openModal(idx) {
@@ -1194,6 +1146,39 @@ function openModal(idx) {
   currentPersonaId = null;
   renderModal();
   document.getElementById('screenshotModal').classList.add('active');
+}
+
+function openAcEvidence(acId) {
+  // Find persona tasks that cover this AC and open the persona modal
+  for (var pid in personaWalkthroughData) {
+    var pdata = personaWalkthroughData[pid];
+    if (!pdata.tasks) continue;
+    for (var ti = 0; ti < pdata.tasks.length; ti++) {
+      var t = pdata.tasks[ti];
+      if (t.covers_acs && t.covers_acs.indexOf(acId) >= 0 && t.steps.length > 0) {
+        currentPersonaId = pid;
+        currentPersonaTask = ti;
+        currentPersonaStep = 0;
+        renderPersonaModalStep();
+        document.getElementById('screenshotModal').classList.add('active');
+        return;
+      }
+    }
+  }
+  // Fallback: try goals mapping from any persona
+  for (var pid2 in personaWalkthroughData) {
+    var pdata2 = personaWalkthroughData[pid2];
+    if (!pdata2.goals) continue;
+    for (var gi = 0; gi < pdata2.goals.length; gi++) {
+      if (pdata2.goals[gi].ac_ids && pdata2.goals[gi].ac_ids.indexOf(acId) >= 0) {
+        openPersonaModal(pid2);
+        return;
+      }
+    }
+  }
+  // Last resort: open legacy screenshot modal if we have AC evidence data
+  var info = acEvidenceData[acId];
+  if (info) openModal(info.idx);
 }
 
 function boldKeys(text) {
@@ -1592,20 +1577,20 @@ document.addEventListener('DOMContentLoaded', function() {
       <div class="welcome-header" style="padding-bottom:0.75rem">
         <div class="welcome-step-indicator"><span class="welcome-dot"></span><span class="welcome-dot"></span><span class="welcome-dot active"></span></div>
         <h2>Finding your way</h2>
-        <p>The report is split into two panels:</p>
+        <p>The report flows top to bottom:</p>
       </div>
       <div class="welcome-sections">
         <div class="welcome-layout">
           <div class="welcome-layout-col">
-            <strong>Left panel</strong>
-            <span>Your results &mdash; the verdict, acceptance criteria with pass/fail/flagged verdicts, and usability scores.</span>
+            <strong>Main content</strong>
+            <span>Your results &mdash; the verdict, acceptance criteria with pass/fail/flagged verdicts, your review section, and the conclusion.</span>
           </div>
           <div class="welcome-layout-col">
-            <strong>Right panel</strong>
-            <span>The evidence &mdash; persona walkthrough screenshots, findings, and design consistency checks. Click items on the left to populate this.</span>
+            <strong>Appendix</strong>
+            <span>The detailed evidence &mdash; persona walkthrough screenshots, usability scores, findings, design consistency checks, and iteration history. Use the tabs to navigate.</span>
           </div>
         </div>
-        <p class="welcome-layout-hint">Expand <strong>Full Evidence &amp; Details</strong> on the left for the complete picture &mdash; iteration history, usability dimensions, and all the supporting data.</p>
+        <p class="welcome-layout-hint">Scroll down past the conclusion to find the <strong>Appendix</strong> with score cards, tabbed evidence, and the full supporting data.</p>
       </div>
       <div class="welcome-nav">
         <button class="welcome-btn welcome-btn-secondary" onclick="welcomeGoTo(2)" style="padding:0.45rem 1.25rem;font-size:0.8125rem">Back</button>
@@ -1669,75 +1654,63 @@ document.addEventListener('keydown', function(e) {
 
 // --- Tooltip tour (fires after modal guide completes) ---
 var tourSteps = [
-  // LHS: overview sections
   {
     target: '[data-tour="verdict"]',
     title: 'Verdict',
     text: 'The overall result. Tells you at a glance whether the prototype passed, needs fixes, or needs your review.',
-    panel: 'left'
+    panel: 'main'
   },
   {
     target: '[data-tour="gap"]',
     title: 'Gap analysis',
     text: 'How many acceptance criteria were expected vs. how many actually passed. Failures and flagged items are listed here.',
-    panel: 'left'
-  },
-  {
-    target: '[data-tour="evidence"]',
-    title: 'Full evidence',
-    text: 'Click to expand. Contains the detailed breakdown: stats, AC table, usability scores, and everything below.',
-    panel: 'left',
-    action: function() { var el = document.getElementById('evidence-section'); if (el) el.open = true; }
-  },
-  {
-    target: '[data-tour="stats"]',
-    title: 'Score cards',
-    text: 'Quick counts. Click any card to jump to that section.',
-    panel: 'left'
+    panel: 'main'
   },
   {
     target: '[data-tour="ac-table"]',
     title: 'Acceptance criteria',
     text: 'Each criterion from the Jira ticket with a verdict and evidence. PASS and FAIL are automated. FLAGGED means you decide.',
-    panel: 'left'
-  },
-  {
-    target: '[data-tour="usability"]',
-    title: 'Usability scores',
-    text: 'Seven dimensions scored 0-3 each (21 total). Click the (?) to see how scores are calculated.',
-    panel: 'left'
+    panel: 'main'
   },
   {
     target: '[data-tour="flagged"]',
     title: 'Flagged items',
     text: 'Items the automated check could not verify. Click any one to see the evidence and override the verdict.',
-    panel: 'left'
+    panel: 'main'
   },
-  // RHS: tabs
+  {
+    target: '[data-tour="stats"]',
+    title: 'Score cards',
+    text: 'Quick counts in the appendix. Click any card to jump to that section.',
+    panel: 'main'
+  },
   {
     target: '[data-tour="tab-journeys"]',
     title: 'Journeys tab',
     text: 'Persona walkthroughs. Each persona navigated the prototype independently. Click a persona card to see their step-by-step screenshots.',
-    panel: 'right',
-    action: function() {
-      var pe = document.getElementById('panel-empty'); if (pe) pe.style.display = 'none';
-      var pt = document.getElementById('panel-tabs-container'); if (pt) pt.style.display = '';
-      switchTab('journeys');
-    }
+    panel: 'main',
+    action: function() { switchAppendixTab('journeys'); }
+  },
+  {
+    target: '[data-tour="usability"]',
+    title: 'Usability scores',
+    text: 'Seven dimensions scored 0-3 each (21 total). Click the (?) to see how scores are calculated.',
+    panel: 'main',
+    action: function() { switchAppendixTab('usability'); }
   },
   {
     target: '[data-tour="tab-findings"]',
     title: 'Findings tab',
     text: 'Fixes applied during the evaluation and issues found. Shows what was changed to pass acceptance criteria.',
-    panel: 'right',
-    action: function() { switchTab('fixes'); }
+    panel: 'main',
+    action: function() { switchAppendixTab('findings'); }
   },
   {
     target: '[data-tour="tab-consistency"]',
     title: 'Consistency tab',
     text: 'PatternFly design guideline checks. Flags violations in source code and screenshots against the design system.',
-    panel: 'right',
-    action: function() { switchTab('consistency'); }
+    panel: 'main',
+    action: function() { switchAppendixTab('consistency'); }
   }
 ];
 
@@ -1760,16 +1733,6 @@ function removeTourTip() {
   document.querySelectorAll('.tour-tip').forEach(function(el) { el.remove(); });
 }
 
-function getOffsetInPane(el, pane) {
-  var top = 0, left = 0, cur = el;
-  while (cur && cur !== pane) {
-    top += cur.offsetTop;
-    left += cur.offsetLeft;
-    cur = cur.offsetParent;
-  }
-  return { top: top, left: left };
-}
-
 function showTourStep() {
   removeTourTip();
   document.querySelectorAll('.tour-highlight').forEach(function(el) { el.classList.remove('tour-highlight'); });
@@ -1778,26 +1741,13 @@ function showTourStep() {
 
   var step = tourSteps[tourCurrentStep];
 
-  // Run action first so it can reveal hidden elements
   if (step.action) step.action();
 
   var el = document.querySelector(step.target);
 
-  // Skip elements that are still hidden after action
   if (!el || el.offsetParent === null) { tourCurrentStep++; showTourStep(); return; }
 
-  var pane = step.panel === 'right'
-    ? document.querySelector('.split-right')
-    : document.querySelector('.split-left');
-
-  // Get element position relative to the pane
-  var pos = getOffsetInPane(el, pane);
-
-  // Scroll the pane so the element is near the top with room for the tooltip
-  if (pane) {
-    pane.scrollTo({ top: Math.max(0, pos.top - 60), behavior: 'smooth' });
-  }
-
+  el.scrollIntoView({ behavior: 'smooth', block: 'center' });
   el.classList.add('tour-highlight');
 
   setTimeout(function() {
@@ -1820,20 +1770,21 @@ function showTourStep() {
 
     tip.innerHTML = '<div class="tour-tip-title">' + step.title + '</div>' + step.text + navHtml;
 
-    // Position absolutely inside the pane, right below the element
-    var updatedPos = getOffsetInPane(el, pane);
-    var tipTop = updatedPos.top + el.offsetHeight + 10;
-    var tipLeft = 20;
+    var rect = el.getBoundingClientRect();
+    var tipTop = rect.bottom + 10;
+    var tipLeft = rect.left;
 
-    // Clamp left so tooltip stays within pane
-    var paneWidth = pane ? pane.clientWidth : 600;
-    if (tipLeft + 280 > paneWidth - 16) tipLeft = paneWidth - 296;
+    if (tipLeft + 280 > window.innerWidth - 16) tipLeft = window.innerWidth - 296;
     if (tipLeft < 8) tipLeft = 8;
+    if (tipTop + 200 > window.innerHeight) {
+      tipTop = rect.top - 200;
+      tip.className = 'tour-tip arrow-bottom';
+    }
 
     tip.style.top = tipTop + 'px';
     tip.style.left = tipLeft + 'px';
 
-    if (pane) pane.appendChild(tip);
+    document.body.appendChild(tip);
   }, 400);
 }
 
