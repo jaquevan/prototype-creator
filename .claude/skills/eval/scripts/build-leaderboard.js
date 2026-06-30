@@ -366,17 +366,29 @@ footer {
 
 <nav class="nav-bar">
   <a href="index.html" class="nav-brand">
-    <svg class="scout-seahorse" width="28" height="28" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <rect x="6" y="0" width="2" height="2" fill="#00b4d8"/><rect x="8" y="0" width="2" height="2" fill="#00b4d8"/>
-      <rect x="5" y="2" width="2" height="2" fill="#00b4d8"/><rect x="7" y="2" width="2" height="2" fill="#00b4d8"/><rect x="9" y="2" width="2" height="2" fill="#00b4d8"/>
-      <rect x="5" y="4" width="2" height="2" fill="#00b4d8"/><rect x="7" y="4" width="2" height="2" fill="#00b4d8"/>
-      <rect x="6" y="6" width="2" height="2" fill="#00b4d8"/><rect x="8" y="6" width="2" height="2" fill="#00b4d8"/>
-      <rect x="7" y="8" width="2" height="2" fill="#00b4d8"/>
-      <rect x="6" y="10" width="2" height="2" fill="#00b4d8"/>
-      <rect x="5" y="12" width="2" height="2" fill="#00b4d8"/>
-      <rect x="3" y="13" width="2" height="2" fill="#00b4d8"/>
-      <rect x="5" y="3" width="1" height="1" fill="#1a1a2e"/>
-      <rect x="10" y="3" width="2" height="1" fill="#00b4d8" opacity="0.6"/>
+    <svg class="scout-seahorse" width="28" height="44" viewBox="0 0 12 22" fill="none" xmlns="http://www.w3.org/2000/svg" style="image-rendering:pixelated">
+      <rect x="7" y="0" width="1" height="1" fill="#ff6b35"/><rect x="8" y="0" width="1" height="1" fill="#ffaa00"/>
+      <rect x="6" y="1" width="1" height="1" fill="#ff6b35"/><rect x="7" y="1" width="1" height="1" fill="#ff6b35"/><rect x="8" y="1" width="1" height="1" fill="#ffaa00"/><rect x="9" y="1" width="1" height="1" fill="#ffaa00"/>
+      <rect x="3" y="2" width="1" height="1" fill="#f5f5f5"/><rect x="4" y="2" width="1" height="1" fill="#ffffff"/><rect x="5" y="2" width="1" height="1" fill="#ff6b35"/><rect x="6" y="2" width="1" height="1" fill="#ff6b35"/><rect x="7" y="2" width="1" height="1" fill="#ff6b35"/><rect x="8" y="2" width="1" height="1" fill="#ffaa00"/><rect x="9" y="2" width="1" height="1" fill="#ffaa00"/>
+      <rect x="2" y="3" width="1" height="1" fill="#f5f5f5"/><rect x="3" y="3" width="1" height="1" fill="#ff6b35"/><rect x="4" y="3" width="1" height="1" fill="#ff6b35"/><rect x="5" y="3" width="1" height="1" fill="#1a1a2e"/><rect x="6" y="3" width="1" height="1" fill="#ff6b35"/><rect x="7" y="3" width="1" height="1" fill="#ff6b35"/><rect x="8" y="3" width="1" height="1" fill="#ff6b35"/><rect x="9" y="3" width="1" height="1" fill="#ffaa00"/>
+      <rect x="1" y="4" width="1" height="1" fill="#ff6b35"/><rect x="2" y="4" width="1" height="1" fill="#ff6b35"/><rect x="3" y="4" width="1" height="1" fill="#ff6b35"/><rect x="4" y="4" width="1" height="1" fill="#ff6b35"/><rect x="5" y="4" width="1" height="1" fill="#ff6b35"/><rect x="6" y="4" width="1" height="1" fill="#ff6b35"/><rect x="7" y="4" width="1" height="1" fill="#ff6b35"/><rect x="8" y="4" width="1" height="1" fill="#ffaa00"/>
+      <rect x="2" y="5" width="1" height="1" fill="#ffaa00"/><rect x="3" y="5" width="1" height="1" fill="#ff6b35"/><rect x="4" y="5" width="1" height="1" fill="#ff6b35"/><rect x="5" y="5" width="1" height="1" fill="#ff6b35"/><rect x="6" y="5" width="1" height="1" fill="#ff6b35"/><rect x="7" y="5" width="1" height="1" fill="#ff6b35"/><rect x="8" y="5" width="1" height="1" fill="#ffaa00"/>
+      <rect x="4" y="6" width="1" height="1" fill="#ff6b35"/><rect x="5" y="6" width="1" height="1" fill="#ff6b35"/><rect x="6" y="6" width="1" height="1" fill="#ff6b35"/><rect x="7" y="6" width="1" height="1" fill="#ff6b35"/><rect x="8" y="6" width="1" height="1" fill="#ff6b35"/>
+      <rect x="4" y="7" width="1" height="1" fill="#ff6b35"/><rect x="5" y="7" width="1" height="1" fill="#ff6b35"/><rect x="6" y="7" width="1" height="1" fill="#ff6b35"/><rect x="7" y="7" width="1" height="1" fill="#ff6b35"/><rect x="8" y="7" width="1" height="1" fill="#ff6b35"/>
+      <rect x="4" y="8" width="1" height="1" fill="#ff6b35"/><rect x="5" y="8" width="1" height="1" fill="#ffaa00"/><rect x="6" y="8" width="1" height="1" fill="#ff6b35"/><rect x="7" y="8" width="1" height="1" fill="#ff6b35"/>
+      <rect x="3" y="9" width="1" height="1" fill="#ffaa00"/><rect x="4" y="9" width="1" height="1" fill="#ffaa00"/><rect x="5" y="9" width="1" height="1" fill="#ff6b35"/><rect x="6" y="9" width="1" height="1" fill="#ff6b35"/><rect x="7" y="9" width="1" height="1" fill="#ff6b35"/>
+      <rect x="4" y="10" width="1" height="1" fill="#ff6b35"/><rect x="5" y="10" width="1" height="1" fill="#ff6b35"/><rect x="6" y="10" width="1" height="1" fill="#ff6b35"/><rect x="7" y="10" width="1" height="1" fill="#ff6b35"/>
+      <rect x="4" y="11" width="1" height="1" fill="#ff6b35"/><rect x="5" y="11" width="1" height="1" fill="#ff6b35"/><rect x="6" y="11" width="1" height="1" fill="#ff6b35"/>
+      <rect x="4" y="12" width="1" height="1" fill="#ff6b35"/><rect x="5" y="12" width="1" height="1" fill="#ff6b35"/><rect x="6" y="12" width="1" height="1" fill="#ff6b35"/>
+      <rect x="4" y="13" width="1" height="1" fill="#ff6b35"/><rect x="5" y="13" width="1" height="1" fill="#ff6b35"/>
+      <rect x="3" y="14" width="1" height="1" fill="#ff6b35"/><rect x="4" y="14" width="1" height="1" fill="#ff6b35"/><rect x="5" y="14" width="1" height="1" fill="#ff6b35"/>
+      <rect x="3" y="15" width="1" height="1" fill="#ff6b35"/><rect x="4" y="15" width="1" height="1" fill="#ffaa00"/>
+      <rect x="3" y="16" width="1" height="1" fill="#ff6b35"/><rect x="4" y="16" width="1" height="1" fill="#ff6b35"/>
+      <rect x="2" y="17" width="1" height="1" fill="#ff6b35"/><rect x="3" y="17" width="1" height="1" fill="#ff6b35"/>
+      <rect x="1" y="18" width="1" height="1" fill="#ffaa00"/><rect x="2" y="18" width="1" height="1" fill="#ff6b35"/><rect x="3" y="18" width="1" height="1" fill="#ff6b35"/>
+      <rect x="1" y="19" width="1" height="1" fill="#ff6b35"/><rect x="2" y="19" width="1" height="1" fill="#ff6b35"/><rect x="3" y="19" width="1" height="1" fill="#ffcc00"/>
+      <rect x="2" y="20" width="1" height="1" fill="#ff6b35"/><rect x="3" y="20" width="1" height="1" fill="#ff6b35"/><rect x="4" y="20" width="1" height="1" fill="#ffcc00"/>
+      <rect x="3" y="21" width="1" height="1" fill="#ff6b35"/><rect x="4" y="21" width="1" height="1" fill="#ff6b35"/>
     </svg>
     <span class="nav-brand-text">SCOUT</span>
     <span class="nav-brand-full">Structured Criteria, Outcome &amp; Usability Testing</span>
