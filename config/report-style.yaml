@@ -191,6 +191,28 @@ components:
       .ta-confidence-low{color:var(--status-warning)}
       .ta-confidence-none{color:var(--status-danger)}
 
+  # Welcome modal — first-visit onboarding (replaces tooltip tour)
+  # Shows on first visit, persisted via localStorage key 'eval-report-welcomed'.
+  # Re-openable via "Guide" button in header-actions.
+  # Content: 4 sections — what is this, verdict meanings, user role, layout orientation.
+  welcome_modal:
+    base_class: "welcome"
+    localStorage_key: "eval-report-welcomed"
+    css: |
+      .welcome-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);backdrop-filter:blur(3px);z-index:2000;align-items:center;justify-content:center;padding:1.5rem}
+      .welcome-overlay.active{display:flex}
+      .welcome-modal{background:var(--bg);border-radius:0.75rem;max-width:520px;width:100%;max-height:88vh;overflow-y:auto;box-shadow:0 25px 50px -12px rgba(0,0,0,0.25);animation:welcomeIn 0.25s ease-out}
+      .welcome-section{padding:1rem 0;border-top:1px solid var(--border)}
+      .welcome-section-label{font-family:var(--font-heading);font-size:0.65rem;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--text2)}
+      .welcome-dismiss{background:var(--accent);color:#fff;border:none;padding:0.55rem 2rem;border-radius:0.375rem;font-size:0.875rem;font-weight:600;cursor:pointer}
+
+  # Help anchor — (?) icon next to section headers, links to footer methodology
+  help_anchor:
+    base_class: "help-anchor"
+    css: |
+      .help-anchor{display:inline-flex;align-items:center;justify-content:center;width:1.1rem;height:1.1rem;border-radius:50%;border:1px solid var(--border);font-size:0.6rem;font-weight:600;color:var(--text2);text-decoration:none;margin-left:0.4rem;vertical-align:middle;cursor:pointer}
+      .help-anchor:hover{border-color:var(--accent);color:var(--accent)}
+
   # Split pane layout with resizer
   layout:
     css: |

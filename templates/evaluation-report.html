@@ -416,11 +416,65 @@ details[open] summary .section-icon{opacity:0.8}
 .autofixed-section ul{margin:0.25rem 0 0;padding-left:1.2rem}
 .autofixed-section li{margin:0.15rem 0;color:var(--text2)}
 
-/* First-visit onboarding tooltips */
-.tour-tooltip{display:none;position:absolute;background:#1a1a2e;color:#fff;padding:0.5rem 0.75rem;border-radius:0.375rem;font-size:0.75rem;max-width:220px;line-height:1.4;z-index:100;box-shadow:0 4px 12px rgba(0,0,0,0.15)}
-.tour-tooltip::after{content:'';position:absolute;top:-6px;left:20px;border-left:6px solid transparent;border-right:6px solid transparent;border-bottom:6px solid #1a1a2e}
-.tour-tooltip.active{display:block}
-.tour-dismiss{margin-top:0.4rem;background:rgba(255,255,255,0.15);border:none;color:#fff;padding:0.2rem 0.5rem;border-radius:3px;font-size:0.65rem;cursor:pointer}
+/* Welcome modal — first-visit onboarding */
+.welcome-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px);z-index:2000;align-items:center;justify-content:center;padding:1.5rem}
+.welcome-overlay.active{display:flex}
+.welcome-modal{background:var(--bg);border-radius:0.75rem;max-width:680px;width:100%;max-height:90vh;overflow-y:auto;box-shadow:0 25px 50px -12px rgba(0,0,0,0.25);animation:welcomeIn 0.25s ease-out}
+@keyframes welcomeIn{from{opacity:0;transform:scale(0.97) translateY(8px)}to{opacity:1;transform:scale(1) translateY(0)}}
+.welcome-header{padding:2.5rem 2.5rem 1.5rem}
+.welcome-header h2{font-family:var(--font-heading);font-size:1.5rem;font-weight:700;margin:0 0 0.5rem;color:var(--text)}
+.welcome-header p{font-size:0.9375rem;line-height:1.6;color:var(--text2);margin:0}
+.welcome-sections{padding:0 2.5rem 1rem}
+.welcome-section{padding:1.25rem 0;border-top:1px solid var(--border)}
+.welcome-section:first-child{border-top:none;padding-top:0}
+.welcome-section-label{font-family:var(--font-heading);font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--text2);margin:0 0 0.6rem}
+.welcome-section p{font-size:0.875rem;line-height:1.7;color:var(--text);margin:0}
+.welcome-verdicts{display:flex;flex-direction:column;gap:0.65rem;margin-top:0.35rem}
+.welcome-verdict{display:flex;align-items:flex-start;gap:0.75rem;font-size:0.875rem;line-height:1.5}
+.welcome-verdict-icon{width:1.75rem;height:1.75rem;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:0.8rem;font-weight:700;flex-shrink:0;margin-top:0.05rem}
+.welcome-verdict-pass{background:rgba(22,163,74,0.12);color:var(--status-success)}
+.welcome-verdict-fail{background:rgba(220,38,38,0.12);color:var(--status-danger)}
+.welcome-verdict-review{background:rgba(217,119,6,0.12);color:var(--status-warning)}
+.welcome-layout{display:flex;gap:1rem;margin-top:0.65rem;font-size:0.8125rem}
+.welcome-layout-col{flex:1;padding:0.85rem 1rem;background:var(--bg2);border:1px solid var(--border);border-radius:0.5rem}
+.welcome-layout-col strong{display:block;font-size:0.7rem;text-transform:uppercase;letter-spacing:0.04em;color:var(--text2);margin-bottom:0.35rem;font-weight:600}
+.welcome-layout-col span{color:var(--text);line-height:1.6}
+.welcome-layout-hint{margin-top:0.65rem;font-size:0.8125rem;color:var(--text2)}
+.welcome-footer{padding:1rem 2.5rem 2.5rem;display:flex;gap:0.75rem;justify-content:center}
+.welcome-btn{border:none;padding:0.65rem 2rem;border-radius:0.375rem;font-family:var(--font-body);font-size:0.9375rem;font-weight:600;cursor:pointer;transition:background 0.15s,box-shadow 0.15s}
+.welcome-btn-primary{background:var(--accent);color:#fff}
+.welcome-btn-primary:hover{background:#0052a3}
+.welcome-btn-secondary{background:var(--bg2);color:var(--text);border:1px solid var(--border)}
+.welcome-btn-secondary:hover{background:var(--border)}
+.welcome-step{display:none}
+.welcome-step.active{display:block}
+.welcome-step-indicator{display:flex;gap:0.35rem;justify-content:center;margin-bottom:1.5rem}
+.welcome-dot{width:0.5rem;height:0.5rem;border-radius:50%;background:var(--border);transition:background 0.2s}
+.welcome-dot.active{background:var(--accent)}
+.welcome-nav{padding:1rem 2.5rem 2rem;display:flex;justify-content:space-between;align-items:center}
+.welcome-nav-step{font-size:0.75rem;color:var(--text2);font-family:var(--font-mono)}
+@media(max-width:700px){.welcome-modal{margin:0.5rem;max-width:100%}.welcome-sections{padding:0 1.5rem 1rem}.welcome-header{padding:2rem 1.5rem 1.25rem}.welcome-footer,.welcome-nav{padding-left:1.5rem;padding-right:1.5rem}.welcome-layout{flex-direction:column}}
+
+/* Help anchor (?) for section headers */
+.help-anchor{display:inline-flex;align-items:center;justify-content:center;width:1.1rem;height:1.1rem;border-radius:50%;border:1px solid var(--border);font-size:0.6rem;font-weight:600;color:var(--text2);text-decoration:none;margin-left:0.4rem;vertical-align:middle;cursor:pointer;transition:border-color 0.15s,color 0.15s}
+.help-anchor:hover{border-color:var(--accent);color:var(--accent);text-decoration:none}
+
+/* Post-modal tooltip tour */
+.split-left,.split-right{position:relative}
+.tour-tip{position:absolute;z-index:1500;background:var(--text);color:#fff;padding:0.75rem 1rem;border-radius:0.5rem;font-size:0.8125rem;line-height:1.5;max-width:280px;width:280px;box-shadow:0 8px 24px rgba(0,0,0,0.2);animation:tourTipIn 0.2s ease-out;pointer-events:auto}
+@keyframes tourTipIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:translateY(0)}}
+.tour-tip::before{content:'';position:absolute;width:0.6rem;height:0.6rem;background:var(--text);transform:rotate(45deg)}
+.tour-tip.arrow-top::before{top:-0.3rem;left:1.5rem}
+.tour-tip.arrow-bottom::before{bottom:-0.3rem;left:1.5rem}
+.tour-tip-title{font-weight:700;font-size:0.75rem;text-transform:uppercase;letter-spacing:0.04em;opacity:0.7;margin-bottom:0.3rem}
+.tour-tip-nav{display:flex;justify-content:space-between;align-items:center;margin-top:0.6rem;gap:0.5rem}
+.tour-tip-btn{background:rgba(255,255,255,0.15);border:none;color:#fff;padding:0.25rem 0.65rem;border-radius:0.25rem;font-size:0.75rem;font-family:var(--font-body);cursor:pointer;transition:background 0.15s}
+.tour-tip-btn:hover{background:rgba(255,255,255,0.25)}
+.tour-tip-btn-primary{background:rgba(255,255,255,0.9);color:var(--text);font-weight:600}
+.tour-tip-btn-primary:hover{background:#fff}
+.tour-tip-counter{font-size:0.7rem;opacity:0.5;font-family:var(--font-mono)}
+.tour-highlight{outline:2px solid var(--accent);outline-offset:4px;border-radius:0.25rem;transition:outline-color 0.3s}
+
 .mode-badge{display:inline-block;padding:0.1rem 0.4rem;border-radius:3px;font-size:0.6rem;font-weight:700;letter-spacing:0.03em;text-transform:uppercase;margin-right:0.25rem}
 .mode-xray{background:rgba(109,40,217,0.1);color:#6d28d9}
 .mode-blind{background:rgba(3,105,161,0.1);color:#0369a1}
@@ -447,6 +501,7 @@ details[open] summary .section-icon{opacity:0.8}
   </div>
   <div class="header-actions">
     <button onclick="toggleCsvPreview()">CSV Preview</button>
+    <button onclick="startTourFromGuide()" title="How to read this report">Guide</button>
   </div>
 </div>
 
@@ -472,7 +527,7 @@ details[open] summary .section-icon{opacity:0.8}
     {{NARRATIVE_SUMMARY}}
 
     <!-- Evidence section (hidden by default, shown on click) -->
-    <details id="evidence-section">
+    <details id="evidence-section" data-tour="evidence">
     <summary style="cursor:pointer;font-weight:500;font-size:0.9375rem;padding:0.75rem 0;color:var(--text2);border-top:1px solid var(--border);margin-top:0.5rem">Full Evidence &amp; Details</summary>
 
     <!-- Report Intro (what am I looking at) -->
@@ -481,7 +536,7 @@ details[open] summary .section-icon{opacity:0.8}
     </div>
 
     <!-- Stats row -->
-    <div class="stats-row">
+    <div class="stats-row" data-tour="stats">
       <div class="stat" onclick="scrollToSection('ac-results')">
         <div class="stat-n" style="color:var(--status-success)">{{PASS_COUNT}}</div>
         <div class="stat-l">Criteria Passed</div>
@@ -528,7 +583,7 @@ details[open] summary .section-icon{opacity:0.8}
     </div>
 
     <!-- AC Results: Jira ACs -->
-    <h2 id="ac-results">Acceptance Criteria</h2>
+    <h2 id="ac-results" data-tour="ac-table">Acceptance Criteria</h2>
     <p class="small muted" style="margin:-0.5rem 0 1rem">Source: <a href="{{JIRA_URL}}" target="_blank">{{PROTOTYPE_ID}}</a> — {{AC_JIRA_COUNT}} criteria extracted verbatim from ticket</p>
     <table class="tbl" id="ac-table-jira">
       <thead>
@@ -556,7 +611,7 @@ details[open] summary .section-icon{opacity:0.8}
     </div>
 
     <!-- Usability Dimensions -->
-    <h2 id="usability-dimensions">Usability Dimension Scores (INF)</h2>
+    <h2 id="usability-dimensions" data-tour="usability">Usability Dimension Scores (INF) <a class="help-anchor" href="#scoring-methodology" onclick="document.getElementById('scoring-methodology').open=true;return true" title="How scores are calculated">?</a></h2>
     {{USABILITY_TABLE}}
     {{PATIENCE_TRACKING}}
 
@@ -564,7 +619,7 @@ details[open] summary .section-icon{opacity:0.8}
     {{THINK_ALOUD_COMPARISON}}
 
     <!-- Flagged -->
-    <h2 id="flagged">Flagged for Human Review</h2>
+    <h2 id="flagged" data-tour="flagged">Flagged for Human Review</h2>
     {{FLAGGED_HTML}}
 
     <!-- Human Review Section -->
@@ -601,12 +656,12 @@ details[open] summary .section-icon{opacity:0.8}
   <div class="resizer" id="resizer"></div>
 
   <!-- Right Panel: Journeys + Think-Aloud -->
-  <div class="split-right">
+  <div class="split-right" data-tour="right-panel">
 
     <!-- Empty state (shown until user clicks something) -->
     <div id="panel-empty" class="panel-empty">
       <div style="text-align:center;padding:3rem 1.5rem;color:var(--text2)">
-        <div style="font-size:2rem;margin-bottom:0.75rem;opacity:0.4">&#128269;</div>
+        <div style="font-size:1.5rem;margin-bottom:0.75rem;opacity:0.3;font-weight:300;color:var(--text2)">&#8212;</div>
         <p style="font-size:0.9375rem;font-weight:500;margin:0 0 0.5rem;color:var(--text)">Select an item to see details</p>
         <p style="font-size:0.8125rem;margin:0">Click on a finding, AC result, or action button on the left to view evidence and walkthrough details here.</p>
       </div>
@@ -620,7 +675,7 @@ details[open] summary .section-icon{opacity:0.8}
     </div>
 
     <!-- Tab: Journeys -->
-    <div class="panel-content active" id="panel-journeys">
+    <div class="panel-content active" id="panel-journeys" data-tour="tab-journeys">
       <h2>Persona Walkthroughs</h2>
       <p class="small muted" style="margin:-0.5rem 0 1rem">Each persona navigated the prototype independently at their own competence level. Click a persona to view their full step-by-step walkthrough with think-aloud narrative.</p>
 
@@ -638,14 +693,14 @@ details[open] summary .section-icon{opacity:0.8}
     </div>
 
     <!-- Tab: Findings -->
-    <div class="panel-content" id="panel-fixes">
+    <div class="panel-content" id="panel-fixes" data-tour="tab-findings">
       <h2>Findings &amp; Changes</h2>
       <p class="small muted" style="margin:-0.5rem 0 1rem">Everything the evaluation found — fixes applied to pass acceptance criteria, and design consistency issues for human review.</p>
       {{FIXES_HTML}}
     </div>
 
     <!-- Tab: Consistency -->
-    <div class="panel-content" id="panel-consistency">
+    <div class="panel-content" id="panel-consistency" data-tour="tab-consistency">
       <h2>Design Consistency</h2>
       <p class="small muted" style="margin:-0.5rem 0 1rem">Checks PatternFly design pattern compliance in source code and captured screenshots. Powered by <a href="https://gitlab.cee.redhat.com/bmorley/consistency-checker" target="_blank">consistency-checker</a> (Beau Morley).</p>
       {{CONSISTENCY_HTML}}
@@ -665,7 +720,7 @@ details[open] summary .section-icon{opacity:0.8}
     </div>
   </details>
 
-  <details style="margin:0 0 1.5rem">
+  <details id="scoring-methodology" style="margin:0 0 1.5rem">
     <summary style="font-size:0.8rem;font-weight:500;cursor:pointer">How Usability Scores Are Calculated</summary>
     <div style="margin-top:0.5rem;font-size:0.75rem;line-height:1.6;color:var(--text)">
       <p><strong>INF (Inference)</strong> — fast, structural analysis from Playwright journey evidence. <strong>TA (Think-Aloud)</strong> — slow, diagnostic persona narration.</p>
@@ -1466,40 +1521,330 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 </script>
 
+<!-- Welcome Modal — first-visit onboarding -->
+<div class="welcome-overlay" id="welcomeModal">
+  <div class="welcome-modal">
+
+    <!-- Step 0: Entry — choose guide or skip -->
+    <div class="welcome-step active" data-step="0">
+      <div class="welcome-header">
+        <h2>This is an eval report</h2>
+        <p>It checks whether a prototype meets the acceptance criteria from its Jira ticket. An automated evaluator ran Playwright walkthroughs against the live prototype, navigating pages, clicking through flows, and checking what it found against what the ticket requires.</p>
+      </div>
+      <div class="welcome-footer">
+        <button class="welcome-btn welcome-btn-primary" onclick="welcomeGoTo(1)">Walk me through it</button>
+        <button class="welcome-btn welcome-btn-secondary" onclick="skipWelcome()">Skip</button>
+      </div>
+    </div>
+
+    <!-- Step 1: The verdict -->
+    <div class="welcome-step" data-step="1">
+      <div class="welcome-header" style="padding-bottom:0.75rem">
+        <div class="welcome-step-indicator"><span class="welcome-dot active"></span><span class="welcome-dot"></span><span class="welcome-dot"></span></div>
+        <h2>The verdict</h2>
+        <p>The banner at the top of the report tells you the overall result. There are three possible outcomes:</p>
+      </div>
+      <div class="welcome-sections">
+        <div class="welcome-verdicts">
+          <div class="welcome-verdict">
+            <span class="welcome-verdict-icon welcome-verdict-pass">&#10003;</span>
+            <div><strong>PASS</strong><br><span style="color:var(--text2)">All acceptance criteria from the Jira ticket were met. You can approve or skim the evidence.</span></div>
+          </div>
+          <div class="welcome-verdict">
+            <span class="welcome-verdict-icon welcome-verdict-fail">&#10007;</span>
+            <div><strong>NEEDS FIXES</strong><br><span style="color:var(--text2)">Some criteria failed. The report lists which ones and shows the evidence for each.</span></div>
+          </div>
+          <div class="welcome-verdict">
+            <span class="welcome-verdict-icon welcome-verdict-review">!</span>
+            <div><strong>NEEDS REVIEW</strong><br><span style="color:var(--text2)">Some criteria couldn't be verified automatically. They need your judgment.</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="welcome-nav">
+        <button class="welcome-btn welcome-btn-secondary" onclick="welcomeGoTo(0)" style="padding:0.45rem 1.25rem;font-size:0.8125rem">Back</button>
+        <span class="welcome-nav-step">1 / 3</span>
+        <button class="welcome-btn welcome-btn-primary" onclick="welcomeGoTo(2)" style="padding:0.45rem 1.25rem;font-size:0.8125rem">Next</button>
+      </div>
+    </div>
+
+    <!-- Step 2: Your role -->
+    <div class="welcome-step" data-step="2">
+      <div class="welcome-header" style="padding-bottom:0.75rem">
+        <div class="welcome-step-indicator"><span class="welcome-dot"></span><span class="welcome-dot active"></span><span class="welcome-dot"></span></div>
+        <h2>Your role</h2>
+        <p>Most of the report is automated. But items marked <span class="badge badge-flagged" style="font-size:0.65rem;vertical-align:1px">FLAGGED</span> are the ones that need you.</p>
+      </div>
+      <div class="welcome-sections">
+        <div class="welcome-section" style="border-top:none;padding-top:0">
+          <p>The automated check couldn't make the call on these &mdash; maybe it requires comparing against an external system, or the criterion is subjective. Click any flagged item to see the evidence, then make the final call: pass or fail.</p>
+          <p style="margin-top:0.75rem">If the verdict is <strong>PASS</strong> and nothing is flagged, there is nothing for you to do &mdash; the report is informational.</p>
+        </div>
+      </div>
+      <div class="welcome-nav">
+        <button class="welcome-btn welcome-btn-secondary" onclick="welcomeGoTo(1)" style="padding:0.45rem 1.25rem;font-size:0.8125rem">Back</button>
+        <span class="welcome-nav-step">2 / 3</span>
+        <button class="welcome-btn welcome-btn-primary" onclick="welcomeGoTo(3)" style="padding:0.45rem 1.25rem;font-size:0.8125rem">Next</button>
+      </div>
+    </div>
+
+    <!-- Step 3: Finding your way -->
+    <div class="welcome-step" data-step="3">
+      <div class="welcome-header" style="padding-bottom:0.75rem">
+        <div class="welcome-step-indicator"><span class="welcome-dot"></span><span class="welcome-dot"></span><span class="welcome-dot active"></span></div>
+        <h2>Finding your way</h2>
+        <p>The report is split into two panels:</p>
+      </div>
+      <div class="welcome-sections">
+        <div class="welcome-layout">
+          <div class="welcome-layout-col">
+            <strong>Left panel</strong>
+            <span>Your results &mdash; the verdict, acceptance criteria with pass/fail/flagged verdicts, and usability scores.</span>
+          </div>
+          <div class="welcome-layout-col">
+            <strong>Right panel</strong>
+            <span>The evidence &mdash; persona walkthrough screenshots, findings, and design consistency checks. Click items on the left to populate this.</span>
+          </div>
+        </div>
+        <p class="welcome-layout-hint">Expand <strong>Full Evidence &amp; Details</strong> on the left for the complete picture &mdash; iteration history, usability dimensions, and all the supporting data.</p>
+      </div>
+      <div class="welcome-nav">
+        <button class="welcome-btn welcome-btn-secondary" onclick="welcomeGoTo(2)" style="padding:0.45rem 1.25rem;font-size:0.8125rem">Back</button>
+        <span class="welcome-nav-step">3 / 3</span>
+        <button class="welcome-btn welcome-btn-primary" onclick="dismissWelcome()" style="padding:0.45rem 1.25rem;font-size:0.8125rem">Done</button>
+      </div>
+    </div>
+
+  </div>
+</div>
+
 <script>
-// First-visit onboarding
-(function() {
-  if (localStorage.getItem('eval-report-toured')) return;
-  var steps = [
-    { target: '[data-tour="actions"]', text: 'Use these buttons to act on findings — view evidence, fix issues, or review flagged items.' },
-    { target: '#evidence-section', text: 'Expand this to see acceptance criteria results, usability scores, and what was flagged for your review.' },
-    { target: '.header-actions button', text: 'CSV Preview lets you export the raw evaluation data — useful for tracking scores over time or sharing with stakeholders.' },
-    { target: '.panel-tab', text: 'These tabs switch between different evidence views: persona walkthroughs, findings/fixes, and design consistency checks.' },
-    { target: '#ac-results', text: 'Each acceptance criterion from the Jira ticket is listed here with a pass/fail/flagged verdict and the evidence behind it.' }
-  ];
-  var current = 0;
-  function showStep() {
-    document.querySelectorAll('.tour-tooltip').forEach(function(el) { el.remove(); });
-    if (current >= steps.length) { localStorage.setItem('eval-report-toured', '1'); return; }
-    var s = steps[current];
-    var el = document.querySelector(s.target);
-    if (!el || el.offsetParent === null) { current++; showStep(); return; }
-    var tip = document.createElement('div');
-    tip.className = 'tour-tooltip active';
-    var btns = '<div style="display:flex;gap:0.4rem;margin-top:0.4rem">';
-    btns += '<button class="tour-dismiss" onclick="this.closest(\'.tour-tooltip\').remove();window._tourNext();">' + (current < steps.length - 1 ? 'Next' : 'Got it') + '</button>';
-    btns += '<button class="tour-dismiss" style="opacity:0.6" onclick="localStorage.setItem(\'eval-report-toured\',\'1\');this.closest(\'.tour-tooltip\').remove();">Skip tour</button>';
-    btns += '</div>';
-    tip.innerHTML = '<strong>Step ' + (current + 1) + '/' + steps.length + '</strong><br>' + s.text + btns;
-    tip.style.position = 'absolute';
-    var rect = el.getBoundingClientRect();
-    tip.style.top = (window.scrollY + rect.bottom + 8) + 'px';
-    tip.style.left = (window.scrollX + rect.left + 10) + 'px';
-    document.body.appendChild(tip);
+var welcomeCurrentStep = 0;
+var startTourAfterModal = false;
+
+function welcomeGoTo(step) {
+  document.querySelectorAll('.welcome-step').forEach(function(el) { el.classList.remove('active'); });
+  var target = document.querySelector('.welcome-step[data-step="' + step + '"]');
+  if (target) target.classList.add('active');
+  welcomeCurrentStep = step;
+}
+
+function dismissWelcome(skipTour) {
+  var overlay = document.getElementById('welcomeModal');
+  overlay.classList.remove('active');
+  try { localStorage.setItem('eval-report-welcomed', '1'); } catch(e) {}
+  if (!skipTour && startTourAfterModal) {
+    setTimeout(startTooltipTour, 400);
   }
-  window._tourNext = function() { current++; showStep(); };
-  setTimeout(showStep, 500);
+}
+
+function skipWelcome() {
+  document.getElementById('welcomeModal').classList.remove('active');
+  try { localStorage.setItem('eval-report-welcomed', '1'); } catch(e) {}
+}
+
+function showWelcome() {
+  startTourAfterModal = true;
+  welcomeGoTo(0);
+  document.getElementById('welcomeModal').classList.add('active');
+}
+
+(function() {
+  try { if (localStorage.getItem('eval-report-welcomed')) return; } catch(e) {}
+  setTimeout(showWelcome, 300);
 })();
+
+document.getElementById('welcomeModal').addEventListener('click', function(e) {
+  if (e.target === this) skipWelcome();
+});
+
+document.addEventListener('keydown', function(e) {
+  if (document.getElementById('welcomeModal').classList.contains('active')) {
+    if (e.key === 'Escape') skipWelcome();
+    if (e.key === 'ArrowRight' && welcomeCurrentStep > 0 && welcomeCurrentStep < 3) welcomeGoTo(welcomeCurrentStep + 1);
+    if (e.key === 'ArrowLeft' && welcomeCurrentStep > 1) welcomeGoTo(welcomeCurrentStep - 1);
+    return;
+  }
+  if (window._tourActive && e.key === 'Escape') endTooltipTour();
+});
+
+// --- Tooltip tour (fires after modal guide completes) ---
+var tourSteps = [
+  // LHS: overview sections
+  {
+    target: '[data-tour="verdict"]',
+    title: 'Verdict',
+    text: 'The overall result. Tells you at a glance whether the prototype passed, needs fixes, or needs your review.',
+    panel: 'left'
+  },
+  {
+    target: '[data-tour="gap"]',
+    title: 'Gap analysis',
+    text: 'How many acceptance criteria were expected vs. how many actually passed. Failures and flagged items are listed here.',
+    panel: 'left'
+  },
+  {
+    target: '[data-tour="evidence"]',
+    title: 'Full evidence',
+    text: 'Click to expand. Contains the detailed breakdown: stats, AC table, usability scores, and everything below.',
+    panel: 'left',
+    action: function() { var el = document.getElementById('evidence-section'); if (el) el.open = true; }
+  },
+  {
+    target: '[data-tour="stats"]',
+    title: 'Score cards',
+    text: 'Quick counts. Click any card to jump to that section.',
+    panel: 'left'
+  },
+  {
+    target: '[data-tour="ac-table"]',
+    title: 'Acceptance criteria',
+    text: 'Each criterion from the Jira ticket with a verdict and evidence. PASS and FAIL are automated. FLAGGED means you decide.',
+    panel: 'left'
+  },
+  {
+    target: '[data-tour="usability"]',
+    title: 'Usability scores',
+    text: 'Seven dimensions scored 0-3 each (21 total). Click the (?) to see how scores are calculated.',
+    panel: 'left'
+  },
+  {
+    target: '[data-tour="flagged"]',
+    title: 'Flagged items',
+    text: 'Items the automated check could not verify. Click any one to see the evidence and override the verdict.',
+    panel: 'left'
+  },
+  // RHS: tabs
+  {
+    target: '[data-tour="tab-journeys"]',
+    title: 'Journeys tab',
+    text: 'Persona walkthroughs. Each persona navigated the prototype independently. Click a persona card to see their step-by-step screenshots.',
+    panel: 'right',
+    action: function() {
+      var pe = document.getElementById('panel-empty'); if (pe) pe.style.display = 'none';
+      var pt = document.getElementById('panel-tabs-container'); if (pt) pt.style.display = '';
+      switchTab('journeys');
+    }
+  },
+  {
+    target: '[data-tour="tab-findings"]',
+    title: 'Findings tab',
+    text: 'Fixes applied during the evaluation and issues found. Shows what was changed to pass acceptance criteria.',
+    panel: 'right',
+    action: function() { switchTab('fixes'); }
+  },
+  {
+    target: '[data-tour="tab-consistency"]',
+    title: 'Consistency tab',
+    text: 'PatternFly design guideline checks. Flags violations in source code and screenshots against the design system.',
+    panel: 'right',
+    action: function() { switchTab('consistency'); }
+  }
+];
+
+var tourCurrentStep = 0;
+window._tourActive = false;
+
+function startTooltipTour() {
+  window._tourActive = true;
+  tourCurrentStep = 0;
+  showTourStep();
+}
+
+function endTooltipTour() {
+  window._tourActive = false;
+  removeTourTip();
+  document.querySelectorAll('.tour-highlight').forEach(function(el) { el.classList.remove('tour-highlight'); });
+}
+
+function removeTourTip() {
+  document.querySelectorAll('.tour-tip').forEach(function(el) { el.remove(); });
+}
+
+function getOffsetInPane(el, pane) {
+  var top = 0, left = 0, cur = el;
+  while (cur && cur !== pane) {
+    top += cur.offsetTop;
+    left += cur.offsetLeft;
+    cur = cur.offsetParent;
+  }
+  return { top: top, left: left };
+}
+
+function showTourStep() {
+  removeTourTip();
+  document.querySelectorAll('.tour-highlight').forEach(function(el) { el.classList.remove('tour-highlight'); });
+
+  if (tourCurrentStep >= tourSteps.length) { endTooltipTour(); return; }
+
+  var step = tourSteps[tourCurrentStep];
+
+  // Run action first so it can reveal hidden elements
+  if (step.action) step.action();
+
+  var el = document.querySelector(step.target);
+
+  // Skip elements that are still hidden after action
+  if (!el || el.offsetParent === null) { tourCurrentStep++; showTourStep(); return; }
+
+  var pane = step.panel === 'right'
+    ? document.querySelector('.split-right')
+    : document.querySelector('.split-left');
+
+  // Get element position relative to the pane
+  var pos = getOffsetInPane(el, pane);
+
+  // Scroll the pane so the element is near the top with room for the tooltip
+  if (pane) {
+    pane.scrollTo({ top: Math.max(0, pos.top - 60), behavior: 'smooth' });
+  }
+
+  el.classList.add('tour-highlight');
+
+  setTimeout(function() {
+    var tip = document.createElement('div');
+    tip.className = 'tour-tip arrow-top';
+
+    var navHtml = '<div class="tour-tip-nav">';
+    if (tourCurrentStep > 0) {
+      navHtml += '<button class="tour-tip-btn" onclick="tourPrev()">Back</button>';
+    } else {
+      navHtml += '<span></span>';
+    }
+    navHtml += '<span class="tour-tip-counter">' + (tourCurrentStep + 1) + ' / ' + tourSteps.length + '</span>';
+    if (tourCurrentStep < tourSteps.length - 1) {
+      navHtml += '<button class="tour-tip-btn tour-tip-btn-primary" onclick="tourNext()">Next</button>';
+    } else {
+      navHtml += '<button class="tour-tip-btn tour-tip-btn-primary" onclick="endTooltipTour()">Done</button>';
+    }
+    navHtml += '</div>';
+
+    tip.innerHTML = '<div class="tour-tip-title">' + step.title + '</div>' + step.text + navHtml;
+
+    // Position absolutely inside the pane, right below the element
+    var updatedPos = getOffsetInPane(el, pane);
+    var tipTop = updatedPos.top + el.offsetHeight + 10;
+    var tipLeft = 20;
+
+    // Clamp left so tooltip stays within pane
+    var paneWidth = pane ? pane.clientWidth : 600;
+    if (tipLeft + 280 > paneWidth - 16) tipLeft = paneWidth - 296;
+    if (tipLeft < 8) tipLeft = 8;
+
+    tip.style.top = tipTop + 'px';
+    tip.style.left = tipLeft + 'px';
+
+    if (pane) pane.appendChild(tip);
+  }, 400);
+}
+
+function tourNext() { tourCurrentStep++; showTourStep(); }
+function tourPrev() { tourCurrentStep--; showTourStep(); }
+function startTourFromGuide() {
+  startTourAfterModal = true;
+  welcomeGoTo(0);
+  document.getElementById('welcomeModal').classList.add('active');
+}
 </script>
+
 </body>
 </html>

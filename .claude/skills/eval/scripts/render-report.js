@@ -1905,11 +1905,11 @@ function buildNarrativeSummary() {
   // --- Action buttons ---
   let actionsHtml = '';
   if (failCount === 0 && flaggedCount === 0) {
-    actionsHtml = `<div class="action-bar"><button class="action-btn action-approve" onclick="scrollToSection('ac-results')">View Evidence</button></div>`;
+    actionsHtml = '';
   } else if (failCount > 0) {
-    actionsHtml = `<div class="action-bar"><button class="action-btn action-fix" onclick="scrollToSection('ac-results')">View Failures</button><button class="action-btn action-secondary" onclick="scrollToSection('usability-dimensions')">View Evidence</button></div>`;
+    actionsHtml = `<div class="action-bar"><button class="action-btn action-fix" onclick="scrollToSection('ac-results')">View Failures</button></div>`;
   } else {
-    actionsHtml = `<div class="action-bar"><button class="action-btn action-review" onclick="scrollToSection('flagged')">Review Flagged Items</button><button class="action-btn action-secondary" onclick="scrollToSection('ac-results')">View Evidence</button></div>`;
+    actionsHtml = `<div class="action-bar"><button class="action-btn action-review" onclick="scrollToSection('flagged')">Review Flagged Items</button></div>`;
   }
 
   // --- Assemble ---
@@ -2637,7 +2637,7 @@ function buildTokens(opts = {}) {
       compRows += `<tr><td>${label}</td><td>${inf}/3</td><td>${ta}/3</td><td><strong>${deltaStr}</strong></td></tr>`;
     }
 
-    thinkAloudComparison = `<h2>INF vs Think-Aloud Comparison</h2><p class="small muted" style="margin:-0.5rem 0 1rem"><strong>INF (Inference)</strong> scores are derived from structural analysis of the Playwright journey evidence — what the evaluator observes about the UI flow without role-playing a persona. <strong>TA (Think-Aloud)</strong> scores come from persona walkthroughs where each persona navigates the prototype at their own competence level, experiencing confusion, patience drain, and knowledge gaps in real-time. A positive delta means the UI works better in practice than the structure suggests; negative means real users struggle more than expected.</p><table class="tbl"><thead><tr><th>Dimension</th><th>INF Score</th><th>TA Score</th><th>Delta</th></tr></thead><tbody>${compRows}</tbody></table>`;
+    thinkAloudComparison = `<h2>INF vs Think-Aloud Comparison <a class="help-anchor" href="#scoring-methodology" onclick="document.getElementById('scoring-methodology').open=true;return true" title="How scores are calculated">?</a></h2><p class="small muted" style="margin:-0.5rem 0 1rem"><strong>INF (Inference)</strong> scores are derived from structural analysis of the Playwright journey evidence — what the evaluator observes about the UI flow without role-playing a persona. <strong>TA (Think-Aloud)</strong> scores come from persona walkthroughs where each persona navigates the prototype at their own competence level, experiencing confusion, patience drain, and knowledge gaps in real-time. A positive delta means the UI works better in practice than the structure suggests; negative means real users struggle more than expected.</p><table class="tbl"><thead><tr><th>Dimension</th><th>INF Score</th><th>TA Score</th><th>Delta</th></tr></thead><tbody>${compRows}</tbody></table>`;
   }
 
   // ---- Think-Aloud Narratives ----
