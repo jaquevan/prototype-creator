@@ -2,6 +2,16 @@
 
 Evaluates prototypes against Jira acceptance criteria and runs persona-based usability testing. Produces an HTML report with a narrative summary, expandable findings, and full evidence (screenshots, think-aloud traces, dimension scores).
 
+## Target Outcome
+
+The report is a **confidence gate + iteration driver** for designers:
+
+- **If the prototype passes:** The designer knows it's ready and can approve it. One clear verdict, no guesswork.
+- **If issues exist:** The designer knows exactly what needs fixing, why, and what to do next. Actionable, not informational.
+- **If items need human judgment:** The designer sees what the AI couldn't verify and can make their own call with evidence.
+
+The report answers three questions in under 10 seconds: *Did it pass? What needs my attention? What do I do next?*
+
 ## Quick Start
 
 ```bash
@@ -97,8 +107,8 @@ To review results from a previous run:
 make context
 
 # Or individually:
-bash scripts/bootstrap-usability-testing.sh    # Personas + 7-dimension rubric
-bash scripts/bootstrap-consistency-checker.sh  # PatternFly design guidelines
+bash .claude/skills/eval/scripts/bootstrap-usability-testing.sh    # Personas + 7-dimension rubric
+bash .claude/skills/eval/scripts/bootstrap-consistency-checker.sh  # PatternFly design guidelines
 ```
 
 | Directory | Source | Required for |

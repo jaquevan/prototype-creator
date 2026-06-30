@@ -87,6 +87,6 @@ Reports are currently local-only (`.artifacts/<KEY>/evaluation-report.html`). St
 ## Next Steps
 
 - [ ] Create `reports` branch on the prototype repo
-- [ ] Add `scripts/publish-report.sh` that copies HTML to the branch and pushes
-- [ ] Update `scripts/sync-sheet.js` to include the report URL in the Google Sheet
+- [ ] Add `.claude/skills/eval/scripts/publish-report.sh` that copies HTML to the branch and pushes
+- [ ] Update `.claude/skills/eval/scripts/sync-sheet.js` to include the report URL in the Google Sheet
 - [ ] Test raw file URL access for team members

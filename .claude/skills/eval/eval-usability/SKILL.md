@@ -229,7 +229,27 @@ After persona walkthroughs complete, read each persona's output:
 
 For each persona's trace, assess:
 1. **Comprehension** — did the persona understand the UI elements? Check against domain_knowledge map.
-2. **Patience drain** — apply persona's patience model (High: -5%/-10%, Medium: -10%/-20%, Low: -15%/-30%)
+2. **Patience drain and recovery** — apply the model from `.context/usability-testing/prompts/evaluate-flow.md` exactly as specified:
+
+   **Drain rates (per persona patience attribute from YAML):**
+   - High patience: -5% per confusion event, -10% per dead end
+   - Medium patience: -10% per confusion event, -20% per dead end
+   - Low patience: -15% per confusion event, -30% per dead end
+   - At 0%: accept assisted navigation if available, otherwise abandon
+
+   **Recovery (on successful sub-task completion):**
+   - High patience: +10% per success (cap at 100%)
+   - Medium patience: +5% per success (cap at 100%)
+   - Low patience: +5% per success (cap at 100%)
+   - Recovery only applies after frustration occurred. No recovery if never frustrated.
+   - Assisted navigation recovery: +15% (got unstuck, but step is still a failure)
+
+   **CRITICAL:** Apply these rates mechanically from the think-aloud trace events. Count the logged confusion events, dead ends, and successful sub-tasks. Do NOT infer additional drain from step count, time spent, or subjective assessment. The formula is:
+   ```
+   patience_end = 100 - SUM(drain from confusion events) - SUM(drain from dead ends) + SUM(recovery from successes)
+   ```
+   Clamp between 0 and 100.
+
 3. **Knowledge gaps** — moments where persona constraints caused confusion
 4. **Assisted navigation** — steps marked `navigate-assisted` are FAIL evidence for usability
 

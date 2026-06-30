@@ -7,8 +7,8 @@ const { execSync } = require('child_process');
 
 const artifactsDir = process.argv[2];
 if (!artifactsDir) {
-  console.error('Usage: node scripts/render-report.js <artifacts-dir>');
-  console.error('  e.g. node scripts/render-report.js .artifacts/RHAISTRAT-1536/');
+  console.error('Usage: node .claude/skills/eval/scripts/render-report.js <artifacts-dir>');
+  console.error('  e.g. node .claude/skills/eval/scripts/render-report.js .artifacts/RHAISTRAT-1536/');
   process.exit(1);
 }
 
@@ -1834,95 +1834,109 @@ function buildNarrativeSummary() {
 
   const ud = journeyLog ? journeyLog.usability_dimensions : null;
   const usabilityScore = ud ? ud.overall_score || null : null;
-
-  // --- What this is ---
   const storyTitle = (extractState && extractState.ticket_summary) || protoId;
-  const mrDelta = readJsonOr(path.join(absArtifacts, 'mr-delta.json'), null);
-  let mrStats = '';
-  if (mrDelta && mrDelta.files_changed) {
-    const added = mrDelta.lines_added || 0;
-    const removed = mrDelta.lines_removed || 0;
-    mrStats = `${mrDelta.files_changed} files changed (+${added}, -${removed})`;
+  const suggestions = Array.isArray(refinements) ? refinements : (refinements && refinements.suggestions ? refinements.suggestions : []);
+  const fixedSuggestions = suggestions.filter(s => (s.verdict || '').toUpperCase() === 'FIXED');
+  const openSuggestions = suggestions.filter(s => (s.verdict || '').toUpperCase() !== 'FIXED');
+
+  // --- Verdict ---
+  let verdictClass, verdictLabel, verdictIcon;
+  if (failCount === 0 && flaggedCount === 0) {
+    verdictClass = 'verdict-pass';
+    verdictLabel = 'PASS';
+    verdictIcon = '&#10003;';
+  } else if (failCount > 0) {
+    verdictClass = 'verdict-fail';
+    verdictLabel = 'NEEDS FIXES';
+    verdictIcon = '&#10007;';
+  } else {
+    verdictClass = 'verdict-review';
+    verdictLabel = 'NEEDS REVIEW';
+    verdictIcon = '&#9888;';
   }
 
-  let whatThisIs = `<strong>${escapeHtml(protoId)}</strong>: ${escapeHtml(storyTitle)}`;
-  if (mrStats) whatThisIs += `<br><span class="small" style="color:var(--text2)">${escapeHtml(mrStats)}</span>`;
-
-  // --- What passed ---
-  const passedItems = csvRows.filter(r => (r.verdict || '').toUpperCase() === 'PASS');
-  let whatPassed = `<strong>${passCount}/${totalAc}</strong> acceptance criteria met`;
-  if (usabilityScore) whatPassed += ` · Usability: <strong>${usabilityScore}</strong>`;
-  if (passCount === totalAc && totalAc > 0) {
-    whatPassed += `<br><span style="color:var(--status-success);font-weight:500">All acceptance criteria pass</span>`;
-  }
-
-  // --- What needs attention ---
+  // --- Gap items ---
   const failedRows = csvRows.filter(r => (r.verdict || '').toUpperCase() === 'FAIL');
   const flaggedRows = csvRows.filter(r => (r.verdict || '').toUpperCase() === 'FLAGGED');
-  const suggestions = Array.isArray(refinements) ? refinements : (refinements && refinements.suggestions ? refinements.suggestions : []);
 
-  let attentionItems = '';
-  if (failedRows.length === 0 && flaggedRows.length === 0 && suggestions.length === 0) {
-    attentionItems = '<span style="color:var(--status-success)">Nothing critical — looking good</span>';
+  let gapHtml = '';
+  if (failedRows.length === 0 && flaggedRows.length === 0) {
+    gapHtml = `<p class="gap-clear">None &mdash; ready to approve</p>`;
   } else {
-    const items = [];
+    gapHtml = '<div class="gap-items">';
     for (const row of failedRows) {
       const id = row.criterion_id || '?';
       const text = row.criterion_text || '';
-      const short = text.length > 80 ? text.slice(0, 77) + '...' : text;
-      items.push({ severity: 'fail', id, text: short, rationale: row.rationale || row.evidence || '' });
+      const short = text.length > 70 ? text.slice(0, 67) + '...' : text;
+      gapHtml += `<div class="gap-item gap-fail">`;
+      gapHtml += `<span class="badge badge-fail">FAIL</span>`;
+      gapHtml += `<span class="gap-text"><strong>${escapeHtml(id)}</strong>: ${escapeHtml(short)}</span>`;
+      gapHtml += `<button class="action-btn action-fix" onclick="scrollToSection('ac-results')">Fix this</button>`;
+      gapHtml += `</div>`;
     }
     for (const row of flaggedRows) {
       const id = row.criterion_id || '?';
       const text = row.criterion_text || '';
-      const short = text.length > 80 ? text.slice(0, 77) + '...' : text;
-      items.push({ severity: 'flagged', id, text: short, rationale: row.rationale || row.evidence || '' });
+      const short = text.length > 70 ? text.slice(0, 67) + '...' : text;
+      gapHtml += `<div class="gap-item gap-flagged">`;
+      gapHtml += `<span class="badge badge-flagged">REVIEW</span>`;
+      gapHtml += `<span class="gap-text"><strong>${escapeHtml(id)}</strong>: ${escapeHtml(short)}</span>`;
+      gapHtml += `<button class="action-btn action-review" onclick="scrollToSection('flagged')">Review</button>`;
+      gapHtml += `</div>`;
     }
-
-    for (const item of items) {
-      const badgeCls = item.severity === 'fail' ? 'badge-fail' : 'badge-flagged';
-      const label = item.severity === 'fail' ? 'FAIL' : 'FLAGGED';
-      attentionItems += `<details class="narrative-finding"><summary>`;
-      attentionItems += `<span class="badge ${badgeCls}">${label}</span> `;
-      attentionItems += `<strong>${escapeHtml(item.id)}</strong>: ${escapeHtml(item.text)}`;
-      attentionItems += `</summary>`;
-      attentionItems += `<div class="narrative-evidence">`;
-      if (item.rationale) {
-        attentionItems += `<p>${escapeHtml(item.rationale)}</p>`;
-      }
-      const matchingSuggestion = suggestions.find(s => s.criterion_id === item.id || s.ac_id === item.id);
-      if (matchingSuggestion) {
-        attentionItems += `<p class="narrative-fix"><strong>Suggested fix:</strong> ${escapeHtml(matchingSuggestion.suggestion || matchingSuggestion.fix || matchingSuggestion.description || '')}</p>`;
-      }
-      attentionItems += `</div></details>`;
-    }
+    gapHtml += '</div>';
   }
 
-  // --- What to do ---
-  let whatToDo = '';
-  if (failedRows.length > 0) {
-    const fixActions = failedRows.map(r => {
-      const id = r.criterion_id || '?';
-      const matchingSuggestion = suggestions.find(s => s.criterion_id === id || s.ac_id === id);
-      if (matchingSuggestion) {
-        const fix = matchingSuggestion.suggestion || matchingSuggestion.fix || matchingSuggestion.description || '';
-        return `<li><strong>${escapeHtml(id)}</strong>: ${escapeHtml(fix.length > 100 ? fix.slice(0, 97) + '...' : fix)}</li>`;
-      }
-      return `<li><strong>${escapeHtml(id)}</strong>: Fix required (expand above for details)</li>`;
-    }).join('');
-    whatToDo = `<ul style="margin:0;padding-left:1.2rem">${fixActions}</ul>`;
-  } else if (flaggedRows.length > 0) {
-    whatToDo = `<span style="color:var(--status-warning)">Review ${flaggedRows.length} flagged item${flaggedRows.length > 1 ? 's' : ''} — may need human judgment</span>`;
+  // --- Auto-fixed section ---
+  let autoFixedHtml = '';
+  if (fixedSuggestions.length > 0 || (iterationLog && iterationLog.total_criteria_fixed > 0)) {
+    const fixCount = fixedSuggestions.length || (iterationLog ? iterationLog.total_criteria_fixed : 0);
+    autoFixedHtml = `<div class="autofixed-section">`;
+    autoFixedHtml += `<h4>Auto-fixed by the eval (no action needed)</h4>`;
+    autoFixedHtml += `<p>${fixCount} issue${fixCount > 1 ? 's' : ''} resolved automatically:</p>`;
+    autoFixedHtml += `<ul>`;
+    for (const s of fixedSuggestions.slice(0, 5)) {
+      autoFixedHtml += `<li>${escapeHtml(s.criterion_text || s.description || s.fix_action || '').slice(0, 80)}</li>`;
+    }
+    autoFixedHtml += `</ul>`;
+    autoFixedHtml += `</div>`;
+  }
+
+  // --- Action buttons ---
+  let actionsHtml = '';
+  if (failCount === 0 && flaggedCount === 0) {
+    actionsHtml = `<div class="action-bar"><button class="action-btn action-approve" onclick="scrollToSection('ac-results')">View Evidence</button></div>`;
+  } else if (failCount > 0) {
+    actionsHtml = `<div class="action-bar"><button class="action-btn action-fix" onclick="scrollToSection('ac-results')">View Failures</button><button class="action-btn action-secondary" onclick="scrollToSection('usability-dimensions')">View Evidence</button></div>`;
   } else {
-    whatToDo = `<span style="color:var(--status-success)">Ready to approve</span>`;
+    actionsHtml = `<div class="action-bar"><button class="action-btn action-review" onclick="scrollToSection('flagged')">Review Flagged Items</button><button class="action-btn action-secondary" onclick="scrollToSection('ac-results')">View Evidence</button></div>`;
   }
 
   // --- Assemble ---
-  let html = `<section class="narrative-summary">`;
-  html += `<div class="narrative-section"><h3>What this is</h3><p>${whatThisIs}</p></div>`;
-  html += `<div class="narrative-section"><h3>What passed</h3><p>${whatPassed}</p></div>`;
-  html += `<div class="narrative-section"><h3>What needs attention</h3><div>${attentionItems}</div></div>`;
-  html += `<div class="narrative-section"><h3>What to do</h3><div>${whatToDo}</div></div>`;
+  let html = `<section class="report-overview" data-onboarding="true">`;
+
+  html += `<div class="overview-verdict ${verdictClass}" data-tour="verdict">`;
+  html += `<span class="verdict-icon">${verdictIcon}</span>`;
+  html += `<span class="verdict-label">${verdictLabel}</span>`;
+  html += `</div>`;
+
+  html += `<div class="overview-context">`;
+  html += `<p class="overview-title">${escapeHtml(storyTitle)}</p>`;
+  html += `<p class="overview-meta">${escapeHtml(protoId)}${usabilityScore ? ' &middot; Usability: ' + escapeHtml(String(usabilityScore)) : ''}</p>`;
+  html += `</div>`;
+
+  html += `<div class="overview-gap" data-tour="gap">`;
+  html += `<div class="gap-header">`;
+  html += `<span class="gap-expected"><strong>Expected:</strong> ${totalAc} acceptance criteria</span>`;
+  html += `<span class="gap-actual"><strong>Actual:</strong> ${passCount}/${totalAc} met${flaggedCount > 0 ? ', ' + flaggedCount + ' need review' : ''}${failCount > 0 ? ', ' + failCount + ' failed' : ''}</span>`;
+  html += `</div>`;
+  html += gapHtml;
+  html += `</div>`;
+
+  html += autoFixedHtml;
+
+  html += `<div data-tour="actions">${actionsHtml}</div>`;
+
   html += `</section>`;
 
   return html;

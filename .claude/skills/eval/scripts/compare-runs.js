@@ -9,7 +9,7 @@ const logPath = path.join(projectRoot, '.artifacts', 'runs', 'run-log.csv');
 
 if (!fs.existsSync(logPath)) {
   console.error('No run log found at', logPath);
-  console.error('Run an eval first with: node scripts/log-run.js .artifacts/<KEY>/');
+  console.error('Run an eval first with: node .claude/skills/eval/scripts/log-run.js .artifacts/<KEY>/');
   process.exit(1);
 }
 

@@ -178,17 +178,42 @@ function readEvalResults(dir) {
   return { key: dir, title, result, pass, fail, flagged, total, usability, iterations, fixSummary, flaggedItems: flaggedItems.join(', '), reportUrl, evalDate, mtime, origResult, origPass, origFail, origFlagged, origUsability };
 }
 
+function computeDelta(orig, final) {
+  const parseScore = s => { const m = String(s).match(/^([\d.]+)/); return m ? parseFloat(m[1]) : null; };
+  const o = parseScore(orig);
+  const f = parseScore(final);
+  if (o === null || f === null) return '—';
+  const d = f - o;
+  if (d === 0) return '0';
+  return d > 0 ? `+${d.toFixed(1)}` : d.toFixed(1);
+}
+
 function main() {
-  console.log('\n  Sync Eval Results → Google Sheet\n');
+  const args = process.argv.slice(2);
+  const mode = args.includes('--auto') ? 'auto' : 'manual';
+
+  console.log(`\n  Sync Eval Results → Google Sheet (mode: ${mode})\n`);
   if (!fs.existsSync(ARTIFACTS_BASE)) { console.error('  No .artifacts/ found.'); process.exit(1); }
 
+  const allDirs = fs.readdirSync(ARTIFACTS_BASE).filter(d => d.startsWith('RHAISTRAT'));
+  const testDirs = allDirs.filter(d => d.includes('-test'));
+  const liveDirs = allDirs.filter(d => !d.includes('-test'));
+
   const results = [];
-  for (const dir of fs.readdirSync(ARTIFACTS_BASE).filter(d => d.startsWith('RHAISTRAT'))) {
+  for (const dir of liveDirs) {
     const r = readEvalResults(dir);
     if (r) results.push(r);
   }
   results.sort((a, b) => b.mtime.getTime() - a.mtime.getTime());
-  console.log(`  Found ${results.length} evaluated prototype(s)\n`);
+
+  const deprecatedResults = [];
+  for (const dir of testDirs) {
+    const r = readEvalResults(dir);
+    if (r) deprecatedResults.push(r);
+  }
+  deprecatedResults.sort((a, b) => b.mtime.getTime() - a.mtime.getTime());
+
+  console.log(`  Found ${results.length} evaluated prototype(s), ${deprecatedResults.length} deprecated test runs\n`);
 
   const token = getToken();
 
@@ -236,7 +261,8 @@ function main() {
     { header: 'Key', width: 130 }, { header: 'Title', width: 220 },
     { header: 'Result', width: 60 }, { header: 'Pass', width: 40 },
     { header: 'Fail', width: 40 }, { header: 'Flagged', width: 55 },
-    { header: 'Usability', width: 70 }, { header: 'Iterations', width: 65 },
+    { header: 'Usability (orig)', width: 85 }, { header: 'Usability (final)', width: 85 },
+    { header: 'Delta', width: 55 }, { header: 'Iterations', width: 65 },
     { header: 'Fixed', width: 250 }, { header: 'Report', width: 50 },
   ];
 
@@ -265,7 +291,9 @@ function main() {
     loopRows.push([
       r.key, r.title, r.result,
       String(r.pass), String(r.fail), String(r.flagged),
-      r.usability, r.iterations, r.fixSummary, reportCell
+      r.origUsability, r.usability,
+      computeDelta(r.origUsability, r.usability),
+      r.iterations, r.fixSummary, reportCell
     ]);
   }
 
@@ -334,14 +362,47 @@ function main() {
     const r = loopDataStart + i;
     if (i % 2 === 1) requests.push(fmt(sheetId, r, r + 1, 0, LOOP_COLUMNS.length, { backgroundColor: C.zebraOdd }, 'backgroundColor'));
     fmtResultCell(r, 2, row[2]);
-    // Fixed col (8) — wrap
-    if (row[8]) requests.push(fmt(sheetId, r, r + 1, 8, 9, { textFormat: { fontSize: 9 }, wrapStrategy: 'WRAP', verticalAlignment: 'TOP' }, 'textFormat,wrapStrategy,verticalAlignment'));
+    // Fixed col (10) — wrap
+    if (row[10]) requests.push(fmt(sheetId, r, r + 1, 10, 11, { textFormat: { fontSize: 9 }, wrapStrategy: 'WRAP', verticalAlignment: 'TOP' }, 'textFormat,wrapStrategy,verticalAlignment'));
     // Center numerics (P, F, FL, Iterations)
-    for (const col of [3, 4, 5, 7]) requests.push(fmt(sheetId, r, r + 1, col, col + 1, { horizontalAlignment: 'CENTER' }, 'horizontalAlignment'));
+    for (const col of [3, 4, 5, 9]) requests.push(fmt(sheetId, r, r + 1, col, col + 1, { horizontalAlignment: 'CENTER' }, 'horizontalAlignment'));
+    // Delta formatting (col 8): green for positive, red for negative
+    const delta = row[8];
+    if (delta && delta.startsWith('+')) requests.push(fmt(sheetId, r, r + 1, 8, 9, { textFormat: { bold: true, foregroundColor: C.passText }, horizontalAlignment: 'CENTER' }, 'textFormat,horizontalAlignment'));
+    else if (delta && delta.startsWith('-')) requests.push(fmt(sheetId, r, r + 1, 8, 9, { textFormat: { bold: true, foregroundColor: C.failText }, horizontalAlignment: 'CENTER' }, 'textFormat,horizontalAlignment'));
+    else requests.push(fmt(sheetId, r, r + 1, 8, 9, { horizontalAlignment: 'CENTER' }, 'horizontalAlignment'));
   }
 
   if (requests.length) {
     sheetsPost(token, ':batchUpdate', { requests });
+  }
+
+  // Create or recreate "Deprecated" tab for test runs
+  if (deprecatedResults.length > 0) {
+    const DEPRECATED_SHEET = 'Deprecated';
+    let depSheetId = null;
+    const allSheets = JSON.parse(execSync(`curl -s -H "Authorization: Bearer ${token}" "${API_BASE}?fields=sheets.properties"`, { encoding: 'utf8' }));
+    const depSheet = (allSheets.sheets || []).find(s => s.properties.title === DEPRECATED_SHEET);
+    if (depSheet) {
+      depSheetId = depSheet.properties.sheetId;
+      sheetsPost(token, ':batchUpdate', { requests: [{ deleteSheet: { sheetId: depSheetId } }] });
+    }
+    sheetsPost(token, ':batchUpdate', { requests: [{ addSheet: { properties: { title: DEPRECATED_SHEET } } }] });
+    const depSheets = JSON.parse(execSync(`curl -s -H "Authorization: Bearer ${token}" "${API_BASE}?fields=sheets.properties"`, { encoding: 'utf8' }));
+    depSheetId = (depSheets.sheets || []).find(s => s.properties.title === DEPRECATED_SHEET).properties.sheetId;
+
+    const depHeader = ['Key', 'Title', 'Result', 'Pass', 'Fail', 'Flagged', 'Usability', 'Date'];
+    const depRows = deprecatedResults.map(r => [
+      r.key, r.title, r.result, String(r.pass), String(r.fail), String(r.flagged), r.usability, r.evalDate
+    ]);
+    sheetsPut(token, `'${DEPRECATED_SHEET}'!A1`, [['DEPRECATED TEST RUNS'], depHeader, ...depRows]);
+
+    const depFmtRequests = [
+      fmt(depSheetId, 0, 1, 0, depHeader.length, { backgroundColor: C.headerBg, textFormat: { bold: true, fontSize: 11, foregroundColor: C.white } }, 'backgroundColor,textFormat'),
+      fmt(depSheetId, 1, 2, 0, depHeader.length, { backgroundColor: { red: 0.93, green: 0.93, blue: 0.95 }, textFormat: { bold: true, fontSize: 9, foregroundColor: C.text } }, 'backgroundColor,textFormat'),
+    ];
+    sheetsPost(token, ':batchUpdate', { requests: depFmtRequests });
+    console.log(`  Wrote ${deprecatedResults.length} deprecated test runs to "${DEPRECATED_SHEET}" tab`);
   }
 
   console.log(`  Wrote ${origRows.length} + ${loopRows.length} rows to "${EVAL_SHEET}" (2 tables)`);

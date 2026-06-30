@@ -19,7 +19,7 @@ public/
 
 ## Publishing
 
-Reports are published by `scripts/publish-report.sh` in the prototype-creator
+Reports are published by `.claude/skills/eval/scripts/publish-report.sh` in the prototype-creator
 repo. Re-running an eval replaces the report at the same URL.
 
 ## Access

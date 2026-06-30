@@ -5,8 +5,8 @@ set -euo pipefail
 # Overwrites the report at the same URL if re-run for the same prototype.
 #
 # Usage:
-#   bash scripts/publish-report.sh .artifacts/RHAISTRAT-1536/
-#   bash scripts/publish-report.sh .artifacts/RHAISTRAT-1536/ --mode=branch
+#   bash .claude/skills/eval/scripts/publish-report.sh .artifacts/RHAISTRAT-1536/
+#   bash .claude/skills/eval/scripts/publish-report.sh .artifacts/RHAISTRAT-1536/ --mode=branch
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
@@ -90,6 +90,10 @@ publish_pages() {
   # Copy report as index.html (clean URLs)
   cp "$REPORT_FILE" "$REPORTS_PATH/$PROTO_KEY/index.html"
 
+  # Copy data files for dashboard index generation
+  [[ -f "$ARTIFACTS_DIR/evaluation-report.csv" ]] && cp "$ARTIFACTS_DIR/evaluation-report.csv" "$REPORTS_PATH/$PROTO_KEY/"
+  [[ -f "$ARTIFACTS_DIR/journey-log.json" ]] && cp "$ARTIFACTS_DIR/journey-log.json" "$REPORTS_PATH/$PROTO_KEY/"
+
   # Copy iteration snapshot reports as subdirectories
   local ARTIFACTS_DIR
   ARTIFACTS_DIR="$(dirname "$REPORT_FILE")"
@@ -109,8 +113,12 @@ publish_pages() {
     cp "$ARTIFACTS_DIR/evaluation-report-original.html" "$REPORTS_PATH/$PROTO_KEY/original/index.html"
   fi
 
-  # Regenerate the index page
-  generate_index "$REPORTS_PATH"
+  # Regenerate the dashboard index
+  node "$(dirname "$0")/generate-dashboard.js" "$REPORTS_PATH"
+
+  # Copy leaderboard if it exists (sibling to index.html for navigation)
+  local LEADERBOARD="$ARTIFACTS_DIR/../pain-leaderboard.html"
+  [[ -f "$LEADERBOARD" ]] && cp "$LEADERBOARD" "$REPORTS_PATH/pain-leaderboard.html"
 
   # Commit and push
   cd "$WORK_DIR/pages-repo"
@@ -168,7 +176,7 @@ publish_branch() {
   cp "$REPORT_FILE" "evals/$PROTO_KEY/index.html"
 
   # Regenerate index
-  generate_index "$BRANCH_DIR/evals"
+  node "$(dirname "$0")/generate-dashboard.js" "$BRANCH_DIR/evals"
 
   git add -A
   if git diff --cached --quiet; then
@@ -199,15 +207,22 @@ publish_branch() {
 generate_index() {
   local EVALS_DIR="$1"
   local INDEX_FILE="$EVALS_DIR/index.html"
-  local ROWS_FILE
+  local ROWS_FILE STATS_FILE
   ROWS_FILE="$(mktemp)"
+  STATS_FILE="$(mktemp)"
 
-  # Scan for reports and build table rows
+  local total_evals=0
+  local total_pass=0
+  local usability_sum=0
+  local usability_count=0
+
   for report_dir in "$EVALS_DIR"/*/; do
     [[ -f "$report_dir/index.html" ]] || continue
     local key
     key="$(basename "$report_dir")"
     [[ "$key" == "." || "$key" == ".." ]] && continue
+
+    total_evals=$((total_evals + 1))
 
     local eval_date
     eval_date="$(date -r "$report_dir/index.html" +%Y-%m-%d 2>/dev/null || date +%Y-%m-%d)"
@@ -216,51 +231,77 @@ generate_index() {
     title="$(grep -o '<title>[^<]*</title>' "$report_dir/index.html" 2>/dev/null | head -1 | sed 's/<[^>]*>//g' || echo "")"
     [[ -z "$title" ]] && title="$key"
 
-    echo "<tr><td><a href=\"${key}/\">${key}</a></td><td>${title}</td><td>${eval_date}</td><td><a href=\"${JIRA_BASE_URL}/${key}\" target=\"_blank\">Jira</a></td></tr>" >> "$ROWS_FILE"
+    local ac_result="—" ac_display="" usability="—" usability_class=""
+    local csv_file="$report_dir/evaluation-report.csv"
+    if [[ -f "$csv_file" ]]; then
+      local p f fl
+      p=$(grep -c ',PASS,' "$csv_file" 2>/dev/null || echo 0)
+      f=$(grep -c ',FAIL,' "$csv_file" 2>/dev/null || echo 0)
+      fl=$(grep -c ',FLAGGED,' "$csv_file" 2>/dev/null || echo 0)
+      local total_ac=$((p + f + fl))
+      ac_result="${p}/${total_ac}"
+      if [[ "$f" -eq 0 ]]; then
+        ac_display="<span class=\"badge badge-pass\">Pass</span> ${ac_result}"
+        total_pass=$((total_pass + 1))
+      elif [[ "$fl" -gt 0 ]]; then
+        ac_display="<span class=\"badge badge-mixed\">Mixed</span> ${ac_result}"
+      else
+        ac_display="<span class=\"badge badge-fail\">Fail</span> ${ac_result}"
+      fi
+    fi
+
+    local jl_file="$report_dir/journey-log.json"
+    if [[ -f "$jl_file" ]]; then
+      local score
+      score=$(grep -o '"overall_score"[[:space:]]*:[[:space:]]*"[^"]*"' "$jl_file" 2>/dev/null | head -1 | sed 's/.*: *"//;s/".*//')
+      if [[ -z "$score" ]]; then
+        score=$(grep -o '"overall_score"[[:space:]]*:[[:space:]]*[0-9.]*' "$jl_file" 2>/dev/null | head -1 | sed 's/.*: *//')
+      fi
+      if [[ -n "$score" ]]; then
+        usability="$score"
+        local num_score
+        num_score=$(echo "$score" | sed 's|/21||')
+        if command -v bc >/dev/null 2>&1; then
+          if [[ $(echo "$num_score >= 15" | bc 2>/dev/null) == "1" ]]; then usability_class="score-good"
+          elif [[ $(echo "$num_score >= 10" | bc 2>/dev/null) == "1" ]]; then usability_class="score-ok"
+          else usability_class="score-low"; fi
+          usability_sum=$(echo "$usability_sum + $num_score" | bc)
+          usability_count=$((usability_count + 1))
+        fi
+      fi
+    fi
+
+    echo "<tr><td><a href=\"${key}/\">${key}</a></td><td>${title}</td><td>${ac_display}</td><td><span class=\"score ${usability_class}\">${usability}</span></td><td class=\"date-cell\">${eval_date}</td><td><a href=\"${JIRA_BASE_URL}/${key}\" target=\"_blank\">Jira</a></td></tr>" >> "$ROWS_FILE"
   done
 
-  # Build the index by writing head, inserting rows, writing tail
-  if [[ -f "$INDEX_TEMPLATE" ]]; then
-    # Split template at {{REPORT_ROWS}} marker and concatenate with rows
-    sed '/{{REPORT_ROWS}}/,$d' "$INDEX_TEMPLATE" > "$INDEX_FILE"
-    cat "$ROWS_FILE" >> "$INDEX_FILE"
-    sed '1,/{{REPORT_ROWS}}/d' "$INDEX_TEMPLATE" >> "$INDEX_FILE"
-  else
-    cat > "$INDEX_FILE" <<'INDEXEOF'
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<title>Evaluation Reports</title>
-<style>
-  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 900px; margin: 2rem auto; padding: 0 1rem; color: #1a1a1a; }
-  h1 { font-size: 1.5rem; border-bottom: 2px solid #e0e0e0; padding-bottom: 0.5rem; }
-  table { width: 100%; border-collapse: collapse; margin-top: 1rem; }
-  th, td { text-align: left; padding: 0.6rem 0.8rem; border-bottom: 1px solid #eee; }
-  th { background: #f5f5f5; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.03em; }
-  tr:hover { background: #f9f9f9; }
-  a { color: #0066cc; text-decoration: none; }
-  a:hover { text-decoration: underline; }
-  .meta { color: #666; font-size: 0.85rem; margin-top: 0.5rem; }
-</style>
-</head>
-<body>
-<h1>Evaluation Reports</h1>
-<p class="meta">Auto-generated by prototype-creator. Reports update in-place when re-evaluated.</p>
-<table>
-<thead><tr><th>Prototype</th><th>Title</th><th>Last Updated</th><th>Jira</th></tr></thead>
-<tbody>
-INDEXEOF
-    cat "$ROWS_FILE" >> "$INDEX_FILE"
-    cat >> "$INDEX_FILE" <<'INDEXEOF'
-</tbody>
-</table>
-</body>
-</html>
-INDEXEOF
+  local avg_usability="—"
+  if [[ "$usability_count" -gt 0 ]] && command -v bc >/dev/null 2>&1; then
+    avg_usability="$(echo "scale=1; $usability_sum / $usability_count" | bc)/21"
+  fi
+  local pass_rate="—"
+  if [[ "$total_evals" -gt 0 ]]; then
+    pass_rate="$((total_pass * 100 / total_evals))%"
   fi
 
-  rm -f "$ROWS_FILE"
+  cat > "$STATS_FILE" <<STATSEOF
+<div class="stat-card"><div class="stat-value">${total_evals}</div><div class="stat-label">Total Evals</div></div>
+<div class="stat-card"><div class="stat-value">${pass_rate}</div><div class="stat-label">Pass Rate</div></div>
+<div class="stat-card"><div class="stat-value">${avg_usability}</div><div class="stat-label">Avg Usability</div></div>
+<div class="stat-card"><div class="stat-value">${total_pass}/${total_evals}</div><div class="stat-label">All AC Pass</div></div>
+STATSEOF
+
+  if [[ -f "$INDEX_TEMPLATE" ]]; then
+    sed "s|{{STATS_CARDS}}|$(cat "$STATS_FILE")|" "$INDEX_TEMPLATE" | sed "/{{REPORT_ROWS}}/r $ROWS_FILE" | sed '/{{REPORT_ROWS}}/d' > "$INDEX_FILE"
+  else
+    cat > "$INDEX_FILE" <<'INDEXEOF'
+<!DOCTYPE html><html><head><title>Evaluation Reports</title></head><body>
+<h1>Evaluation Reports</h1><table><thead><tr><th>Key</th><th>Title</th><th>Result</th><th>Usability</th><th>Date</th><th>Jira</th></tr></thead><tbody>
+INDEXEOF
+    cat "$ROWS_FILE" >> "$INDEX_FILE"
+    echo "</tbody></table></body></html>" >> "$INDEX_FILE"
+  fi
+
+  rm -f "$ROWS_FILE" "$STATS_FILE"
 }
 
 # ── Dispatch ─────────────────────────────────────────────────────────────────

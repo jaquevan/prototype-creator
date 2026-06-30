@@ -93,7 +93,7 @@ If validation fails, the journey-log must be fixed before rendering. The format 
 ### Step 2: Render the HTML report
 
 ```bash
-node scripts/render-report.js .artifacts/$KEY/
+node .claude/skills/eval/scripts/render-report.js .artifacts/$KEY/
 ```
 
 This script:
@@ -105,7 +105,7 @@ This script:
 ### Step 3: Log the run
 
 ```bash
-node scripts/log-run.js .artifacts/$KEY/ --note="<note>"
+node .claude/skills/eval/scripts/log-run.js .artifacts/$KEY/ --note="<note>"
 ```
 
 If `--note` was not provided, use a default: `"Evaluation run"`. On iterations, use `"Iteration <N>"`.

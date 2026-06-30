@@ -20,8 +20,8 @@ setup:
 context:
 	bash scripts/fetch-design-system-context.sh
 	bash scripts/bootstrap-decision-kit.sh
-	bash scripts/bootstrap-usability-testing.sh
-	bash scripts/bootstrap-consistency-checker.sh
+	bash .claude/skills/eval/scripts/bootstrap-usability-testing.sh
+	bash .claude/skills/eval/scripts/bootstrap-consistency-checker.sh
 
 # Clean generated artifacts
 clean:
@@ -36,4 +36,4 @@ report:
 # Usage: make publish-report KEY=RHAISTRAT-1536
 publish-report:
 	@if [ -z "$(KEY)" ]; then echo "Usage: make publish-report KEY=RHAISTRAT-1536"; exit 1; fi
-	bash scripts/publish-report.sh .artifacts/$(KEY)/
+	bash .claude/skills/eval/scripts/publish-report.sh .artifacts/$(KEY)/

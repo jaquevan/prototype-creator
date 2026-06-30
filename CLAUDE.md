@@ -180,8 +180,8 @@ make context
 # Or individually:
 bash scripts/fetch-design-system-context.sh          # PatternFly component docs + tokens
 bash scripts/bootstrap-decision-kit.sh               # Decision-kit thinking skills
-bash scripts/bootstrap-usability-testing.sh           # Personas + 7-dimension rubric (Zack Bodnar)
-bash scripts/bootstrap-consistency-checker.sh         # PatternFly design guidelines (Beau Morley)
+bash .claude/skills/eval/scripts/bootstrap-usability-testing.sh           # Personas + 7-dimension rubric (Zack Bodnar)
+bash .claude/skills/eval/scripts/bootstrap-consistency-checker.sh         # PatternFly design guidelines (Beau Morley)
 ```
 
 | Directory | Source | Used by |

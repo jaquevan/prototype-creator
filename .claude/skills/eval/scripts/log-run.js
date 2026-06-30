@@ -7,7 +7,7 @@ const { execSync } = require('child_process');
 
 const artifactsDir = process.argv[2];
 if (!artifactsDir) {
-  console.error('Usage: node scripts/log-run.js <artifacts-dir> [--note="description"]');
+  console.error('Usage: node .claude/skills/eval/scripts/log-run.js <artifacts-dir> [--note="description"]');
   process.exit(1);
 }
 

@@ -1,0 +1,21 @@
+{
+  "projectName": "SCOUT Dashboard Visual Direction",
+  "projectDescription": "Retro-themed visual identity for the SCOUT eval dashboard and leaderboard, featuring an animated seahorse mascot.",
+  "createdAt": "2026-06-30T17:14:00Z",
+  "decisions": [
+    {
+      "id": "decision-001",
+      "slug": "visual-direction",
+      "title": "Visual Direction",
+      "category": "visual",
+      "status": "pending",
+      "chosenOption": null,
+      "chosenTitle": null,
+      "options": ["A", "B", "C", "D"],
+      "recommended": "B",
+      "htmlFile": "decision-001-visual-direction.html",
+      "decidedAt": null,
+      "summary": "The retro aesthetic and overall feel for SCOUT's dashboard and leaderboard"
+    }
+  ]
+}

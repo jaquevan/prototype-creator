@@ -179,7 +179,7 @@ bash scripts/fetch-design-system-context.sh
 bash scripts/bootstrap-decision-kit.sh
 
 # Bootstrap usability testing personas + rubric
-bash scripts/bootstrap-usability-testing.sh
+bash .claude/skills/eval/scripts/bootstrap-usability-testing.sh
 ```
 
 ### Run a Prototype (CI mode)

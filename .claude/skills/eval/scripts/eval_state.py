@@ -15,11 +15,11 @@ Standard fields:
     workspace: path to prototype repo
 
 Usage:
-    python3 scripts/eval_state.py init <file> key=value ...
-    python3 scripts/eval_state.py set <file> key=value ...
-    python3 scripts/eval_state.py get <file> <key>
-    python3 scripts/eval_state.py read <file>
-    python3 scripts/eval_state.py timestamp
+    python3 .claude/skills/eval/scripts/eval_state.py init <file> key=value ...
+    python3 .claude/skills/eval/scripts/eval_state.py set <file> key=value ...
+    python3 .claude/skills/eval/scripts/eval_state.py get <file> <key>
+    python3 .claude/skills/eval/scripts/eval_state.py read <file>
+    python3 .claude/skills/eval/scripts/eval_state.py timestamp
 """
 import os
 import sys

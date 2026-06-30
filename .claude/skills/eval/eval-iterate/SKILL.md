@@ -68,7 +68,7 @@ usability_flag = parse --usability (default: "deep")
 no_fix = parse --no-fix (default: false)
 
 # Initialize persistent state (survives context compression)
-python3 scripts/eval_state.py init .artifacts/<KEY>/eval-state.yaml \
+python3 .claude/skills/eval/scripts/eval_state.py init .artifacts/<KEY>/eval-state.yaml \
   iteration=0 max_iterations=$max_iterations exit_reason=pending \
   phase=a ac_pass=false key=<KEY> url=<URL> workspace=<workspace>
 
@@ -91,7 +91,7 @@ Read .claude/skills/eval/eval-consistency/SKILL.md and execute it
 
 LOOP:
   iteration += 1
-  python3 scripts/eval_state.py set .artifacts/<KEY>/eval-state.yaml iteration=$iteration
+  python3 .claude/skills/eval/scripts/eval_state.py set .artifacts/<KEY>/eval-state.yaml iteration=$iteration
 
   # ── Classify ───────────────────────────────────────────────────
   if iteration == 1:
@@ -145,7 +145,7 @@ LOOP:
   # ── Exit condition checks ──────────────────────────────────────
   if fail_count == 0:
     Set exit_reason = "all_pass"
-    python3 scripts/eval_state.py set .artifacts/<KEY>/eval-state.yaml \
+    python3 .claude/skills/eval/scripts/eval_state.py set .artifacts/<KEY>/eval-state.yaml \
       exit_reason=all_pass ac_pass=true
     BREAK → proceed to Phase B
 
@@ -153,26 +153,26 @@ LOOP:
     Compare current CSV verdicts against previous iteration's archived CSV
     if any criterion flipped PASS → FAIL:
       Set exit_reason = "regression"
-      python3 scripts/eval_state.py set .artifacts/<KEY>/eval-state.yaml \
+      python3 .claude/skills/eval/scripts/eval_state.py set .artifacts/<KEY>/eval-state.yaml \
         exit_reason=regression ac_pass=false
       BREAK → proceed to Phase B (on current prototype state)
 
   if iteration >= max_iterations:
     Set exit_reason = "max_iterations"
-    python3 scripts/eval_state.py set .artifacts/<KEY>/eval-state.yaml \
+    python3 .claude/skills/eval/scripts/eval_state.py set .artifacts/<KEY>/eval-state.yaml \
       exit_reason=max_iterations ac_pass=false
     BREAK → proceed to Phase B (even with remaining FAILs)
 
   if --no-iterate:
     Set exit_reason = "no_iterate"
-    python3 scripts/eval_state.py set .artifacts/<KEY>/eval-state.yaml \
+    python3 .claude/skills/eval/scripts/eval_state.py set .artifacts/<KEY>/eval-state.yaml \
       exit_reason=no_iterate ac_pass=false
     BREAK → proceed to Phase B
 
   # ── Fix ────────────────────────────────────────────────────────
   if no_fix:
     Set exit_reason = "no_fix"
-    python3 scripts/eval_state.py set .artifacts/<KEY>/eval-state.yaml \
+    python3 .claude/skills/eval/scripts/eval_state.py set .artifacts/<KEY>/eval-state.yaml \
       exit_reason=no_fix ac_pass=false
     BREAK → proceed to Phase B
     # Findings remain in refinement-suggestions.json for human/agent review
@@ -193,10 +193,10 @@ LOOP:
 
 # Skip Phase B entirely if --usability=skip
 if usability_flag == "skip":
-  python3 scripts/eval_state.py set .artifacts/<KEY>/eval-state.yaml phase=b
+  python3 .claude/skills/eval/scripts/eval_state.py set .artifacts/<KEY>/eval-state.yaml phase=b
   GOTO REPORT
 
-python3 scripts/eval_state.py set .artifacts/<KEY>/eval-state.yaml phase=b
+python3 .claude/skills/eval/scripts/eval_state.py set .artifacts/<KEY>/eval-state.yaml phase=b
 
 # Phase B always runs at full depth — the prototype is known-good (or best-effort).
 # No degraded/inference-only mode. Personas run their own Playwright walkthroughs.
@@ -255,6 +255,9 @@ Present:
   • "Tell me more about [finding]"
   • "Re-run eval"
   • "Looks good"
+
+# Rebuild leaderboard with latest data
+node .claude/skills/eval/scripts/build-leaderboard.js
 ```
 
 ## Selective Rerun (Phase A Iterations 2+)
