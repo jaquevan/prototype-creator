@@ -2,12 +2,12 @@
 # Used by .claude/skills/eval/scripts/publish-report.sh
 
 # Eval reports repo on internal GitLab (dedicated Pages site)
-gitlab_pages_repo: "https://gitlab.cee.redhat.com/ejaquez/eval-reports.git"
+gitlab_pages_repo: "git@gitlab.cee.redhat.com:ejaquez/scout-evals.git"
 
 # Base URL for GitLab Pages.
 # Reports are served at <base>/evals/<KEY>/
 # Internal-only: requires Red Hat VPN + GitLab auth.
-pages_base_url: "https://eval-reports-7ebc0e.pages.redhat.com"
+pages_base_url: "https://ejaquez-scout-evals-7ebc0e.pages.redhat.com"
 
 # Default branch of the pages repo
 pages_branch: "main"

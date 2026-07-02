@@ -94,6 +94,32 @@ publish_pages() {
   [[ -f "$ARTIFACTS_DIR/evaluation-report.csv" ]] && cp "$ARTIFACTS_DIR/evaluation-report.csv" "$REPORTS_PATH/$PROTO_KEY/"
   [[ -f "$ARTIFACTS_DIR/journey-log.json" ]] && cp "$ARTIFACTS_DIR/journey-log.json" "$REPORTS_PATH/$PROTO_KEY/"
 
+  # Write metadata.json with MR/repo info if available from extract state
+  local EXTRACT_STATE="$ARTIFACTS_DIR/extract-state.json"
+  if [[ -f "$EXTRACT_STATE" ]]; then
+    cp "$EXTRACT_STATE" "$REPORTS_PATH/$PROTO_KEY/extract-state.json"
+  fi
+  # Generate metadata from environment or extract-state
+  if command -v node >/dev/null 2>&1; then
+    node -e "
+      const fs = require('fs');
+      const path = require('path');
+      const dir = '$REPORTS_PATH/$PROTO_KEY';
+      const meta = {};
+      const es = path.join(dir, 'extract-state.json');
+      if (fs.existsSync(es)) {
+        const d = JSON.parse(fs.readFileSync(es, 'utf8'));
+        if (d.ticket_summary || d.story_title || d.title) meta.title = d.ticket_summary || d.story_title || d.title;
+        if (d.mr_url || d.merge_request_url) meta.mrUrl = d.mr_url || d.merge_request_url;
+        if (d.repo_url || d.repository_url) meta.repoUrl = d.repo_url || d.repository_url;
+        if (d.branch) meta.branch = d.branch;
+      }
+      if (Object.keys(meta).length > 0) {
+        fs.writeFileSync(path.join(dir, 'metadata.json'), JSON.stringify(meta, null, 2));
+      }
+    " 2>/dev/null || true
+  fi
+
   # Copy iteration snapshot reports as subdirectories
   local ARTIFACTS_DIR
   ARTIFACTS_DIR="$(dirname "$REPORT_FILE")"
@@ -113,8 +139,12 @@ publish_pages() {
     cp "$ARTIFACTS_DIR/evaluation-report-original.html" "$REPORTS_PATH/$PROTO_KEY/original/index.html"
   fi
 
-  # Regenerate the dashboard index
-  node "$(dirname "$0")/generate-dashboard.js" "$REPORTS_PATH"
+  # Regenerate the data.json for the React dashboard
+  if [[ -f "$WORK_DIR/pages-repo/scripts/generate-data.cjs" ]]; then
+    node "$WORK_DIR/pages-repo/scripts/generate-data.cjs" "$REPORTS_PATH"
+  else
+    node "$(dirname "$0")/generate-dashboard.js" "$REPORTS_PATH"
+  fi
 
   # Copy leaderboard if it exists (sibling to index.html for navigation)
   local LEADERBOARD="$ARTIFACTS_DIR/../pain-leaderboard.html"

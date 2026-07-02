@@ -52,7 +52,7 @@ Phase B: eval-usability (per-persona Playwright) → eval-report → open + summ
 |------|---------|-------------|
 | `--workspace=PATH` | — | Path to the prototype repo (enables code fixes) |
 | `--max-iterations=N` | 3 | Max fix loop iterations in Phase A |
-| `--usability=deep\|skip` | deep | Run or skip Phase B persona walkthroughs |
+| `--usability=deep` | deep | Run Phase B persona walkthroughs |
 | `--no-iterate` | Off | Run Phase A once, no fix loop |
 | `--no-fix` | Off | Pure evaluation — skip fixes, produce findings only |
 | `--depth=deep` | deep | Evaluation thoroughness |

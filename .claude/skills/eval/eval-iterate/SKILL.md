@@ -33,7 +33,7 @@ Ensure `.context/usability-testing/`, `.context/consistency-checker/` are bootst
 | `--workspace` | Path to prototype repo | No | — |
 | `--max-iterations` | Number | No | 3 |
 | `--depth` | `deep` | No | `deep` |
-| `--usability` | `deep` or `skip` | No | `deep` |
+| `--usability` | `deep` | No | `deep` |
 | `--no-iterate` | flag | No | Off |
 | `--no-fix` | flag | No | Off |
 | `--reset` | flag | No | Off (evaluate current state; when set, hard-resets workspace to origin branch HEAD before eval) |
@@ -56,7 +56,7 @@ PHASE B (Blind — Per-Persona Usability Walkthroughs):
 
 **Phase A exits when:** zero FAIL verdicts in evaluation-report.csv Section 1, OR max iterations reached.
 
-**Phase B fires:** always (unless `--usability=skip`). Runs once on the final prototype state.
+**Phase B fires:** always. Runs once on the final prototype state.
 
 FLAGGED items are acceptable (they need human review). The Phase A loop only targets FAILs.
 
@@ -65,7 +65,6 @@ FLAGGED items are acceptable (they need human review). The Phase A loop only tar
 ```
 iteration = 0
 max_iterations = parse --max-iterations (default: 3)
-usability_flag = parse --usability (default: "deep")
 no_fix = parse --no-fix (default: false)
 
 # Initialize persistent state (survives context compression)
@@ -283,11 +282,6 @@ if iteration > 1:
 # Question: "Can real users actually use this?"
 # Method: Per-persona Playwright, blind navigation, think-aloud scoring
 # ═══════════════════════════════════════════════════════════════════
-
-# Skip Phase B entirely if --usability=skip
-if usability_flag == "skip":
-  python3 .claude/skills/eval/scripts/eval_state.py set .artifacts/<KEY>/eval-state.yaml phase=b
-  GOTO REPORT
 
 python3 .claude/skills/eval/scripts/eval_state.py set .artifacts/<KEY>/eval-state.yaml phase=b
 
