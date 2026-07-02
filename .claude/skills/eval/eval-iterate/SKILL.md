@@ -1,13 +1,13 @@
 ---
 name: eval-iterate
-description: "Orchestrate the two-phase eval pipeline: Phase A validates acceptance criteria with an informed evaluator (fix loop). Phase B runs blind per-persona Playwright walkthroughs for usability scoring."
+description: "Orchestrate the two-phase eval pipeline: Phase A validates acceptance criteria with an x-ray evaluator (fix loop). Phase B runs blind per-persona Playwright walkthroughs for usability scoring."
 user-invocable: true
 allowed-tools: Read, Write, Edit, Glob, Grep, Bash, AskUserQuestion, mcp__atlassian__getJiraIssue, mcp__atlassian__searchJiraIssuesUsingJql, mcp__atlassian__addCommentToJiraIssue
 ---
 
 # eval-iterate
 
-Two-phase eval pipeline orchestrator. Phase A (x-ray) validates acceptance criteria with an informed evaluator that has full code access, fixing until all ACs pass. Phase B (blind) runs per-persona Playwright walkthroughs to score usability on a known-good prototype.
+Two-phase eval pipeline orchestrator. Phase A (x-ray) validates acceptance criteria with an x-ray evaluator that has full code access, fixing until all ACs pass. Phase B (blind) runs per-persona Playwright walkthroughs to score usability on a known-good prototype.
 
 ## Prerequisites
 
@@ -76,7 +76,7 @@ python3 .claude/skills/eval/scripts/eval_state.py init .artifacts/<KEY>/eval-sta
 # ═══════════════════════════════════════════════════════════════════
 # PHASE A: X-Ray AC Validation Loop
 # Question: "Did the code produce what the acceptance criteria specify?"
-# Method: Informed evaluator with full source + hint access
+# Method: X-ray evaluator with full source + hint access
 # ═══════════════════════════════════════════════════════════════════
 
 # ── Workspace state capture ───────────────────────────────────────
@@ -144,8 +144,8 @@ LOOP:
     Read .claude/skills/eval/eval-classify/SKILL.md and execute it with:
       --rerun-only=<comma-separated FAIL+FLAGGED AC IDs from previous CSV>
 
-  # ── Journey (informed mode) ────────────────────────────────────
-  # The informed evaluator uses workspace source directly for navigation.
+  # ── Journey (x-ray mode) ────────────────────────────────────
+  # The x-ray evaluator uses workspace source directly for navigation.
   # No blind-first pretense — goal is fast AC verification.
   if iteration == 1:
     Read .claude/skills/eval/eval-journey/SKILL.md and execute it with:
@@ -468,3 +468,39 @@ Report: .artifacts/<KEY>/evaluation-report.html
 - **eval-fix produces no changes:** Stop Phase A — more iterations won't help. Proceed to Phase B.
 - **Dev server crashes after fix:** Stop Phase A, note which files may have caused it. Proceed to Phase B.
 - **Missing .context/ directories:** Phase A runs without consistency. Phase B skipped if usability-testing missing.
+
+## Future: Phase B Feedback Loop (NOT YET IMPLEMENTED)
+
+Phase B currently produces usability findings that go into the report but do not trigger fixes. This section documents the planned architecture for a feedback loop.
+
+### Design
+
+After Phase B completes, check whether usability findings are severe enough to warrant another Phase A iteration:
+
+```
+Phase B complete → Score check:
+  - overall_score >= 14/21 AND no dimension = 0 → REPORT (no feedback)
+  - overall_score < 14/21 OR any dimension = 0 → Feed usability suggestions to eval-fix → one more Phase A crank → REPORT
+```
+
+### Trigger Conditions
+
+The feedback loop fires when ANY of:
+- `overall_score` < 14/21 (below "functional" threshold)
+- Any single dimension scores 0 (broken)
+- 3+ confusion events across ALL personas combined
+
+### What Gets Fed Back
+
+Only `refinement-suggestions.json` entries of `type: "usability"` with `confidence: "high"` or `"medium"`. Low-confidence usability suggestions remain report-only (human judgment required).
+
+### Constraints
+
+- Max 1 feedback loop (prevents infinite cycling between Phase A and Phase B)
+- The feedback Phase A crank does NOT re-run Phase B afterward (would create recursion)
+- `--no-outer-loop` flag skips this entirely (for when designers just want the report)
+- Feedback fixes are logged separately in fix-log.json as `"source": "phase_b_feedback"`
+
+### What This Enables
+
+Phase B persona walkthroughs currently identify issues like "junior user couldn't find the scheduling column because it requires scrolling right." With the feedback loop, this finding would generate a suggestion like "Add horizontal scroll indicator or move scheduling status column left" that eval-fix can apply, then Phase A re-verifies the fix works.

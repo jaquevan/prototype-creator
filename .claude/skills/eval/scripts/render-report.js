@@ -921,32 +921,23 @@ function buildPersonaWalkthroughData() {
 }
 
 function parseThinkAloudSteps(thinkaloudRaw, screenshots, screenshotsDir, confusionEvents, consistencyReport) {
+  const parsed = parseTaSteps(thinkaloudRaw);
   const steps = [];
-  const stepPattern = /STEP\s+(\d+):\s*\n([\s\S]*?)(?=STEP\s+\d+:|NAVIGATION COMPLETE|---|\n###|$)/gi;
-  let match;
-  while ((match = stepPattern.exec(thinkaloudRaw)) !== null) {
-    const stepNum = parseInt(match[1], 10);
-    const stepText = match[2].trim();
 
-    const seeMatch = stepText.match(/What I see:\s*(.+?)(?=\n-|\n\n|$)/s);
-    const thinkMatch = stepText.match(/What I'm thinking:\s*(.+?)(?=\n-|\n\n|$)/s);
-    const tryMatch = stepText.match(/What I'll try:\s*(.+?)(?=\n-|\n\n|$)/s);
-    const confMatch = stepText.match(/Confidence:\s*(.+?)(?=\n|$)/);
-    const patMatch = stepText.match(/Patience:\s*(.+?)(?=\n|$)/);
-
+  for (const p of parsed) {
+    const stepNum = parseInt(p.num, 10);
     const ssEntry = screenshots.find(s => s.step === stepNum);
     const ssB64 = ssEntry ? fs.readFileSync(path.join(screenshotsDir, ssEntry.file)).toString('base64') : '';
-
     const stepConfusion = confusionEvents.filter(e => e.step === stepNum);
 
     steps.push({
       step: stepNum,
       screenshot: ssB64 ? `data:image/png;base64,${ssB64}` : '',
-      see: seeMatch ? seeMatch[1].trim().slice(0, 300) : '',
-      thinking: thinkMatch ? thinkMatch[1].trim().slice(0, 300) : '',
-      trying: tryMatch ? tryMatch[1].trim().slice(0, 200) : '',
-      confidence: confMatch ? confMatch[1].trim() : '',
-      patience: patMatch ? patMatch[1].trim() : '',
+      see: p.see.slice(0, 300),
+      thinking: p.think.slice(0, 300),
+      trying: (p.trying || '').slice(0, 200),
+      confidence: p.confidence,
+      patience: p.patience != null ? `${p.patience}%` : '',
       confusionEvents: stepConfusion,
       consistency: []
     });
@@ -1766,169 +1757,8 @@ function buildExplorationHtml() {
   return html;
 }
 
-function buildExternalUsabilityHtml() {
-  const extDir = path.join(absArtifacts, 'usability-eval-output');
-  if (!fs.existsSync(extDir)) return '';
 
-  const summary = readFileOr(path.join(extDir, 'summary.md'), '');
-  const thinkaloud = readFileOr(path.join(extDir, 'phase1-thinkaloud.md'), '');
-  const evaluation = readFileOr(path.join(extDir, 'phase2-evaluation.md'), '');
-  if (!summary && !thinkaloud) return '';
 
-  let html = '';
-
-  // Summary card
-  const personaMatch = summary.match(/\|\s*Persona\s*\|\s*(.+?)\s*\|/);
-  const outcomeMatch = summary.match(/\|\s*Outcome\s*\|\s*(.+?)\s*\|/);
-  const patienceMatch = summary.match(/\|\s*Patience remaining\s*\|\s*(\d+)%/);
-  const scoreMatch = summary.match(/\|\s*Overall score\s*\|\s*\*\*(.+?)\*\*/);
-  const stepsMatch = summary.match(/\|\s*Steps\s*\|\s*(\d+)/);
-
-  const persona = personaMatch ? personaMatch[1].trim() : 'Unknown';
-  const outcome = outcomeMatch ? outcomeMatch[1].trim() : '—';
-  const patience = patienceMatch ? parseInt(patienceMatch[1], 10) : 0;
-  const score = scoreMatch ? scoreMatch[1].trim() : '—';
-  const steps = stepsMatch ? stepsMatch[1].trim() : '—';
-
-  const pClass = patience > 60 ? 'ta-patience-high' : patience > 30 ? 'ta-patience-med' : 'ta-patience-low';
-
-  html += `<div class="card card-compact" style="border-left:3px solid var(--accent)">`;
-  html += `<p class="small" style="margin:0 0 0.25rem"><strong>Source:</strong> <a href="https://gitlab.cee.redhat.com/zbodnar/automated-usability-testing" target="_blank">automated-usability-testing</a></p>`;
-  html += `<p class="small" style="margin:0"><strong>Persona:</strong> ${escapeHtml(persona)} · <strong>Outcome:</strong> ${escapeHtml(outcome)} · <strong>Steps:</strong> ${escapeHtml(steps)} · <strong>Score:</strong> ${escapeHtml(score)}</p>`;
-  html += `<span class="ta-patience ${pClass}" style="margin-top:0.35rem"><span class="ta-patience-bar"><span class="ta-patience-fill" style="width:${patience}%"></span></span> Patience: ${patience}%</span>`;
-  html += `</div>`;
-
-  // Dimension scores table from summary.md
-  const dimTableMatch = summary.match(/## Dimension Scores\s*\n\n((?:\|.+\|\n?)+)/);
-  if (dimTableMatch) {
-    const tableLines = dimTableMatch[1].trim().split('\n');
-    if (tableLines.length >= 3) {
-      html += `<h3>Dimension Scores (External Skill)</h3>`;
-      html += `<table class="tbl"><thead><tr>`;
-      const headers = tableLines[0].split('|').filter(c => c.trim());
-      for (const h of headers) html += `<th>${escapeHtml(h.trim())}</th>`;
-      html += `</tr></thead><tbody>`;
-      for (const row of tableLines.slice(2)) {
-        const cells = row.split('|').filter(c => c.trim());
-        if (cells.length < 2) continue;
-        html += `<tr>`;
-        for (const c of cells) {
-          const val = c.trim();
-          if (val.includes('/3')) {
-            const n = parseInt(val);
-            const cls = n <= 1 ? 'color:var(--status-danger)' : n === 2 ? 'color:var(--status-warning)' : 'color:var(--status-success)';
-            html += `<td style="${cls};font-weight:500">${escapeHtml(val)}</td>`;
-          } else {
-            html += `<td>${escapeHtml(val)}</td>`;
-          }
-        }
-        html += `</tr>`;
-      }
-      html += `</tbody></table>`;
-    }
-  }
-
-  // Top findings from summary.md
-  const findingsSection = extractMdSection(summary, 'Top 3 Findings');
-  if (findingsSection) {
-    html += `<details><summary>Top Findings</summary><div class="card">${mdToHtml(findingsSection)}</div></details>`;
-  }
-
-  // Think-aloud narrative (collapsed)
-  if (thinkaloud) {
-    const taSteps = parseTaExternalSteps(thinkaloud);
-    if (taSteps.length) {
-      html += `<details><summary>Think-Aloud Trace (${taSteps.length} steps)</summary>`;
-      for (const step of taSteps) {
-        html += `<div class="ta-step">`;
-        html += `<div class="ta-step-head">Step ${escapeHtml(step.num)} ${step.action ? '— ' + escapeHtml(step.action) : ''}</div>`;
-        if (step.think) {
-          html += `<div class="ta-think">${escapeHtml(step.think.substring(0, 400))}${step.think.length > 400 ? '...' : ''}</div>`;
-        }
-        if (step.patience !== null) {
-          const spClass = step.patience > 60 ? 'ta-patience-high' : step.patience > 30 ? 'ta-patience-med' : 'ta-patience-low';
-          html += `<span class="ta-patience ${spClass}"><span class="ta-patience-bar"><span class="ta-patience-fill" style="width:${step.patience}%"></span></span> ${step.patience}%</span>`;
-        }
-        if (step.escape) {
-          html += `<div class="ta-callout ta-callout-confusion"><strong>CLI Escape</strong> — ${escapeHtml(step.escape)}</div>`;
-        }
-        if (step.contextLoss) {
-          html += `<div class="ta-callout ta-callout-expected"><strong>Context Loss</strong> — ${escapeHtml(step.contextLoss)}</div>`;
-        }
-        html += `</div>`;
-      }
-      html += `</details>`;
-    }
-  }
-
-  // Annotated screenshots from usability evaluation output
-  const extScreensDir = path.join(extDir, 'screenshots');
-  if (fs.existsSync(extScreensDir)) {
-    const extScreenshots = fs.readdirSync(extScreensDir).filter(f => f.endsWith('.png')).sort();
-    if (extScreenshots.length) {
-      html += `<details><summary>Screenshots (${extScreenshots.length})</summary>`;
-      html += `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:0.75rem;margin:0.75rem 0">`;
-      for (const file of extScreenshots) {
-        const data = fs.readFileSync(path.join(extScreensDir, file));
-        const src = 'data:image/png;base64,' + data.toString('base64');
-        const label = file.replace('.png', '').replace(/-/g, ' ').replace(/_/g, ' ');
-        html += `<div style="text-align:center"><img loading="lazy" src="${src}" alt="${escapeHtml(label)}" style="width:100%;border-radius:0.375rem;border:1px solid var(--border)"><p class="small muted" style="margin:0.25rem 0">${escapeHtml(label)}</p></div>`;
-      }
-      html += `</div></details>`;
-    }
-  }
-
-  return html;
-}
-
-function parseTaExternalSteps(md) {
-  const steps = [];
-  const stepRegex = /^STEP\s+(\d+):\s*$/gm;
-  let match;
-  const positions = [];
-
-  while ((match = stepRegex.exec(md)) !== null) {
-    positions.push({ index: match.index, num: match[1], fullMatch: match[0] });
-  }
-
-  for (let i = 0; i < positions.length; i++) {
-    const start = positions[i].index + positions[i].fullMatch.length;
-    const end = i + 1 < positions.length ? positions[i + 1].index : md.length;
-    const body = md.slice(start, end).trim();
-
-    const thinkMatch = body.match(/\*\*What I'm thinking\*\*:\s*([\s\S]*?)(?=\n-\s+\*\*|\n\nSTEP|\n\n---|\n\[CLI|\n\[CONTEXT|$)/);
-    const actionMatch = body.match(/\*\*What I'll try\*\*:\s*(.*)/);
-    const patMatch = body.match(/\*\*Patience\*\*:\s*(\d+)%/);
-
-    let escape = null;
-    const escapeMatch = body.match(/\[CLI ESCAPE\]:\s*(.*)/);
-    if (escapeMatch) escape = escapeMatch[1].trim();
-
-    let contextLoss = null;
-    const clMatch = body.match(/\[CONTEXT LOSS\]:\s*(.*)/);
-    if (clMatch) contextLoss = clMatch[1].trim();
-
-    // Also check for escape/context loss between this step and the next
-    if (i + 1 < positions.length) {
-      const between = md.slice(start, positions[i + 1].index);
-      const betweenEscape = between.match(/\[CLI ESCAPE\]:\s*(.*)/);
-      if (betweenEscape && !escape) escape = betweenEscape[1].trim();
-      const betweenCl = between.match(/\[CONTEXT LOSS\]:\s*(.*)/);
-      if (betweenCl && !contextLoss) contextLoss = betweenCl[1].trim();
-    }
-
-    steps.push({
-      num: positions[i].num,
-      action: actionMatch ? actionMatch[1].trim() : '',
-      think: thinkMatch ? thinkMatch[1].trim() : '',
-      patience: patMatch ? parseInt(patMatch[1], 10) : null,
-      escape,
-      contextLoss
-    });
-  }
-
-  return steps;
-}
 
 // ---------------------------------------------------------------------------
 // Narrative Summary (designer-facing "what" section)
@@ -3114,8 +2944,8 @@ function buildTokens(opts = {}) {
     '{{CONSISTENCY_TAB_DISPLAY}}': fs.existsSync(path.join(absArtifacts, 'consistency-report.json')) ? '' : 'display:none',
     '{{REVIEW_TAB_DISPLAY}}': flaggedCount > 0 ? '' : 'display:none',
     '{{REVIEW_ITEMS_HTML}}': buildReviewItemsHtml(csvRows, journeyLog, screenshots),
-    '{{EXTERNAL_USABILITY_HTML}}': buildExternalUsabilityHtml(),
-    '{{EXTERNAL_USABILITY_DISPLAY}}': fs.existsSync(path.join(absArtifacts, 'usability-eval-output')) ? '' : 'display:none',
+    '{{EXTERNAL_USABILITY_HTML}}': '',
+    '{{EXTERNAL_USABILITY_DISPLAY}}': 'display:none',
     '{{OUTCOME_DISPLAY}}': outcomeContext ? '' : 'display:none',
     '{{OUTCOME_LINK_URL}}': outcomeContext ? jiraUrlForKey(outcomeContext.key) : '',
     '{{OUTCOME_LINK}}': outcomeContext ? `<a href="${escapeHtml(jiraUrlForKey(outcomeContext.key))}" target="_blank">${escapeHtml(outcomeContext.key)}</a> — ${escapeHtml((outcomeContext.title || '').slice(0, 60))}` : '',
@@ -3132,12 +2962,26 @@ function buildTokens(opts = {}) {
 
 function parseTaSteps(md) {
   const steps = [];
-  const stepRegex = /^###\s+STEP\s+(\d+)\s*[—–-]\s*(.+)$/gm;
+
+  // Support two heading formats:
+  // Format A: "### STEP 1 — Title" (markdown heading with dash separator)
+  // Format B: "STEP 1:" (plain text, no heading)
+  const formatA = /^###\s+STEP\s+(\d+)\s*[—–-]\s*(.+)$/gm;
+  const formatB = /^STEP\s+(\d+):\s*$/gm;
+
   let match;
   const positions = [];
+  const useFormatA = formatA.test(md);
+  formatA.lastIndex = 0;
 
-  while ((match = stepRegex.exec(md)) !== null) {
-    positions.push({ index: match.index, num: match[1], title: match[2], fullMatch: match[0] });
+  const regex = useFormatA ? formatA : formatB;
+  while ((match = regex.exec(md)) !== null) {
+    positions.push({
+      index: match.index,
+      num: match[1],
+      title: useFormatA ? match[2] : '',
+      fullMatch: match[0]
+    });
   }
 
   for (let i = 0; i < positions.length; i++) {
@@ -3145,10 +2989,12 @@ function parseTaSteps(md) {
     const end = i + 1 < positions.length ? positions[i + 1].index : md.length;
     const body = md.slice(start, end).trim();
 
-    const seeMatch = body.match(/\*\*What I see\*\*:\s*([\s\S]*?)(?=\n-\s+\*\*|\n###|\n---|\n\n>|$)/);
-    const thinkMatch = body.match(/\*\*What I'm thinking\*\*:\s*([\s\S]*?)(?=\n-\s+\*\*|\n###|\n---|\n\n>|$)/);
-    const confMatch = body.match(/\*\*Confidence\*\*:\s*(.*)/);
-    const patMatch = body.match(/\*\*Patience\*\*:\s*(\d+)%/);
+    // Support both "**What I see**:" (bold) and "What I see:" (plain)
+    const seeMatch = body.match(/\*?\*?What I see\*?\*?:\s*([\s\S]*?)(?=\n-?\s*\*?\*?What|\n###|\n---|\nSTEP|\n\n>|$)/i);
+    const thinkMatch = body.match(/\*?\*?What I'm thinking\*?\*?:\s*([\s\S]*?)(?=\n-?\s*\*?\*?What|\n###|\n---|\nSTEP|\n\n>|$)/i);
+    const tryMatch = body.match(/\*?\*?What I'll try\*?\*?:\s*([\s\S]*?)(?=\n-?\s*\*?\*?|\n###|\n---|\nSTEP|\n\n>|$)/i);
+    const confMatch = body.match(/\*?\*?Confidence\*?\*?:\s*(.*)/i);
+    const patMatch = body.match(/\*?\*?Patience\*?\*?:\s*(\d+)%/i);
 
     const confusions = [];
     const expectedActuals = [];
@@ -3181,6 +3027,7 @@ function parseTaSteps(md) {
       title: positions[i].title,
       see: seeMatch ? seeMatch[1].trim() : '',
       think: thinkMatch ? thinkMatch[1].trim() : '',
+      trying: tryMatch ? tryMatch[1].trim() : '',
       confidence: confMatch ? confMatch[1].replace(/<[^>]+>/g, '').trim().toLowerCase() : '',
       patience: patMatch ? parseInt(patMatch[1], 10) : null,
       confusions,

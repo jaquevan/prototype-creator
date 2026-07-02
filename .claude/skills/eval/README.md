@@ -32,7 +32,7 @@ The pipeline runs, opens the report when done, and presents a summary with sugge
 The pipeline has two phases:
 
 **Phase A — AC Validation (X-Ray)**
-An informed evaluator with full source access verifies each acceptance criterion from the Jira ticket using Playwright. If criteria fail, it applies fixes and re-runs (up to N iterations) until all pass or max iterations are reached.
+An x-ray evaluator with full source access verifies each acceptance criterion from the Jira ticket using Playwright. If criteria fail, it applies fixes and re-runs (up to N iterations) until all pass or max iterations are reached.
 
 **Phase B — Usability Testing (Blind)**
 Per-persona Playwright walkthroughs where simulated users navigate the prototype at their own competence level. Produces think-aloud traces and scores 7 usability dimensions.
@@ -93,7 +93,7 @@ To review results from a previous run:
 | `eval-extract` | Pulls Jira context, ACs, personas, MR delta |
 | `eval-classify` | Classifies ACs into evaluation tiers |
 | `eval-hint` | Extracts navigation hints from workspace source |
-| `eval-journey` | Runs Playwright walkthroughs (informed mode for Phase A) |
+| `eval-journey` | Runs Playwright walkthroughs (x-ray mode for Phase A) |
 | `eval-fix` | Applies fixes from refinement-suggestions.json |
 | `eval-usability` | Phase B persona walkthroughs + 7-dimension scoring |
 | `eval-consistency` | PatternFly design guideline compliance check |

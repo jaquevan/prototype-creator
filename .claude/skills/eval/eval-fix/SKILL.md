@@ -36,6 +36,8 @@ Read `.artifacts/<KEY>/refinement-suggestions.json`. Suggestions have three type
 2. **AC failures** (`type: "ac_failure"`) — Code changes to make failing acceptance criteria pass. Require reading the verdict rationale.
 3. **Usability gaps** (`type: "usability"`, score 0-1) — Design improvements from persona scoring.
 
+**Skip already-applied suggestions:** If a suggestion has `"applied": true`, skip it entirely — it was fixed in a previous iteration.
+
 Confidence filtering:
 - `confidence: "high"` — Apply directly
 - `confidence: "medium"` — Apply but note in fix-log as "medium confidence"
@@ -98,7 +100,16 @@ For each `type: "usability"` suggestion with `confidence != "low"`:
 2. Apply the change (usually label text, layout adjustment, or navigation link)
 3. For `confidence: "medium"`, prefix the fix-log entry with "[MEDIUM]"
 
-### Step 6: Write fix-log.json
+### Step 6: Write fix-log.json and mark applied suggestions
+
+After writing the fix-log, update `refinement-suggestions.json` to mark each successfully applied suggestion so it is not re-attempted on subsequent iterations:
+
+For each entry in the `"applied"` array of fix-log.json, find the matching suggestion in `refinement-suggestions.json` (match by `criterion_id` or `guideline_id` + `type`) and set:
+```json
+{ "applied": true, "applied_in_iteration": <current iteration number> }
+```
+
+fix-log.json format:
 
 ```json
 {

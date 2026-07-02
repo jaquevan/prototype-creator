@@ -9,7 +9,7 @@ allowed-tools: Read, Write, Bash, Glob, Grep
 
 Executes Playwright walkthroughs for each journey defined by eval-extract. Supports two modes depending on the eval phase:
 
-- **`--mode=informed`** (Phase A): Informed evaluator with full source access. Uses workspace selectors/routes eagerly for fast AC verification. No persona simulation.
+- **`--mode=informed`** (Phase A): X-ray evaluator with full source access. Uses workspace selectors/routes eagerly for fast AC verification. No persona simulation.
 - **`--mode=blind`** (Phase B / default): Blind-first navigation. Personas discover the UI through click-first exploration with hints as fallback only.
 
 ## Inputs
@@ -42,7 +42,7 @@ Executes Playwright walkthroughs for each journey defined by eval-extract. Suppo
 
 **`--mode=informed` (Phase A — X-Ray AC Validation):**
 
-The informed evaluator has full workspace access and uses it for speed. The goal is to verify acceptance criteria as fast as possible, not to test discoverability.
+The x-ray evaluator has full workspace access and uses it for speed. The goal is to verify acceptance criteria as fast as possible, not to test discoverability.
 
 - Read workspace source files directly for selectors, routes, and page structure
 - Use `page.goto` freely for navigation (speed over realism)
@@ -52,7 +52,7 @@ The informed evaluator has full workspace access and uses it for speed. The goal
 - Screenshots are evidence of PASS/FAIL only
 - Produces: verdicts, refinement-suggestions, screenshots
 
-Navigation strategy for informed mode:
+Navigation strategy for x-ray mode:
 ```javascript
 async function navigateInformed(page, route, selector) {
   await page.goto(`${baseUrl}${route}`);
@@ -65,17 +65,17 @@ async function navigateInformed(page, route, selector) {
 }
 ```
 
-**INFORMED MODE VERDICT RULE — Visual truth overrides source analysis:**
+**X-RAY MODE VERDICT RULE — Visual truth overrides source analysis:**
 
-Even in informed mode, the Playwright visual result is the SOURCE OF TRUTH for verdict assignment.
+Even in x-ray mode, the Playwright visual result is the SOURCE OF TRUTH for verdict assignment.
 - If Playwright shows empty table / broken UI / feature not visible → **FAIL** (regardless of what source code says)
 - Source code analysis can UPGRADE a FLAGGED to PASS (e.g., Tier 3 backend verification where UI portion is confirmed working)
 - Source code analysis can NEVER upgrade a visual FAIL to PASS
 - If all screenshots show the same empty/broken state, the feature is NOT working — source code existence doesn't matter
 
-The informed evaluator has code access for NAVIGATION speed, not for verdict override. The verdict still comes from what the user would see.
+The x-ray evaluator has code access for NAVIGATION speed, not for verdict override. The verdict still comes from what the user would see.
 
-When `--mode=informed`, skip Steps 3 and 3b below (hint fallback logic is unnecessary — read source directly). Go straight to Step 4 with informed navigation.
+When `--mode=informed`, skip Steps 3 and 3b below (hint fallback logic is unnecessary — read source directly). Go straight to Step 4 with x-ray navigation.
 
 **`--mode=blind` (Phase B — Persona Walkthroughs / default):**
 
@@ -383,9 +383,9 @@ If ALL screenshots in a journey share the same hash, the journey verdict MUST be
 
 If MORE THAN HALF of the screenshots in a journey share the same hash, the journey verdict MUST be FLAGGED with rationale: "Most screenshots identical — navigation did not meaningfully advance. Evidence quality is insufficient for confident PASS."
 
-**Cross-journey uniqueness (informed mode):**
+**Cross-journey uniqueness (x-ray mode):**
 
-Even in informed mode where all journeys may visit the same route, each journey MUST produce at least one UNIQUE screenshot demonstrating the specific AC it tests. If two journeys both navigate to the same page, they must differ in at least one of:
+Even in x-ray mode where all journeys may visit the same route, each journey MUST produce at least one UNIQUE screenshot demonstrating the specific AC it tests. If two journeys both navigate to the same page, they must differ in at least one of:
 - Scroll position (one shows top of table, other shows expanded row details)
 - Filter/selection state (one shows all items, other shows filtered subset)
 - Interaction state (one shows hover tooltip, other shows expanded accordion)

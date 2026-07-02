@@ -115,6 +115,7 @@ After journeys are defined, produce a `tasks_to_be_done` array in extract-state.
 - No internal jargon (no "Given/When/Then", no "DSC", no "AC-1")
 - Should be completable by looking at the UI — not require backend knowledge
 - 1-3 tasks per eval (map to the main user flows, not one per AC)
+- **Route diversity rule:** If multiple tasks would navigate to the same page/route, differentiate them by INTERACTION (e.g., "expand a row to see details" vs "compare status labels across rows" vs "check what happens when the feature is disabled"). Tasks on the same page are fine as long as they test different interactions or visual states.
 
 **Examples:**
 - Bad: "Given Kueue is enabled in the DSC and the namespace has the managed label, verify scheduling status displays"

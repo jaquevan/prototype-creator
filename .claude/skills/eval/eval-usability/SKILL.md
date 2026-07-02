@@ -34,7 +34,6 @@ Each persona navigates at their own competence level — an experienced user exp
 | `.artifacts/<KEY>/usability-thinkaloud-<persona-id>-task-<N>.md` | Per-persona per-task think-aloud trace |
 | `.artifacts/<KEY>/screenshots/persona-<persona-id>-task-<N>-step-<M>.png` | Per-persona per-task walkthrough screenshots |
 | `.artifacts/<KEY>/persona-results.json` | Structured trace data for all persona+task runs |
-| `.artifacts/<KEY>/usability-eval-output/` | External usability evaluation output |
 | `.artifacts/<KEY>/refinement-suggestions.json` | Appended with usability suggestions for scores 0-1 |
 
 ## Procedure
@@ -325,16 +324,17 @@ Different tasks MUST produce visually different screenshots (they test different
 
 ```bash
 md5sum .artifacts/<KEY>/screenshots/persona-*-task-1-step-2.png .artifacts/<KEY>/screenshots/persona-*-task-2-step-2.png .artifacts/<KEY>/screenshots/persona-*-task-3-step-2.png
+md5sum .artifacts/<KEY>/screenshots/persona-*-task-1-step-3.png .artifacts/<KEY>/screenshots/persona-*-task-2-step-3.png .artifacts/<KEY>/screenshots/persona-*-task-3-step-3.png
 ```
 
-Compare step-2 (the first task-specific navigation step) across tasks for each persona.
+Compare step-2 AND step-3 across tasks for each persona. Tasks on the same page that differ by interaction may have identical step-2 (same page load) but MUST differ by step-3 (after the distinguishing interaction).
 
-**If ANY two tasks share the same MD5 hash for step-2:**
+**If ANY two tasks share the same MD5 hash for BOTH step-2 AND step-3:**
 
 1. **DELETE** `persona-walkthrough.mjs` and ALL `persona-*.png` screenshots
 2. **Re-read** the task-to-route mapping from Step 1c-routes
-3. **Verify** the mapping has distinct routes/interactions per task. If not, revise the mapping first.
-4. **Regenerate** `persona-walkthrough.mjs` with per-task functions that navigate to DIFFERENT pages
+3. **Verify** the mapping has distinct interactions per task (not just different routes). If not, revise the mapping first.
+4. **Regenerate** `persona-walkthrough.mjs` with per-task functions that produce different visual states
 5. **Re-run** Playwright
 6. **Re-check** MD5 hashes
 
@@ -502,53 +502,7 @@ Key insight: [most actionable finding]
 
 This file is what renders in the report's Personas tab. If it doesn't exist, the tab shows degraded content. The file must cover EVERY journey step with the persona's reaction — not a summary, but a step-by-step trace.
 
-### Step 6: External Usability Evaluation (REQUIRED when .context/usability-testing/ exists)
-
-This step produces the richest usability data — an independent exploratory evaluation where the persona navigates freely with no prescribed path.
-
-#### Procedure:
-
-1. Select the most friction-revealing persona (typically the junior variant — the one most likely to struggle)
-2. Read the protocol: `.context/usability-testing/prompts/evaluate.md`
-3. Execute the **Actor phase**: Navigate the prototype as the persona, think-aloud at each step, track patience
-4. Execute the **Evaluator phase**: Score using the rubric from `.context/usability-testing/prompts/score.md`
-
-#### REQUIRED outputs (these files MUST be created):
-
-```
-.artifacts/<KEY>/usability-eval-output/
-  summary.md              — persona, outcome, patience, overall score, dimension scores
-  phase1-thinkaloud.md    — full think-aloud trace from Actor phase
-  phase2-evaluation.md    — evaluator scoring with evidence citations
-```
-
-#### summary.md format:
-
-```markdown
-# External Usability Evaluation Summary
-
-**Persona:** <name> (<id>)
-**Goal:** <primary task>
-**Outcome:** Completed / Completed with low confidence / Abandoned at step N
-**Final Patience:** X%
-**Overall Score:** X/21
-
-## Dimension Scores
-| Dimension | Score | Confidence | Key Finding |
-|-----------|-------|------------|-------------|
-| Workflow Continuity | X/3 | High | ... |
-| ... | | | |
-
-## Critical Findings
-1. [most important usability issue]
-2. [second most important]
-```
-
-#### Verification:
-
-After this step, check that all 3 files exist and `summary.md` is non-empty. If these files do not exist, the step was NOT completed — go back and execute the protocol.
-
-### Step 6b: Write persona-results.json
+### Step 6: Write persona-results.json
 
 **ALWAYS produce this file**, regardless of single-task or multi-task runs. This structured JSON is the canonical source for persona walkthrough data consumed by the report renderer.
 
