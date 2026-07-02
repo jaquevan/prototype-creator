@@ -33,10 +33,10 @@ function parseVerdicts(csvContent) {
   let pass = 0, fail = 0, flagged = 0;
 
   for (const line of lines) {
-    const match = line.match(/^(AC-\d+),([^,]*),([^,]*),("(?:[^"]|"")*"|[^,]*),(\w+)/);
+    const match = line.match(/^([A-Z]+-\d+),([^,]*),([^,]*),("(?:[^"]|"")*"|[^,]*),(PASS|FAIL|FLAGGED)(?:\s*\(.*?\))?/i);
     if (match) {
-      const [, acId, , tier, , verdict] = match;
-      const v = verdict.toUpperCase();
+      const [, acId, , tier, , rawVerdict] = match;
+      const v = rawVerdict.toUpperCase();
       verdicts[acId] = { verdict: v, tier };
       if (v === 'PASS') pass++;
       else if (v === 'FAIL') fail++;
@@ -193,7 +193,8 @@ if (phase === 'a') {
     }
   }
 
-  if (entry.fail_count === 0) log.exit_reason = 'all_pass';
+  // Do NOT set exit_reason here — orchestrator/eval_state.py owns that decision.
+  // The script only computes counts; the orchestrator decides flagged_unfixable vs all_pass.
 
   if (entry.files_modified && entry.files_modified.length) {
     log.files_modified = [...new Set([

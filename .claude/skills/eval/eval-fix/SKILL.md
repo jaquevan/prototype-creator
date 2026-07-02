@@ -141,16 +141,6 @@ fix-log.json format:
 }
 ```
 
-### Step 7: Wait for rebuild
-
-After applying all fixes, wait for the dev server to pick up changes:
-
-```bash
-sleep 3
-```
-
-If a dev server is running with HMR, 3 seconds is sufficient. For static builds, wait 5 seconds.
-
 ## Rules
 
 - Never fix something that was deliberately de-scoped by a design decision

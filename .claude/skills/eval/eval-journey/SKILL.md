@@ -1,16 +1,13 @@
 ---
 name: eval-journey
-description: Run Playwright walkthroughs against the live prototype. Supports two modes — informed (Phase A, fast AC verification) and blind (Phase B, persona-driven usability discovery).
+description: Run Playwright walkthroughs against the live prototype in x-ray mode (Phase A, fast AC verification).
 user-invocable: false
 allowed-tools: Read, Write, Bash, Glob, Grep
 ---
 
 # eval-journey
 
-Executes Playwright walkthroughs for each journey defined by eval-extract. Supports two modes depending on the eval phase:
-
-- **`--mode=informed`** (Phase A): X-ray evaluator with full source access. Uses workspace selectors/routes eagerly for fast AC verification. No persona simulation.
-- **`--mode=blind`** (Phase B / default): Blind-first navigation. Personas discover the UI through click-first exploration with hints as fallback only.
+Executes Playwright walkthroughs for each journey defined by eval-extract. Operates in **x-ray mode** (Phase A only) — full workspace source access for fast AC verification. Persona-driven usability walkthroughs are handled separately by `eval-usability` (Phase B).
 
 ## Inputs
 
@@ -21,8 +18,7 @@ Executes Playwright walkthroughs for each journey defined by eval-extract. Suppo
 | `.artifacts/<KEY>/navigation-hints.json` | Selectors, routes, nav hierarchy from eval-hint | No |
 | `.artifacts/<KEY>/mr-delta.json` | Changed files (for nav gap detection, URL fallback hints) | No |
 | Prototype URL | Live URL to test against (e.g., `http://localhost:4200`) | Yes |
-| `--mode` | `informed` (Phase A) or `blind` (Phase B, default) | No |
-| `--depth` | `deep` (default) | No |
+| `--mode` | `informed` (x-ray mode, the only mode for this skill) | No |
 | `--rerun-only` | Comma-separated AC IDs — only run journeys testing these ACs | No |
 | `tests/fixtures/manifest.json` | Test fixtures for file uploads and chat input | No |
 
@@ -76,10 +72,6 @@ Even in x-ray mode, the Playwright visual result is the SOURCE OF TRUTH for verd
 The x-ray evaluator has code access for NAVIGATION speed, not for verdict override. The verdict still comes from what the user would see.
 
 When `--mode=informed`, skip Steps 3 and 3b below (hint fallback logic is unnecessary — read source directly). Go straight to Step 4 with x-ray navigation.
-
-**`--mode=blind` (Phase B — Persona Walkthroughs / default):**
-
-The blind walker navigates using only visible UI elements. Hints are a fallback safety net, not pre-loaded knowledge. This is the default mode and the original behavior documented in the rest of this skill.
 
 ---
 
@@ -298,18 +290,6 @@ For Tier 1 criteria, a PASS verdict requires AT LEAST ONE screenshot showing the
 
 Extra exploration (checking adjacent pages, testing edge cases) goes in the `exploration[]` section, NOT in the journey steps. Journey steps are the minimum path to verify the AC.
 
-**Phase 2 — Exploratory Navigation** (when `.context/usability-testing/` present):
-
-After prescribed journeys, same browser session:
-1. Return to prototype entry URL
-2. For each selected persona, plan 3-5 exploration paths not covered by prescribed journeys
-3. Capture screenshots and log what the persona would see
-
-**Parallel execution rules:**
-- Same starting page = sequential
-- Different starting pages = parallel (separate `browser.newContext()`)
-- Journeys that modify state = sequential
-
 Run the script:
 ```bash
 node .artifacts/<KEY>/journey-test.mjs
@@ -419,13 +399,25 @@ These are PROTOTYPES — they demonstrate UI flows, not backend logic. Tier 3 AC
 - If the UI part fails (no validation UI, no feedback element): verdict = **FAIL**
 - Backend-ONLY ACs with NO UI component at all (e.g., "BFF accepts 50MB bodies", "catalog YAML schema"): verdict = **PASS (N/A)** with rationale "No UI component — backend-only requirement, noted for engineering."
 
-**NEVER FLAGGED for prototype limitations.** These are PASS with notes:
+**NEVER FLAGGED for prototype limitations that have a UI demonstration.** These are PASS with notes:
 - "updates within 5 seconds without page refresh" → PASS (UI re-renders from state; WebSocket is backend)
 - "covers both InferenceService and LLMInferenceService" → PASS (UI handles the data model; mock data proves it)
 - "validates inputs" → PASS if the form shows validation UI (backend enforcement is engineering)
 - Real-time behavior, RBAC checks, API integrations → all PASS if the UI demonstrates the flow
 
 Do NOT flag or fail ACs solely because their backend portion cannot be verified. The prototype's job is to demonstrate the UX, not implement the backend. Note backend requirements in the `human_action` column for engineering follow-up.
+
+**Consolidated Verdict Policy (resolves all tier/mode conflicts):**
+
+| Situation | Verdict | Rationale |
+|---|---|---|
+| UI feature exists and works visually (T1) | PASS | Screenshot proves it |
+| UI feature missing or broken (T1) | FAIL | Screenshot shows absence |
+| Needs external reference, ref unavailable (T2) | FLAGGED | Can't compare without ref |
+| Backend-only requirement, UI demonstrates flow (T3) | PASS (with note) | Prototype shows UX; backend is engineering |
+| Conditional rendering can't be toggled in prototype | FLAGGED | Genuinely can't demonstrate; needs human verification |
+| Subjective quality judgment (T4) | FLAGGED | Human call |
+| Source code confirms feature but screenshot shows nothing | FAIL | Visual truth wins |
 
 **Verdict rules:**
 - Simulated/placeholder responses in prototypes = PASS (UI flow works)

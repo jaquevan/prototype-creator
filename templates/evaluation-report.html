@@ -905,6 +905,21 @@ function switchPersonaTask(taskIdx) {
   renderPersonaModalStep();
 }
 
+function openPersonaWalkthrough(taskIdx) {
+  // Open the persona walkthrough modal for a specific task (called from AC "View walkthrough" links)
+  // Switch to Personas tab, open the first persona's modal at the given task
+  var personasTab = document.querySelector('[data-tab="personas"]');
+  if (personasTab) personasTab.click();
+  var personaIds = Object.keys(personaWalkthroughData || {});
+  if (personaIds.length > 0) {
+    currentPersonaTask = taskIdx || 0;
+    currentPersonaStep = 0;
+    currentPersonaId = personaIds[0];
+    renderPersonaModalStep();
+    document.getElementById('screenshotModal').classList.add('active');
+  }
+}
+
 function renderPersonaModalStep() {
   var data = personaWalkthroughData[currentPersonaId];
   if (!data) return;

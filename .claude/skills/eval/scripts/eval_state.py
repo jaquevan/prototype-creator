@@ -9,7 +9,7 @@ Standard fields:
     iteration: N          (current Phase A loop iteration)
     max_iterations: N     (Phase A loop cap)
     ac_pass: true|false   (whether Phase A AC gate passed)
-    exit_reason: pending|all_pass|max_iterations|regression|no_iterate
+    exit_reason: pending|all_pass|flagged_unfixable|max_iterations|regression|no_iterate|no_fix
     key: JIRA-KEY
     url: prototype URL
     workspace: path to prototype repo

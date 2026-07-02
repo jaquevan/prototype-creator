@@ -125,8 +125,13 @@ if workspace provided:
 Read .claude/skills/eval/eval-extract/SKILL.md and execute it
 # Produces: extract-state.json, mr-delta.json, outcome-context.json
 
+if workspace provided:
+  Read .claude/skills/eval/eval-hint/SKILL.md and execute it
+  # Reads mr-delta.json, scans workspace source for routes/selectors/nav hierarchy
+  # Produces: navigation-hints.json (consumed by eval-journey and eval-usability as fallback)
+
 Read .claude/skills/eval/eval-consistency/SKILL.md and execute it
-# Runs ONCE. Produces: consistency-report.json, adds to refinement-suggestions.json
+# Runs ONCE. Produces: consistency-report.json, appends to refinement-suggestions.json
 # PatternFly violations don't change between AC fix iterations.
 
 # ── AC Fix Loop ────────────────────────────────────────────────────
@@ -139,9 +144,8 @@ LOOP:
   if iteration == 1:
     Read .claude/skills/eval/eval-classify/SKILL.md and execute it
     # Produces: evaluation-report.csv (Section 1, tiers only)
-  else:
-    Read .claude/skills/eval/eval-classify/SKILL.md and execute it with:
-      --rerun-only=<comma-separated FAIL+FLAGGED AC IDs from previous CSV>
+  # Iteration 2+: skip classify entirely. Tiers are structural and don't change.
+  # The CSV already has tier assignments from iteration 1. Only verdicts need updating.
 
   # ── Journey (x-ray mode) ────────────────────────────────────
   # The x-ray evaluator uses workspace source directly for navigation.
@@ -152,8 +156,9 @@ LOOP:
     # Uses workspace source for selectors/routes. Verifies ACs quickly.
   else:
     Read .claude/skills/eval/eval-journey/SKILL.md and execute it with:
-      --mode=informed --rerun-only=<FAIL+FLAGGED AC IDs>
+      --mode=informed --rerun-only=<FAIL+FLAGGED AC IDs from previous CSV>
     # Only runs Playwright for journeys testing failing criteria
+    # Carries forward PASS verdicts from previous iteration
 
   # ── Archive this iteration ─────────────────────────────────────
   cp .artifacts/<KEY>/evaluation-report.csv → .artifacts/<KEY>/evaluation-report-iter-<iteration>.csv

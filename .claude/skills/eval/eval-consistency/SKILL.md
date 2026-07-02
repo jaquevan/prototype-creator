@@ -26,7 +26,7 @@ Phase 2c of the eval pipeline. Runs PatternFly design consistency checks against
 | File | Description |
 |------|-------------|
 | `.artifacts/<KEY>/consistency-report.json` | Full consistency report (source + visual findings) |
-| `.artifacts/<KEY>/refinement-suggestions.json` | Appended with consistency suggestions (if `--feed-to-refine`) |
+| `.artifacts/<KEY>/refinement-suggestions.json` | Appended with consistency suggestions |
 
 ## Procedure
 
@@ -122,7 +122,7 @@ Cross-reference captured screenshots against PatternFly guidelines for visual vi
 
 Set `"ran": false` for any mode that could not execute (no workspace = no source mode; no screenshots = no visual mode).
 
-### Step 4: Append to refinement-suggestions.json (when `--feed-to-refine`)
+### Step 4: Append to refinement-suggestions.json
 
 For each violation, add a consistency suggestion entry:
 

@@ -20,6 +20,26 @@ const templatePath = path.join(projectRoot, 'templates', 'evaluation-report.html
 // Helpers
 // ---------------------------------------------------------------------------
 
+function normalizeUsabilityDimensions(ud) {
+  if (!ud) return ud;
+  if (!ud.personas_evaluated && ud.persona_selection && ud.persona_selection.selected) {
+    ud.personas_evaluated = ud.persona_selection.selected;
+  }
+  if (ud.dimensions) {
+    for (const dim of ud.dimensions) {
+      if (dim.score !== undefined && dim.composite_score === undefined) dim.composite_score = dim.score;
+      if (dim.scores && !dim.persona_scores) dim.persona_scores = dim.scores;
+    }
+  }
+  if (ud.persona_overlays) {
+    for (const overlay of ud.persona_overlays) {
+      if (overlay.persona_id && !overlay.persona) overlay.persona = overlay.persona_id;
+      if (overlay.persona && !overlay.persona_id) overlay.persona_id = overlay.persona;
+    }
+  }
+  return ud;
+}
+
 function readFileOr(filePath, fallback) {
   try { return fs.readFileSync(filePath, 'utf8'); } catch { return fallback; }
 }
@@ -149,7 +169,7 @@ function buildFullCsv(csvRaw, journeyLog, passCount, failCount, flaggedCount) {
 
   // Append Section 2 (Usability Dimensions) if not already present and data exists
   if (!fullCsv.includes('# USABILITY DIMENSIONS')) {
-    const ud = journeyLog ? journeyLog.usability_dimensions : null;
+    const ud = journeyLog ? normalizeUsabilityDimensions(journeyLog.usability_dimensions) : null;
     if (ud && ud.dimensions) {
       fullCsv += '\n\n# USABILITY DIMENSIONS\ndimension_id,dimension_name,score,confidence,evidence,persona_scores\n';
       for (const dim of ud.dimensions) {
@@ -161,7 +181,7 @@ function buildFullCsv(csvRaw, journeyLog, passCount, failCount, flaggedCount) {
 
   // Append Section 3 (Persona Insights) if not already present
   if (!fullCsv.includes('# PERSONA INSIGHTS')) {
-    const ud = journeyLog ? journeyLog.usability_dimensions : null;
+    const ud = journeyLog ? normalizeUsabilityDimensions(journeyLog.usability_dimensions) : null;
     if (ud && ud.persona_overlays && ud.persona_overlays.length) {
       fullCsv += '\n\n# PERSONA INSIGHTS\npersona,patience_start,patience_end,abandoned,confusion_events,cli_escapes,key_friction\n';
       for (const overlay of ud.persona_overlays) {
@@ -175,7 +195,7 @@ function buildFullCsv(csvRaw, journeyLog, passCount, failCount, flaggedCount) {
   if (!fullCsv.includes('# BASELINE')) {
     const total = passCount + failCount + flaggedCount;
     const passRate = total > 0 ? (passCount / total).toFixed(2) : '0';
-    const ud = journeyLog ? journeyLog.usability_dimensions : null;
+    const ud = journeyLog ? normalizeUsabilityDimensions(journeyLog.usability_dimensions) : null;
     const usabilityComposite = ud ? (ud.overall_score || 0) : 0;
     const journeys = journeyLog ? journeyLog.journeys || [] : [];
     const journeyPassRate = journeys.length > 0 ? (journeys.filter(j => j.verdict === 'PASS').length / journeys.length).toFixed(2) : '0';
@@ -483,7 +503,7 @@ function buildDeltaHtml() {
 
 function buildPersonaSelectionHtml() {
   const journeyLog = readJsonOr(path.join(absArtifacts, 'journey-log.json'), null);
-  const ud = journeyLog ? journeyLog.usability_dimensions : null;
+  const ud = journeyLog ? normalizeUsabilityDimensions(journeyLog.usability_dimensions) : null;
   if (!ud || !ud.personas_evaluated || !ud.personas_evaluated.length) {
     return '<p class="muted small">No persona data available.</p>';
   }
@@ -546,7 +566,7 @@ function getPersonaAvatar(pid) {
 
 function buildPersonaProfilesHtml() {
   const journeyLog = readJsonOr(path.join(absArtifacts, 'journey-log.json'), null);
-  const ud = journeyLog ? journeyLog.usability_dimensions : null;
+  const ud = journeyLog ? normalizeUsabilityDimensions(journeyLog.usability_dimensions) : null;
   if (!ud || !ud.personas_evaluated) return '';
 
   const contextDir = path.join(path.resolve(__dirname, '..'), '.context', 'usability-testing', 'personas');
@@ -632,7 +652,7 @@ function buildPersonaWalkthroughsHtml() {
   const screenshotsDir = path.join(absArtifacts, 'screenshots');
   const journeyLog = readJsonOr(path.join(absArtifacts, 'journey-log.json'), null);
   const extractState = readJsonOr(path.join(absArtifacts, 'extract-state.json'), null);
-  const ud = journeyLog ? journeyLog.usability_dimensions : null;
+  const ud = journeyLog ? normalizeUsabilityDimensions(journeyLog.usability_dimensions) : null;
 
   if (!ud || !ud.personas_evaluated || !ud.personas_evaluated.length) {
     return '<p class="muted small">No persona walkthrough data. Phase B did not produce per-persona screenshots.</p>';
@@ -739,8 +759,30 @@ function buildPersonaWalkthroughData() {
   const screenshotsDir = path.join(absArtifacts, 'screenshots');
   const journeyLog = readJsonOr(path.join(absArtifacts, 'journey-log.json'), null);
   const extractState = readJsonOr(path.join(absArtifacts, 'extract-state.json'), null);
-  const personaResults = readJsonOr(path.join(absArtifacts, 'persona-results.json'), null);
-  const ud = journeyLog ? journeyLog.usability_dimensions : null;
+  let personaResults = readJsonOr(path.join(absArtifacts, 'persona-results.json'), null);
+  // Normalize: if dict {pid: [tasks]}, convert to expected array format
+  if (personaResults && !Array.isArray(personaResults)) {
+    const arr = [];
+    for (const [pid, tasks] of Object.entries(personaResults)) {
+      if (Array.isArray(tasks)) {
+        for (const task of tasks) {
+          arr.push({
+            persona: pid,
+            task_index: task.task_index || 1,
+            task: task.task_name || task.task || '',
+            trace: task.steps || task.trace || [],
+            screenshots: task.screenshots || [],
+            patience_start: task.patience_start || 100,
+            patience_end: task.patience_end || 100,
+            confusion_events: task.confusion_events || 0,
+            outcome: task.outcome || task.completed ? 'completed' : 'incomplete'
+          });
+        }
+      }
+    }
+    personaResults = arr;
+  }
+  const ud = journeyLog ? normalizeUsabilityDimensions(journeyLog.usability_dimensions) : null;
   const consistencyReport = readJsonOr(path.join(absArtifacts, 'consistency-report.json'), null);
 
   if (!ud || !ud.personas_evaluated) return '{}';
@@ -1782,7 +1824,7 @@ function buildNarrativeSummary() {
   }
   const totalAc = passCount + failCount + flaggedCount;
 
-  const ud = journeyLog ? journeyLog.usability_dimensions : null;
+  const ud = journeyLog ? normalizeUsabilityDimensions(journeyLog.usability_dimensions) : null;
   const usabilityScore = ud ? ud.overall_score || null : null;
   const storyTitle = (extractState && extractState.ticket_summary) || protoId;
   const suggestions = Array.isArray(refinements) ? refinements : (refinements && refinements.suggestions ? refinements.suggestions : []);
@@ -1933,6 +1975,9 @@ function buildTokens(opts = {}) {
   const screenshotsDir = opts.screenshotsDir || path.join(absArtifacts, 'screenshots');
   const screenshots = loadScreenshots(screenshotsDir);
 
+  // Normalize usability_dimensions fields (handle common LLM output variants)
+  const ud = journeyLog ? normalizeUsabilityDimensions(journeyLog.usability_dimensions) : null;
+
   const csvRows = parseCsv(csvRaw);
 
   // Outcome context (needed by screenshot modal)
@@ -1965,7 +2010,6 @@ function buildTokens(opts = {}) {
   const journeyRatio = `${journeyPass}/${journeyTotal}`;
 
   // Usability
-  const ud = journeyLog ? journeyLog.usability_dimensions : null;
   const rawUsability = ud ? ud.overall_score || '—' : '—';
   const usabilityScore = String(rawUsability).replace(/\/21$/, '').trim();
 
@@ -2035,12 +2079,15 @@ function buildTokens(opts = {}) {
   // Count persona coverage per AC from task definitions
   const tasksDefined = extractState ? (extractState.tasks_to_be_done || []) : [];
   const acPersonaCoverage = {};
-  const ud2 = journeyLog ? journeyLog.usability_dimensions : null;
+  const acToTaskIndex = {};
+  const ud2 = journeyLog ? normalizeUsabilityDimensions(journeyLog.usability_dimensions) : null;
   const personasEval = (ud2 && ud2.personas_evaluated) ? ud2.personas_evaluated : [];
-  for (const td of tasksDefined) {
+  for (let ti = 0; ti < tasksDefined.length; ti++) {
+    const td = tasksDefined[ti];
     for (const acId of (td.covers_acs || [])) {
       if (!acPersonaCoverage[acId]) acPersonaCoverage[acId] = 0;
       acPersonaCoverage[acId] += personasEval.length;
+      if (!acToTaskIndex[acId]) acToTaskIndex[acId] = ti + 1;
     }
   }
 
@@ -2066,7 +2113,11 @@ function buildTokens(opts = {}) {
     const ssInfo = acScreenshotMap[r.criterion_id];
 
     let evidenceHtml = '';
-    if (hasPersonaEvidence || ssInfo) {
+    if (hasPersonaEvidence) {
+      const taskIdx = acToTaskIndex[r.criterion_id] || 1;
+      evidenceHtml = `<a href="#" class="ac-view-link" onclick="openPersonaWalkthrough(${taskIdx - 1});return false">View walkthrough</a>`;
+      if (evidenceText) evidenceHtml += `<span class="ac-evidence-text">${escapeHtml(evidenceText)}</span>`;
+    } else if (ssInfo) {
       evidenceHtml = `<a href="#" class="ac-view-link" onclick="openAcEvidence('${escapeHtml(r.criterion_id)}');return false">View walkthrough</a>`;
       if (evidenceText) evidenceHtml += `<span class="ac-evidence-text">${escapeHtml(evidenceText)}</span>`;
     } else {
@@ -2944,8 +2995,6 @@ function buildTokens(opts = {}) {
     '{{CONSISTENCY_TAB_DISPLAY}}': fs.existsSync(path.join(absArtifacts, 'consistency-report.json')) ? '' : 'display:none',
     '{{REVIEW_TAB_DISPLAY}}': flaggedCount > 0 ? '' : 'display:none',
     '{{REVIEW_ITEMS_HTML}}': buildReviewItemsHtml(csvRows, journeyLog, screenshots),
-    '{{EXTERNAL_USABILITY_HTML}}': '',
-    '{{EXTERNAL_USABILITY_DISPLAY}}': 'display:none',
     '{{OUTCOME_DISPLAY}}': outcomeContext ? '' : 'display:none',
     '{{OUTCOME_LINK_URL}}': outcomeContext ? jiraUrlForKey(outcomeContext.key) : '',
     '{{OUTCOME_LINK}}': outcomeContext ? `<a href="${escapeHtml(jiraUrlForKey(outcomeContext.key))}" target="_blank">${escapeHtml(outcomeContext.key)}</a> — ${escapeHtml((outcomeContext.title || '').slice(0, 60))}` : '',

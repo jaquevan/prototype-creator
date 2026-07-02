@@ -371,8 +371,8 @@ This preserves the discoverability signal while preventing walkthroughs from bei
 ### Step 2: Apply Persona Constraints to Journey Evidence
 
 After persona walkthroughs complete, read each persona's output:
-- `.artifacts/<KEY>/usability-thinkaloud-<persona-id>.md`
-- `.artifacts/<KEY>/screenshots/persona-<persona-id>-step-*.png`
+- `.artifacts/<KEY>/usability-thinkaloud-<persona-id>-task-<N>.md`
+- `.artifacts/<KEY>/screenshots/persona-<persona-id>-task-<N>-step-<M>.png`
 
 For each persona's trace, assess:
 1. **Comprehension** — did the persona understand the UI elements? Check against domain_knowledge map.
@@ -566,6 +566,15 @@ Rules:
 - `confidence: "low"` items are logged but NOT auto-applied by eval-fix
 
 ### Step 8: Write usability_dimensions to journey-log.json
+
+**BLOCKING FORMAT REQUIREMENTS — render-report.js will produce broken output without these exact fields:**
+
+The following top-level fields inside `usability_dimensions` are REQUIRED:
+- `personas_evaluated` — array of persona IDs (e.g., `["maude-experienced", "maude-junior"]`). NOT inside persona_selection — at the TOP level.
+- `dimensions[].composite_score` — number, the average of persona scores for that dimension. NOT just `score`.
+- `think_aloud.traces` — array with one entry per persona containing `narration_summary`, `confusion_events` count, `dimension_scores`
+
+Also in Step 6 (`persona-results.json`): output MUST be an **array** of objects, NOT a dict keyed by persona ID.
 
 ```json
 {
