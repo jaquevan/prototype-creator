@@ -290,7 +290,11 @@ If an AC describes a disabled/alternative state (e.g., "when Kueue is not enable
 - DO verify the conditional rendering exists in source code
 - DO verify the feature flag gates the UI
 - DO NOT add a step that tries to toggle the flag in the running prototype
-- Mark the journey PASS with note: "Conditional rendering verified via source code"
+- Mark the journey **FLAGGED** with note: "Conditional rendering verified via source code only — cannot visually verify disabled state in this prototype"
+- This is NOT a PASS — the prototype cannot demonstrate this state. It needs human confirmation or a separate test environment.
+
+**T1 Visual Evidence Rule (BLOCKING):**
+For Tier 1 criteria, a PASS verdict requires AT LEAST ONE screenshot showing the feature working as described. Source-code-only verification for T1 criteria MUST produce FLAGGED, never PASS. The only exception is when the AC explicitly describes behavior that cannot be demonstrated in a prototype (e.g., "within 5 seconds" timing, backend RBAC enforcement) — those are T3 criteria by definition.
 
 Extra exploration (checking adjacent pages, testing edge cases) goes in the `exploration[]` section, NOT in the journey steps. Journey steps are the minimum path to verify the AC.
 
@@ -329,19 +333,31 @@ Capture at key moments only:
 
 **Narrations for designers:** Describe what a reviewer SEES, not DOM internals.
 
-**CRITICAL: Wait for render before capture.** The generated script MUST include these patterns:
+**CRITICAL: Wait for CONTENT (not just containers) before capture.** The generated script MUST include these patterns:
 
 ```javascript
 async function screenshotAfterRender(page, path, waitForSelector) {
-  // Wait for the specific content this step is verifying
+  // Wait for the specific CONTENT this step is verifying — not just the container
   if (waitForSelector) {
-    await page.waitForSelector(waitForSelector, { timeout: 5000 }).catch(() => null);
+    await page.waitForSelector(waitForSelector, { timeout: 8000 }).catch(() => null);
   }
-  // Minimum settle time for SPA re-renders
-  await page.waitForTimeout(800);
+  // Minimum settle time for SPA re-renders and data population
+  await page.waitForTimeout(1500);
   await page.screenshot({ path, fullPage: false });
 }
 ```
+
+**Wait selector rules:**
+- For tables: wait for `tbody tr` or a specific cell, NOT the table container (`#my-table` alone may render empty)
+- For lists: wait for a list item (`ul li`, `.pf-v6-c-list__item`)
+- For forms: wait for an input or label that renders after data loads
+- For page navigation: wait for the primary content heading or data element
+
+WRONG: `waitForSelector: '#model-deployments-table'` (table shell exists immediately, rows load later)
+RIGHT: `waitForSelector: '#model-deployments-table tbody tr'` (waits for actual row data)
+RIGHT: `waitForSelector: '[id^="kueue-status-"]'` (waits for specific feature elements)
+
+If the table remains empty after 8s timeout, that IS the screenshot — it shows the feature isn't rendering, which may be a legitimate FAIL.
 
 **CRITICAL: Detect duplicate screenshots.** The generated script MUST check for identical captures:
 
@@ -364,6 +380,18 @@ async function captureAndValidate(page, filepath, waitFor) {
 ```
 
 If ALL screenshots in a journey share the same hash, the journey verdict MUST be FAIL with rationale: "All screenshots identical — page content did not render between steps. Feature may not be functional."
+
+If MORE THAN HALF of the screenshots in a journey share the same hash, the journey verdict MUST be FLAGGED with rationale: "Most screenshots identical — navigation did not meaningfully advance. Evidence quality is insufficient for confident PASS."
+
+**Cross-journey uniqueness (informed mode):**
+
+Even in informed mode where all journeys may visit the same route, each journey MUST produce at least one UNIQUE screenshot demonstrating the specific AC it tests. If two journeys both navigate to the same page, they must differ in at least one of:
+- Scroll position (one shows top of table, other shows expanded row details)
+- Filter/selection state (one shows all items, other shows filtered subset)
+- Interaction state (one shows hover tooltip, other shows expanded accordion)
+- Element focus (one screenshots a specific row, other screenshots the header)
+
+Do NOT reuse screenshots across journeys with `screenshot_reused: true` unless the step is genuinely verifying the exact same visual element that a prior journey already captured. Convenience reuse (same page, different AC) produces misleading evidence.
 
 ### Step 6: Assign verdicts (EVERY AC must get exactly one verdict)
 
@@ -406,6 +434,13 @@ Do NOT flag or fail ACs solely because their backend portion cannot be verified.
 - DOM elements exist but are NOT visually rendered = FAIL (ghost elements)
 
 **Every row in `evaluation-report.csv` Section 1 MUST have a non-empty `verdict` column after this step.** Verify by checking for empty verdict fields. If any AC has an empty verdict, the step is not done — assign a verdict before proceeding.
+
+**BLOCKING CROSS-CHECK — Journey vs CSV Consistency:**
+
+Before writing the CSV, verify that journey-log.json and CSV verdicts are consistent:
+- If `journey-log.json` records a journey verdict as FAIL for an AC, the CSV verdict for that AC MUST also be FAIL (or FLAGGED).
+- If you want to PASS an AC whose journey failed, you MUST have visual evidence (a screenshot showing the feature works). Source-code-only justification is NEVER sufficient for T1 criteria.
+- If identical screenshots exist across all steps of a journey (same visual state), that journey cannot provide PASS evidence — the feature was not demonstrated visually.
 
 Update `evaluation-report.csv` Section 1 with verdicts, rationale, evidence, fix_action, fix_file.
 

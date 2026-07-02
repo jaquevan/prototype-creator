@@ -52,6 +52,44 @@ function extractPrototypeId() {
   return path.basename(absArtifacts);
 }
 
+function normalizeDelta(raw) {
+  if (!raw) return null;
+
+  const allFiles = raw.changed_files || raw.files_changed ||
+    [...(raw.new_files || []), ...(raw.modified_files || [])];
+
+  const cats = raw.categories || {};
+  const newPages = cats.new_pages || [];
+  const routeNavChanges = cats.route_nav_changes || [];
+  const featureFlagChanges = cats.feature_flag_changes || [];
+
+  const newFiles = raw.new_files || newPages;
+  const modifiedFiles = raw.modified_files ||
+    allFiles.filter(f => !newPages.includes(f));
+
+  return {
+    mr_number: raw.mr_number || null,
+    base_branch: raw.base_branch || '?',
+    workspace: raw.workspace || null,
+    total_files_changed: raw.total_files_changed || raw.stats?.files || raw.stats?.files_changed || allFiles.length,
+    stats: {
+      files_changed: raw.stats?.files_changed || raw.stats?.files || raw.total_files_changed || allFiles.length,
+      insertions: raw.stats?.insertions || 0,
+      deletions: raw.stats?.deletions || 0
+    },
+    changed_files: allFiles,
+    new_files: newFiles,
+    modified_files: modifiedFiles,
+    route_changes: raw.route_changes ?? routeNavChanges.length > 0,
+    nav_changes: raw.nav_changes ?? routeNavChanges.some(f => f.includes('AppLayout') || f.includes('nav')),
+    feature_flag_changes: raw.feature_flag_changes ?? featureFlagChanges.length > 0,
+    nav_warning: raw.nav_warning || (raw.navigation_gaps && raw.navigation_gaps.length ? raw.navigation_gaps[0] : ''),
+    new_routes: raw.new_routes || [],
+    summary: raw.summary || '',
+    categories: cats
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Parse CSV
 // ---------------------------------------------------------------------------
@@ -295,8 +333,10 @@ function loadScreenshots(screenshotsDir) {
   if (!fs.existsSync(screenshotsDir)) return map;
   const files = fs.readdirSync(screenshotsDir).filter(f => f.endsWith('.png')).sort();
 
-  // Detect stale screenshots: if journey-log.json is newer than all screenshots,
-  // the screenshots may be from a prior iteration (not re-captured after refine).
+  // Screenshots are always written before journey-log.json (Playwright captures
+  // during walkthrough, then the journey log is assembled afterward). Only warn
+  // if screenshots are NEWER than the journey log, which would indicate a re-run
+  // captured new screenshots without re-generating the journey analysis.
   const journeyLogPath = path.join(path.dirname(screenshotsDir), 'journey-log.json');
   let journeyLogMtime = 0;
   try { journeyLogMtime = fs.statSync(journeyLogPath).mtimeMs; } catch {}
@@ -306,7 +346,7 @@ function loadScreenshots(screenshotsDir) {
     const filePath = path.join(screenshotsDir, file);
     if (journeyLogMtime > 0) {
       const ssMtime = fs.statSync(filePath).mtimeMs;
-      if (ssMtime < journeyLogMtime - 60000) {
+      if (ssMtime > journeyLogMtime + 60000) {
         staleWarning = true;
       }
     }
@@ -315,7 +355,7 @@ function loadScreenshots(screenshotsDir) {
   }
 
   if (staleWarning) {
-    console.warn('  ⚠ WARNING: Screenshots appear older than journey-log.json — they may be stale from a prior iteration.');
+    console.warn('  ⚠ WARNING: Screenshots appear newer than journey-log.json — journey analysis may not reflect current screenshots.');
   }
   return map;
 }
@@ -326,12 +366,12 @@ function loadScreenshots(screenshotsDir) {
 
 function buildReportIntroHtml() {
   const extractState = readJsonOr(path.join(absArtifacts, 'extract-state.json'), null);
-  const delta = readJsonOr(path.join(absArtifacts, 'mr-delta.json'), null);
+  const delta = normalizeDelta(readJsonOr(path.join(absArtifacts, 'mr-delta.json'), null));
   const protoId = extractPrototypeId();
 
   const knownMRs = { 'RHAISTRAT-1527':168,'RHAISTRAT-133':169,'RHAISTRAT-1492':170,'RHAISTRAT-1267':167,'RHAISTRAT-1536':171,'RHAISTRAT-1535':172,'RHAISTRAT-1745':176,'RHAISTRAT-1474':173,'RHAISTRAT-1740':175,'RHAISTRAT-432':174,'RHAISTRAT-1521':177,'RHAISTRAT-1433':178,'RHAISTRAT-1762':180,'RHAISTRAT-1761':183,'RHAISTRAT-1758':181,'RHAISTRAT-1744':182,'RHAISTRAT-1742':184,'RHAISTRAT-1741':179 };
   const mrNum = delta ? (delta.mr_number || knownMRs[protoId]) : knownMRs[protoId];
-  const filesChanged = delta ? (delta.stats?.files_changed || (delta.changed_files || []).length || 0) : 0;
+  const filesChanged = delta ? delta.total_files_changed : 0;
   const baseBranch = delta ? (delta.base_branch || '3.5') : '3.5';
 
   const title = extractState ? (extractState.story_title || extractState.title || '') : '';
@@ -358,7 +398,7 @@ function buildReportIntroHtml() {
 
 function buildDeltaHtml() {
   const deltaPath = path.join(absArtifacts, 'mr-delta.json');
-  const delta = readJsonOr(deltaPath, null);
+  const delta = normalizeDelta(readJsonOr(deltaPath, null));
   if (!delta) return '<p class="muted small">No MR delta data available. Run with --workspace to enable.</p>';
 
   const addIcon = '<span class="delta-added" title="Added">+</span>';
@@ -699,6 +739,7 @@ function buildPersonaWalkthroughData() {
   const screenshotsDir = path.join(absArtifacts, 'screenshots');
   const journeyLog = readJsonOr(path.join(absArtifacts, 'journey-log.json'), null);
   const extractState = readJsonOr(path.join(absArtifacts, 'extract-state.json'), null);
+  const personaResults = readJsonOr(path.join(absArtifacts, 'persona-results.json'), null);
   const ud = journeyLog ? journeyLog.usability_dimensions : null;
   const consistencyReport = readJsonOr(path.join(absArtifacts, 'consistency-report.json'), null);
 
@@ -714,6 +755,9 @@ function buildPersonaWalkthroughData() {
     const trace = traces.find(t => t.persona === pid) || {};
     const confusionEvents = overlay.confusion_events || [];
 
+    // Primary path: use persona-results.json if available for this persona
+    const personaEntries = personaResults ? personaResults.filter(r => r.persona === pid) : [];
+
     // Detect multi-task screenshots: persona-<id>-task-<N>-step-<M>.png
     const allPersonaScreenshots = fs.existsSync(screenshotsDir)
       ? fs.readdirSync(screenshotsDir).filter(f => f.startsWith(`persona-${pid}-`) && f.endsWith('.png')).sort()
@@ -724,7 +768,60 @@ function buildPersonaWalkthroughData() {
     // Build tasks array
     const tasks = [];
 
-    if (hasMultiTask) {
+    if (personaEntries.length > 0) {
+      // Use structured persona-results.json data (preferred path)
+      for (const entry of personaEntries) {
+        const taskIdx = entry.task_index || 1;
+        const screenshots = allPersonaScreenshots
+          .filter(f => f.match(new RegExp(`task-${taskIdx}-step`)))
+          .map(f => ({ file: f, step: parseInt((f.match(/step-(\d+)/) || [])[1] || '0', 10) }));
+
+        const thinkaloudPath = path.join(absArtifacts, `usability-thinkaloud-${pid}-task-${taskIdx}.md`);
+        let thinkaloudRaw = readFileOr(thinkaloudPath, '');
+        if (!thinkaloudRaw && taskIdx === 1) {
+          thinkaloudRaw = readFileOr(path.join(absArtifacts, `usability-thinkaloud-${pid}.md`), '');
+        }
+
+        let steps = parseThinkAloudSteps(thinkaloudRaw, screenshots, screenshotsDir, confusionEvents, consistencyReport);
+
+        // Override patience values with persona-results.json trace data (more accurate than markdown parsing)
+        if (steps.length > 0 && entry.trace && entry.trace.length > 0) {
+          for (let si = 0; si < steps.length; si++) {
+            const traceEntry = entry.trace[si];
+            if (traceEntry && traceEntry.patience !== undefined) {
+              steps[si].patience = String(traceEntry.patience);
+            }
+          }
+        }
+
+        if (steps.length === 0 && screenshots.length > 0) {
+          for (const ss of screenshots.sort((a, b) => a.step - b.step)) {
+            const ssB64 = fs.existsSync(path.join(screenshotsDir, ss.file))
+              ? fs.readFileSync(path.join(screenshotsDir, ss.file)).toString('base64')
+              : '';
+            steps.push({
+              step: ss.step,
+              see: entry.trace && entry.trace[ss.step - 1] ? (entry.trace[ss.step - 1].what_i_see || '') : '',
+              thinking: entry.trace && entry.trace[ss.step - 1] ? (entry.trace[ss.step - 1].what_im_thinking || '') : '',
+              trying: entry.trace && entry.trace[ss.step - 1] ? (entry.trace[ss.step - 1].action || '') : '',
+              confidence: entry.trace && entry.trace[ss.step - 1] ? (entry.trace[ss.step - 1].confidence || '') : '',
+              patience: String(entry.trace && entry.trace[ss.step - 1] ? (entry.trace[ss.step - 1].patience || 100) : 100),
+              screenshot: ssB64 ? `data:image/png;base64,${ssB64}` : '',
+              confusionEvents: []
+            });
+          }
+        }
+
+        const taskDef = tasksDefined[taskIdx - 1] || {};
+        tasks.push({
+          task: entry.task || taskDef.task || `Task ${taskIdx}`,
+          covers_acs: taskDef.covers_acs || [],
+          steps,
+          outcome: entry.outcome || 'completed',
+          patienceEnd: entry.patience_end || 100
+        });
+      }
+    } else if (hasMultiTask) {
       // Group screenshots by task number
       const taskScreenshots = {};
       for (const f of allPersonaScreenshots) {
@@ -858,7 +955,7 @@ function parseThinkAloudSteps(thinkaloudRaw, screenshots, screenshotsDir, confus
 }
 
 function buildCodeDeltasHtml() {
-  const delta = readJsonOr(path.join(absArtifacts, 'mr-delta.json'), null);
+  const delta = normalizeDelta(readJsonOr(path.join(absArtifacts, 'mr-delta.json'), null));
   if (!delta) return '<p class="muted small">No MR delta data. Run with --workspace to enable code delta analysis.</p>';
 
   const protoId = extractPrototypeId();
@@ -866,7 +963,7 @@ function buildCodeDeltasHtml() {
   const mrNum = delta.mr_number || knownMRs[protoId];
   const baseUrl = 'https://gitlab.cee.redhat.com/uxd/prototypes/rhoai/-/merge_requests';
 
-  const workspaceDir = path.join(absArtifacts, 'workspace');
+  const workspaceDir = delta.workspace || path.join(absArtifacts, 'workspace');
   const canReadDiff = fs.existsSync(workspaceDir);
 
   function getFileDiff(filePath, maxLines) {
@@ -1319,144 +1416,138 @@ function buildReviewItemsHtml(csvRows, journeyLog, screenshots) {
   return html;
 }
 
-function buildFixesHtml() {
-  const suggestions = readJsonOr(path.join(absArtifacts, 'refinement-suggestions.json'), null);
+function buildFixesAppliedHtml() {
   const fixLog = readJsonOr(path.join(absArtifacts, 'fix-log.json'), null);
-  const iterLog = readJsonOr(path.join(absArtifacts, 'iteration-log.json'), null);
   const journeyLog = readJsonOr(path.join(absArtifacts, 'journey-log.json'), null);
-  const consistencyReport = readJsonOr(path.join(absArtifacts, 'consistency-report.json'), null);
-
-  let html = '';
-  const iterations = iterLog ? iterLog.iterations || [] : [];
-  const totalIterations = iterations.length;
   const appliedFixes = fixLog ? (Array.isArray(fixLog) ? fixLog : fixLog.applied || []) : [];
 
-  // Summary of what the eval found
-  const totalFindings = appliedFixes.length + (suggestions ? (Array.isArray(suggestions) ? suggestions.length : 0) : 0);
-  if (totalFindings === 0 && !consistencyReport) {
-    return '<p class="muted small">No findings or changes from this evaluation. All acceptance criteria passed without modification.</p>';
+  if (!appliedFixes.length) {
+    return '<p class="muted small">No changes were applied — all acceptance criteria passed without modification.</p>';
   }
 
-  // Applied fixes section
-  if (appliedFixes.length) {
-    html += `<h3 style="margin-top:0">Changes Made</h3>`;
-    html += `<p class="small" style="margin:-0.25rem 0 0.75rem">The evaluation found issues and applied these fixes to make the prototype pass acceptance criteria.</p>`;
-    html += `<div style="display:flex;flex-direction:column;gap:1rem">`;
+  let html = `<div style="display:flex;flex-direction:column;gap:1rem">`;
 
-    for (const fix of appliedFixes) {
-      const iteration = fix.iteration || 1;
-      html += `<div class="card">`;
+  for (const fix of appliedFixes) {
+    const iteration = fix.iteration || 1;
+    html += `<div class="card">`;
 
-      // What was wrong and why it was fixed
-      if (fix.criterion_id || fix.ac_id) {
-        const acId = fix.criterion_id || fix.ac_id;
-        const jIdx = findJourneyForAC(journeyLog, acId);
-        const journeyTitle = (jIdx && journeyLog.journeys[jIdx - 1]) ? journeyLog.journeys[jIdx - 1].title : '';
-        html += `<div style="margin-bottom:0.75rem">`;
-        html += `<p style="margin:0 0 0.25rem;font-weight:600;font-size:0.9375rem"><span style="color:var(--accent);font-family:var(--font-mono)">${escapeHtml(acId)}</span> ${journeyTitle ? '— ' + escapeHtml(journeyTitle) : ''}</p>`;
-        html += `<span class="badge badge-pass" style="font-size:0.6rem">Fixed in iteration ${iteration}</span>`;
-        html += `</div>`;
-      }
+    if (fix.criterion_id || fix.ac_id) {
+      const acId = fix.criterion_id || fix.ac_id;
+      const jIdx = findJourneyForAC(journeyLog, acId);
+      const journeyTitle = (jIdx && journeyLog.journeys[jIdx - 1]) ? journeyLog.journeys[jIdx - 1].title : '';
+      html += `<div style="margin-bottom:0.75rem">`;
+      html += `<p style="margin:0 0 0.25rem;font-weight:600;font-size:0.9375rem"><span style="color:var(--accent);font-family:var(--font-mono)">${escapeHtml(acId)}</span> ${journeyTitle ? '— ' + escapeHtml(journeyTitle) : ''}</p>`;
+      html += `<span class="badge badge-pass" style="font-size:0.6rem">Fixed in iteration ${iteration}</span>`;
+      html += `</div>`;
+    }
 
-      // Why — the rationale
-      if (fix.description || fix.rationale || fix.change) {
-        html += `<div style="margin-bottom:0.75rem">`;
-        html += `<p class="small" style="margin:0 0 0.15rem;font-weight:600;color:var(--text2)">Why this was changed</p>`;
-        html += `<p style="margin:0;font-size:0.875rem;line-height:1.5">${escapeHtml(fix.description || fix.rationale || fix.change)}</p>`;
-        html += `</div>`;
-      }
+    if (fix.description || fix.rationale || fix.change) {
+      html += `<div style="margin-bottom:0.75rem">`;
+      html += `<p class="small" style="margin:0 0 0.15rem;font-weight:600;color:var(--text2)">What changed and why</p>`;
+      html += `<p style="margin:0;font-size:0.875rem;line-height:1.5">${escapeHtml(fix.description || fix.rationale || fix.change)}</p>`;
+      html += `</div>`;
+    }
 
-      // Code change
-      if (fix.file) {
-        html += `<code class="small" style="display:block;margin:0.5rem 0 0.25rem;color:var(--accent)">${escapeHtml(fix.file)}${fix.line ? ':' + fix.line : ''}</code>`;
-      }
-      if (fix.before || fix.current) {
-        html += `<div style="margin:0.25rem 0;padding:0.5rem;background:var(--bg2);border-radius:4px;font-family:var(--font-mono);font-size:0.75rem;line-height:1.5;overflow-x:auto">`;
-        html += `<div style="color:var(--status-danger)">- ${escapeHtml(fix.before || fix.current)}</div>`;
-        if (fix.after || fix.fix) html += `<div style="color:var(--status-success)">+ ${escapeHtml(fix.after || fix.fix)}</div>`;
-        html += `</div>`;
-      }
+    if (fix.file) {
+      html += `<code class="small" style="display:block;margin:0.5rem 0 0.25rem;color:var(--accent)">${escapeHtml(fix.file)}${fix.line ? ':' + fix.line : ''}</code>`;
+    }
 
-      // Screenshot reference
-      if (fix.criterion_id || fix.ac_id) {
-        const acId = fix.criterion_id || fix.ac_id;
-        const journeyIdx = findJourneyForAC(journeyLog, acId);
-        if (journeyIdx !== null) {
-          const afterDir = path.join(absArtifacts, 'screenshots');
-          const afterFile = findScreenshotForJourney(afterDir, journeyIdx);
-          if (afterFile) {
-            const b64 = fs.readFileSync(afterFile).toString('base64');
-            html += `<div style="margin-top:0.75rem"><p class="small muted" style="margin:0 0 0.25rem">Result after fix (from Phase A verification)</p>`;
-            html += `<img src="data:image/png;base64,${b64}" style="width:100%;border:1px solid var(--border);border-radius:4px" /></div>`;
-          }
+    // Before/after screenshot comparison
+    if (fix.criterion_id || fix.ac_id) {
+      const acId = fix.criterion_id || fix.ac_id;
+      const journeyIdx = findJourneyForAC(journeyLog, acId);
+      if (journeyIdx !== null) {
+        const beforeDir = path.join(absArtifacts, 'screenshots-iter-1');
+        const afterDir = path.join(absArtifacts, 'screenshots');
+        const beforeFile = findScreenshotForJourney(beforeDir, journeyIdx);
+        const afterFile = findScreenshotForJourney(afterDir, journeyIdx);
+
+        if (beforeFile && afterFile && beforeFile !== afterFile) {
+          const beforeB64 = fs.readFileSync(beforeFile).toString('base64');
+          const afterB64 = fs.readFileSync(afterFile).toString('base64');
+          html += `<div style="display:grid;grid-template-columns:1fr 1fr;gap:0.5rem;margin-top:0.75rem">`;
+          html += `<div><p class="small muted" style="margin:0 0 0.25rem">Before (iteration 1)</p>`;
+          html += `<img src="data:image/png;base64,${beforeB64}" style="width:100%;border:1px solid var(--border);border-radius:4px" /></div>`;
+          html += `<div><p class="small muted" style="margin:0 0 0.25rem">After (final)</p>`;
+          html += `<img src="data:image/png;base64,${afterB64}" style="width:100%;border:1px solid var(--border);border-radius:4px" /></div>`;
+          html += `</div>`;
+        } else if (afterFile) {
+          const afterB64 = fs.readFileSync(afterFile).toString('base64');
+          html += `<div style="margin-top:0.75rem"><p class="small muted" style="margin:0 0 0.25rem">Result after fix</p>`;
+          html += `<img src="data:image/png;base64,${afterB64}" style="width:100%;border:1px solid var(--border);border-radius:4px" /></div>`;
         }
       }
-
-      html += `</div>`;
     }
+
     html += `</div>`;
   }
+  html += `</div>`;
+  return html;
+}
 
-  // Consistency and usability findings (always shown)
+function buildFixesOutstandingHtml() {
+  const suggestions = readJsonOr(path.join(absArtifacts, 'refinement-suggestions.json'), null);
+  const consistencyReport = readJsonOr(path.join(absArtifacts, 'consistency-report.json'), null);
+  const fixLog = readJsonOr(path.join(absArtifacts, 'fix-log.json'), null);
+
   const allSuggestions = suggestions ? (Array.isArray(suggestions) ? suggestions : []) : [];
   const consistencyViols = consistencyReport ? (consistencyReport.source_mode?.violations || []) : [];
-
-  if (allSuggestions.length || consistencyViols.length) {
-    html += `<h3 style="margin-top:${appliedFixes.length ? '2rem' : '0'}">Design Findings</h3>`;
-    html += `<p class="small" style="margin:-0.25rem 0 0.75rem">Issues identified by the consistency checker against PatternFly design guidelines. These weren't blocking acceptance criteria but should be reviewed for design quality.</p>`;
-    html += `<div style="display:flex;flex-direction:column;gap:0.75rem">`;
-
-    // Use consistency report violations (richer data) if available, fall back to suggestions
-    const findings = consistencyViols.length ? consistencyViols : allSuggestions;
-
-    for (const f of findings) {
-      const guideline = f.guideline_id || '';
-      const severity = f.severity || 'warning';
-      const sevColor = severity === 'error' ? 'var(--status-danger)' : 'var(--status-warning)';
-      const file = f.file || '';
-      const line = f.line || '';
-      const description = f.description || f.current || '';
-      const suggestion = f.suggestion || f.fix || '';
-
-      html += `<div class="card card-compact">`;
-
-      // Header with guideline and severity
-      html += `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.5rem">`;
-      html += `<span style="font-weight:600;font-size:0.875rem">${escapeHtml(guideline)}</span>`;
-      html += `<span class="small" style="color:${sevColor};font-weight:500;text-transform:uppercase">${escapeHtml(severity)}</span>`;
-      html += `</div>`;
-
-      // What's wrong and where
-      if (description) {
-        html += `<p style="margin:0 0 0.5rem;font-size:0.875rem;line-height:1.5">${escapeHtml(description)}</p>`;
-      }
-
-      if (file) {
-        html += `<code class="small" style="display:block;margin:0.25rem 0;color:var(--accent)">${escapeHtml(file)}${line ? ':' + line : ''}</code>`;
-      }
-
-      // Current vs suggested
-      if (f.current) html += `<div style="margin:0.25rem 0;padding:0.25rem 0.5rem;background:var(--bg2);border-radius:3px;font-family:var(--font-mono);font-size:0.75rem;color:var(--status-danger)">- ${escapeHtml(f.current)}</div>`;
-      if (suggestion) html += `<div style="margin:0.25rem 0;padding:0.25rem 0.5rem;background:var(--bg2);border-radius:3px;font-family:var(--font-mono);font-size:0.75rem;color:var(--status-success)">+ ${escapeHtml(suggestion)}</div>`;
-
-      // Why this matters
-      if (f.pf_doc_url || f.guideline_title) {
-        const why = f.guideline_title || `PatternFly guideline: ${guideline}`;
-        html += `<p class="small muted" style="margin:0.5rem 0 0;font-style:italic">Why: ${escapeHtml(why)} — ensures visual consistency with the Red Hat design system.</p>`;
-      }
-
-      // Page reference
-      const pageHint = file.match(/\/(\w+)\/(\w+)\.(tsx|jsx)/);
-      if (pageHint) {
-        html += `<p class="small muted" style="margin:0.25rem 0 0">Visible on: ${escapeHtml(pageHint[2])} page</p>`;
-      }
-
-      html += `</div>`;
+  const appliedIds = new Set();
+  if (fixLog) {
+    const applied = Array.isArray(fixLog) ? fixLog : fixLog.applied || [];
+    for (const f of applied) {
+      if (f.guideline_id) appliedIds.add(f.guideline_id);
+      if (f.criterion_id) appliedIds.add(f.criterion_id);
     }
-    html += `</div>`;
   }
 
-  return html || '<p class="muted small">No findings from this evaluation.</p>';
+  const outstandingViols = consistencyViols.filter(v => !appliedIds.has(v.guideline_id));
+  const outstandingSuggestions = allSuggestions.filter(s =>
+    s.type === 'usability' || (s.type === 'consistency' && !appliedIds.has(s.guideline_id))
+  );
+
+  const findings = outstandingViols.length ? outstandingViols : outstandingSuggestions;
+
+  if (!findings.length) {
+    return '<p class="muted small">No outstanding issues. Everything identified was either auto-fixed or is acceptable.</p>';
+  }
+
+  let html = `<div style="display:flex;flex-direction:column;gap:0.75rem">`;
+
+  for (const f of findings) {
+    const guideline = f.guideline_id || f.dimension || '';
+    const severity = f.severity || 'warning';
+    const sevColor = severity === 'error' ? 'var(--status-danger)' : 'var(--status-warning)';
+    const file = f.file || '';
+    const line = f.line || '';
+    const description = f.description || f.current || f.problem || '';
+    const suggestion = f.suggestion || f.fix || f.suggested_fix || '';
+
+    html += `<div class="card card-compact card-warning">`;
+    html += `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.5rem">`;
+    html += `<span style="font-weight:600;font-size:0.875rem">${escapeHtml(guideline)}</span>`;
+    html += `<span class="small" style="color:${sevColor};font-weight:500;text-transform:uppercase">${escapeHtml(severity)}</span>`;
+    html += `</div>`;
+
+    if (description) {
+      html += `<p style="margin:0 0 0.5rem;font-size:0.875rem;line-height:1.5">${escapeHtml(description)}</p>`;
+    }
+
+    if (file) {
+      html += `<code class="small" style="display:block;margin:0.25rem 0;color:var(--accent)">${escapeHtml(file)}${line ? ':' + line : ''}</code>`;
+    }
+
+    if (suggestion) html += `<div style="margin:0.25rem 0;padding:0.25rem 0.5rem;background:var(--bg2);border-radius:3px;font-family:var(--font-mono);font-size:0.75rem;color:var(--status-success)">Suggested: ${escapeHtml(suggestion)}</div>`;
+
+    if (f.pf_doc_url || f.guideline_title) {
+      const why = f.guideline_title || `PatternFly guideline: ${guideline}`;
+      html += `<p class="small muted" style="margin:0.5rem 0 0;font-style:italic">Why: ${escapeHtml(why)}</p>`;
+    }
+
+    html += `</div>`;
+  }
+  html += `</div>`;
+  return html;
 }
 
 function findJourneyForAC(journeyLog, acId) {
@@ -2126,22 +2217,34 @@ function buildTokens(opts = {}) {
   function buildAcRow(r) {
     const id = escapeHtml(r.criterion_id);
     const rawText = r.criterion_text || '';
-    const truncLen = 120;
-    const needsTrunc = rawText.length > truncLen;
-    const shortText = needsTrunc ? escapeHtml(rawText.slice(0, truncLen).replace(/\s+\S*$/, '')) + '...' : escapeHtml(rawText);
-    const criterionHtml = needsTrunc
-      ? `<span class="ac-text-short">${shortText} <button class="ac-expand" onclick="this.parentElement.style.display='none';this.parentElement.nextElementSibling.style.display=''">[more]</button></span><span class="ac-text-full" style="display:none">${escapeHtml(rawText)} <button class="ac-expand" onclick="this.parentElement.style.display='none';this.parentElement.previousElementSibling.style.display=''">[less]</button></span>`
-      : escapeHtml(rawText);
+    const evidenceText = r.rationale || r.evidence || '';
+
+    // Show a clean summary: first sentence or first 100 chars, whichever is shorter
+    const firstSentence = rawText.match(/^[^.!?]+[.!?]/);
+    const summary = firstSentence && firstSentence[0].length <= 150
+      ? firstSentence[0]
+      : (rawText.length > 100 ? rawText.slice(0, 100).replace(/\s+\S*$/, '') + '...' : rawText);
+    const needsExpand = rawText.length > summary.length;
+
+    let criterionHtml = `<span class="ac-summary">${escapeHtml(summary)}</span>`;
+    if (needsExpand) {
+      criterionHtml += `<details class="ac-details"><summary class="ac-expand">View full criterion</summary><p class="ac-full-text">${escapeHtml(rawText)}</p></details>`;
+    }
+
     const verdict = badgeHtml(r.verdict, r.criterion_id);
-    const evidence = escapeHtml(r.rationale || r.evidence || '');
     const hasPersonaEvidence = acPersonaCoverage[r.criterion_id] > 0;
     const ssInfo = acScreenshotMap[r.criterion_id];
-    let viewLink = '';
+
+    let evidenceHtml = '';
     if (hasPersonaEvidence || ssInfo) {
-      const label = hasPersonaEvidence ? 'View walkthrough' : 'View';
-      viewLink = `<a href="#" class="ac-view-link" onclick="openAcEvidence('${escapeHtml(r.criterion_id)}');return false">${label}</a>`;
+      evidenceHtml = `<a href="#" class="ac-view-link" onclick="openAcEvidence('${escapeHtml(r.criterion_id)}');return false">View walkthrough</a>`;
+      if (evidenceText) evidenceHtml += `<span class="ac-evidence-text">${escapeHtml(evidenceText)}</span>`;
+    } else {
+      const reason = evidenceText || 'Verified via code inspection (no walkthrough available)';
+      evidenceHtml = `<span class="ac-evidence-text">${escapeHtml(reason)}</span>`;
     }
-    return `<tr><td><strong>${id}</strong></td><td>${criterionHtml}</td><td>${verdict}</td><td class="small">${evidence}${evidence && viewLink ? '<br>' : ''}${viewLink}</td></tr>`;
+
+    return `<tr><td><strong>${id}</strong></td><td>${criterionHtml}</td><td>${verdict}</td><td class="small">${evidenceHtml}</td></tr>`;
   }
 
   const acTableRowsJira = jiraRows.map(buildAcRow).join('\n');
@@ -3004,7 +3107,8 @@ function buildTokens(opts = {}) {
     '{{PERSONA_WALKTHROUGHS_HTML}}': buildPersonaWalkthroughsHtml(),
     '{{PERSONA_WALKTHROUGH_DATA}}': buildPersonaWalkthroughData(),
     '{{CODE_DELTAS_HTML}}': buildCodeDeltasHtml(),
-    '{{FIXES_HTML}}': buildFixesHtml(),
+    '{{FIXES_APPLIED_HTML}}': buildFixesAppliedHtml(),
+    '{{FIXES_OUTSTANDING_HTML}}': buildFixesOutstandingHtml(),
     '{{FIXES_TAB_DISPLAY}}': fs.existsSync(path.join(absArtifacts, 'refinement-suggestions.json')) || fs.existsSync(path.join(absArtifacts, 'fix-log.json')) || fs.existsSync(path.join(absArtifacts, 'consistency-report.json')) ? '' : 'display:none',
     '{{CONSISTENCY_HTML}}': buildConsistencyHtml(),
     '{{CONSISTENCY_TAB_DISPLAY}}': fs.existsSync(path.join(absArtifacts, 'consistency-report.json')) ? '' : 'display:none',

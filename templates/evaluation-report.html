@@ -430,7 +430,7 @@ details[open] summary .section-icon{opacity:0.8}
 /* Welcome modal — first-visit onboarding */
 .welcome-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px);z-index:2000;align-items:center;justify-content:center;padding:1.5rem}
 .welcome-overlay.active{display:flex}
-.welcome-modal{background:var(--bg);border-radius:0.75rem;max-width:680px;width:100%;max-height:90vh;overflow-y:auto;box-shadow:0 25px 50px -12px rgba(0,0,0,0.25);animation:welcomeIn 0.25s ease-out}
+.welcome-modal{background:var(--bg);border-radius:0.75rem;max-width:560px;width:100%;max-height:90vh;overflow-y:auto;box-shadow:0 25px 50px -12px rgba(0,0,0,0.25);animation:welcomeIn 0.25s ease-out}
 @keyframes welcomeIn{from{opacity:0;transform:scale(0.97) translateY(8px)}to{opacity:1;transform:scale(1) translateY(0)}}
 .welcome-header{padding:2.5rem 2.5rem 1.5rem}
 .welcome-header h2{font-family:var(--font-heading);font-size:1.5rem;font-weight:700;margin:0 0 0.5rem;color:var(--text)}
@@ -440,56 +440,39 @@ details[open] summary .section-icon{opacity:0.8}
 .welcome-section:first-child{border-top:none;padding-top:0}
 .welcome-section-label{font-family:var(--font-heading);font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--text2);margin:0 0 0.6rem}
 .welcome-section p{font-size:0.875rem;line-height:1.7;color:var(--text);margin:0}
-.welcome-verdicts{display:flex;flex-direction:column;gap:0.65rem;margin-top:0.35rem}
-.welcome-verdict{display:flex;align-items:flex-start;gap:0.75rem;font-size:0.875rem;line-height:1.5}
-.welcome-verdict-icon{width:1.75rem;height:1.75rem;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:0.8rem;font-weight:700;flex-shrink:0;margin-top:0.05rem}
-.welcome-verdict-pass{background:rgba(22,163,74,0.12);color:var(--status-success)}
-.welcome-verdict-fail{background:rgba(220,38,38,0.12);color:var(--status-danger)}
-.welcome-verdict-review{background:rgba(217,119,6,0.12);color:var(--status-warning)}
-.welcome-layout{display:flex;gap:1rem;margin-top:0.65rem;font-size:0.8125rem}
-.welcome-layout-col{flex:1;padding:0.85rem 1rem;background:var(--bg2);border:1px solid var(--border);border-radius:0.5rem}
-.welcome-layout-col strong{display:block;font-size:0.7rem;text-transform:uppercase;letter-spacing:0.04em;color:var(--text2);margin-bottom:0.35rem;font-weight:600}
-.welcome-layout-col span{color:var(--text);line-height:1.6}
-.welcome-layout-hint{margin-top:0.65rem;font-size:0.8125rem;color:var(--text2)}
 .welcome-footer{padding:1rem 2.5rem 2.5rem;display:flex;gap:0.75rem;justify-content:center}
 .welcome-btn{border:none;padding:0.65rem 2rem;border-radius:0.375rem;font-family:var(--font-body);font-size:0.9375rem;font-weight:600;cursor:pointer;transition:background 0.15s,box-shadow 0.15s}
 .welcome-btn-primary{background:var(--accent);color:#fff}
 .welcome-btn-primary:hover{background:#0052a3}
 .welcome-btn-secondary{background:var(--bg2);color:var(--text);border:1px solid var(--border)}
 .welcome-btn-secondary:hover{background:var(--border)}
-.welcome-step{display:none}
-.welcome-step.active{display:block}
-.welcome-step-indicator{display:flex;gap:0.35rem;justify-content:center;margin-bottom:1.5rem}
-.welcome-dot{width:0.5rem;height:0.5rem;border-radius:50%;background:var(--border);transition:background 0.2s}
-.welcome-dot.active{background:var(--accent)}
-.welcome-nav{padding:1rem 2.5rem 2rem;display:flex;justify-content:space-between;align-items:center}
-.welcome-nav-step{font-size:0.75rem;color:var(--text2);font-family:var(--font-mono)}
-@media(max-width:700px){.welcome-modal{margin:0.5rem;max-width:100%}.welcome-sections{padding:0 1.5rem 1rem}.welcome-header{padding:2rem 1.5rem 1.25rem}.welcome-footer,.welcome-nav{padding-left:1.5rem;padding-right:1.5rem}.welcome-layout{flex-direction:column}}
+@media(max-width:600px){.welcome-modal{margin:0.5rem;max-width:100%}.welcome-sections{padding:0 1.5rem 1rem}.welcome-header{padding:2rem 1.5rem 1.25rem}.welcome-footer{padding:0.75rem 1.5rem 1.5rem}}
 
 /* Help anchor (?) for section headers */
 .help-anchor{display:inline-flex;align-items:center;justify-content:center;width:1.1rem;height:1.1rem;border-radius:50%;border:1px solid var(--border);font-size:0.6rem;font-weight:600;color:var(--text2);text-decoration:none;margin-left:0.4rem;vertical-align:middle;cursor:pointer;transition:border-color 0.15s,color 0.15s}
 .help-anchor:hover{border-color:var(--accent);color:var(--accent);text-decoration:none}
 
-/* Post-modal tooltip tour */
-.tour-tip{position:fixed;z-index:1500;background:var(--text);color:#fff;padding:0.75rem 1rem;border-radius:0.5rem;font-size:0.8125rem;line-height:1.5;max-width:280px;width:280px;box-shadow:0 8px 24px rgba(0,0,0,0.2);animation:tourTipIn 0.2s ease-out;pointer-events:auto}
+/* Inline tooltip tour */
+.tour-tip{background:var(--text);color:#fff;padding:0.75rem 1rem;border-radius:0.5rem;font-size:0.8125rem;line-height:1.5;max-width:420px;margin:0.5rem 0;border-left:3px solid var(--accent);animation:tourTipIn 0.2s ease-out}
 @keyframes tourTipIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:translateY(0)}}
-.tour-tip::before{content:'';position:absolute;width:0.6rem;height:0.6rem;background:var(--text);transform:rotate(45deg)}
-.tour-tip.arrow-top::before{top:-0.3rem;left:1.5rem}
-.tour-tip.arrow-bottom::before{bottom:-0.3rem;left:1.5rem}
-.tour-tip-title{font-weight:700;font-size:0.75rem;text-transform:uppercase;letter-spacing:0.04em;opacity:0.7;margin-bottom:0.3rem}
-.tour-tip-nav{display:flex;justify-content:space-between;align-items:center;margin-top:0.6rem;gap:0.5rem}
-.tour-tip-btn{background:rgba(255,255,255,0.15);border:none;color:#fff;padding:0.25rem 0.65rem;border-radius:0.25rem;font-size:0.75rem;font-family:var(--font-body);cursor:pointer;transition:background 0.15s}
-.tour-tip-btn:hover{background:rgba(255,255,255,0.25)}
-.tour-tip-btn-primary{background:rgba(255,255,255,0.9);color:var(--text);font-weight:600}
-.tour-tip-btn-primary:hover{background:#fff}
+.tour-tip-text{margin-bottom:0.4rem}
+.tour-tip-nav{display:flex;justify-content:space-between;align-items:center;gap:0.5rem}
+.tour-tip-btn{background:rgba(255,255,255,0.9);color:var(--text);border:none;padding:0.3rem 0.75rem;border-radius:0.25rem;font-size:0.75rem;font-weight:600;font-family:var(--font-body);cursor:pointer;transition:background 0.15s}
+.tour-tip-btn:hover{background:#fff}
 .tour-tip-counter{font-size:0.7rem;opacity:0.5;font-family:var(--font-mono)}
-.tour-highlight{outline:2px solid var(--accent);outline-offset:4px;border-radius:0.25rem;transition:outline-color 0.3s}
+.tour-highlight{outline:2px solid var(--accent);outline-offset:4px;border-radius:0.25rem}
 
-/* AC table — truncation and view link */
-.ac-expand{background:none;border:none;color:var(--accent);cursor:pointer;font-size:0.75rem;font-family:var(--font-body);padding:0;margin-left:0.2rem}
-.ac-expand:hover{text-decoration:underline}
+/* AC table — summary and expand */
+.ac-summary{font-size:0.8125rem;line-height:1.5;color:var(--text)}
+.ac-details{margin:0.3rem 0 0}
+.ac-details summary.ac-expand{font-size:0.75rem;color:var(--accent);cursor:pointer;list-style:none;padding:0.15rem 0;font-weight:500}
+.ac-details summary.ac-expand::-webkit-details-marker{display:none}
+.ac-details summary.ac-expand::before{content:'+ ';font-weight:700}
+.ac-details[open] summary.ac-expand::before{content:'- '}
+.ac-full-text{font-size:0.8125rem;line-height:1.6;color:var(--text);margin:0.35rem 0 0;padding:0.5rem 0.75rem;background:var(--bg2);border-radius:0.375rem;border:1px solid var(--border)}
 .ac-view-link{display:inline-flex;align-items:center;gap:0.25rem;font-size:0.75rem;font-weight:600;color:var(--accent);text-decoration:none;padding:0.2rem 0;white-space:nowrap}
 .ac-view-link:hover{text-decoration:underline}
+.ac-evidence-text{display:block;font-size:0.75rem;line-height:1.5;color:var(--text2);margin-top:0.25rem}
 
 .mode-badge{display:inline-block;padding:0.1rem 0.4rem;border-radius:3px;font-size:0.6rem;font-weight:700;letter-spacing:0.03em;text-transform:uppercase;margin-right:0.25rem}
 .mode-xray{background:rgba(109,40,217,0.1);color:#6d28d9}
@@ -500,9 +483,9 @@ details[open] summary .section-icon{opacity:0.8}
 
 <!-- Header Bar -->
 <div class="header-bar">
-  <a href="../index.html" style="font-size:0.75rem;color:var(--text2);text-decoration:none;margin-right:0.5rem" title="Back to Dashboard">&larr; Dashboard</a>
+  <a href="https://scout-evals-e89fda.pages.redhat.com/" style="font-size:0.75rem;color:var(--text2);text-decoration:none;margin-right:0.5rem" title="Back to Dashboard" data-tour="dashboard">&larr; Dashboard</a>
   <h1>{{PROTOTYPE_ID}}</h1>
-  <div class="header-links">
+  <div class="header-links" data-tour="breadcrumb">
     <a href="{{OUTCOME_LINK_URL}}" target="_blank" style="{{OUTCOME_DISPLAY}}">Outcome</a>
     <span class="arrow" style="{{OUTCOME_DISPLAY}}">→</span>
     <a href="{{RFE_URL}}" target="_blank">RFE</a>
@@ -517,7 +500,7 @@ details[open] summary .section-icon{opacity:0.8}
   </div>
   <div class="header-actions">
     <button onclick="toggleCsvPreview()">CSV Preview</button>
-    <button onclick="startTourFromGuide()" title="How to read this report">Guide</button>
+    <button onclick="showWelcome()" title="How to read this report">Guide</button>
   </div>
 </div>
 
@@ -626,10 +609,10 @@ details[open] summary .section-icon{opacity:0.8}
 
       {{STAT_DELTAS}}
 
-      <div class="appendix-tabs">
+      <div class="appendix-tabs" data-tour="appendix-tabs">
         <button class="appendix-tab active" onclick="switchAppendixTab('journeys')">Journeys</button>
         <button class="appendix-tab" onclick="switchAppendixTab('usability')">Usability</button>
-        <button class="appendix-tab" onclick="switchAppendixTab('findings')" style="{{FIXES_TAB_DISPLAY}}">Findings</button>
+        <button class="appendix-tab" onclick="switchAppendixTab('findings')" style="{{FIXES_TAB_DISPLAY}}">What Changed</button>
         <button class="appendix-tab" onclick="switchAppendixTab('consistency')" style="{{CONSISTENCY_TAB_DISPLAY}}">Consistency</button>
         <button class="appendix-tab" onclick="switchAppendixTab('iterations')" style="{{ITERATION_DISPLAY}}">Iterations</button>
       </div>
@@ -638,7 +621,7 @@ details[open] summary .section-icon{opacity:0.8}
       <div class="appendix-content active" id="appendix-journeys" data-tour="tab-journeys">
         <h2>Persona Walkthroughs</h2>
         <p class="small muted" style="margin:-0.5rem 0 1rem">Each persona navigated the prototype independently at their own competence level. Click a persona to view their full step-by-step walkthrough with think-aloud narrative.</p>
-        <div class="card card-compact" style="margin-bottom:1rem">
+        <div class="card card-compact" style="margin-bottom:1rem" data-tour="personas">
           {{PERSONA_SELECTION_HTML}}
         </div>
         {{PERSONA_WALKTHROUGHS_HTML}}
@@ -661,9 +644,20 @@ details[open] summary .section-icon{opacity:0.8}
 
       <!-- Appendix Tab: Findings -->
       <div class="appendix-content" id="appendix-findings" data-tour="tab-findings">
-        <h2>Findings &amp; Changes</h2>
-        <p class="small muted" style="margin:-0.5rem 0 1rem">Everything the evaluation found — fixes applied to pass acceptance criteria, and design consistency issues for human review.</p>
-        {{FIXES_HTML}}
+        <h2>What Changed</h2>
+        <p class="small muted" style="margin:-0.5rem 0 1rem">Summary of what was fixed during evaluation and what remains for human review.</p>
+
+        <div id="findings-fixed" style="margin-bottom:1.5rem">
+          <h3 style="color:var(--status-success);font-size:0.9375rem;margin-bottom:0.5rem">&#x2713; Applied (no action needed)</h3>
+          <p class="small muted" style="margin:0 0 0.75rem">These changes were applied during the evaluation fix loop. They are already in the prototype.</p>
+          {{FIXES_APPLIED_HTML}}
+        </div>
+
+        <div id="findings-outstanding">
+          <h3 style="color:var(--status-warning);font-size:0.9375rem;margin-bottom:0.5rem">&#x26A0; Outstanding (needs attention)</h3>
+          <p class="small muted" style="margin:0 0 0.75rem">These findings were identified but not auto-fixed. Review and decide whether to address them.</p>
+          {{FIXES_OUTSTANDING_HTML}}
+        </div>
       </div>
 
       <!-- Appendix Tab: Consistency -->
@@ -674,7 +668,7 @@ details[open] summary .section-icon{opacity:0.8}
       </div>
 
       <!-- Appendix Tab: Iterations -->
-      <div class="appendix-content" id="appendix-iterations">
+      <div class="appendix-content" id="appendix-iterations" data-tour="tab-iterations">
         <div id="iteration-timeline">
           <h2 style="margin-top:0.5rem">Iteration History</h2>
           {{ITERATION_TIMELINE_HTML}}
@@ -1506,130 +1500,35 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 </script>
 
-<!-- Welcome Modal — first-visit onboarding -->
+<!-- Welcome Modal — single screen onboarding -->
 <div class="welcome-overlay" id="welcomeModal">
   <div class="welcome-modal">
-
-    <!-- Step 0: Entry — choose guide or skip -->
-    <div class="welcome-step active" data-step="0">
-      <div class="welcome-header">
-        <h2>This is an eval report</h2>
-        <p>It checks whether a prototype meets the acceptance criteria from its Jira ticket. An automated evaluator ran Playwright walkthroughs against the live prototype, navigating pages, clicking through flows, and checking what it found against what the ticket requires.</p>
-      </div>
-      <div class="welcome-footer">
-        <button class="welcome-btn welcome-btn-primary" onclick="welcomeGoTo(1)">Walk me through it</button>
-        <button class="welcome-btn welcome-btn-secondary" onclick="skipWelcome()">Skip</button>
+    <div class="welcome-header">
+      <h2>This is an eval report</h2>
+      <p>It checks whether a prototype meets the acceptance criteria from its Jira ticket. An automated evaluator ran Playwright walkthroughs against the live prototype, navigating pages, clicking through flows, and checking what it found against what the ticket requires.</p>
+    </div>
+    <div class="welcome-sections">
+      <div class="welcome-section">
+        <div class="welcome-section-label">What to do</div>
+        <p>Click <strong>View walkthrough</strong> on any acceptance criterion to see the evidence. Items marked <span class="badge badge-flagged" style="font-size:0.65rem;vertical-align:1px">FLAGGED</span> need your judgment &mdash; click them to see the evidence and make the final call.</p>
+        <p style="margin-top:0.75rem">If everything passed, the report is informational. Scroll down for detailed persona walkthroughs and scores in the Appendix.</p>
       </div>
     </div>
-
-    <!-- Step 1: The verdict -->
-    <div class="welcome-step" data-step="1">
-      <div class="welcome-header" style="padding-bottom:0.75rem">
-        <div class="welcome-step-indicator"><span class="welcome-dot active"></span><span class="welcome-dot"></span><span class="welcome-dot"></span></div>
-        <h2>The verdict</h2>
-        <p>The banner at the top of the report tells you the overall result. There are three possible outcomes:</p>
-      </div>
-      <div class="welcome-sections">
-        <div class="welcome-verdicts">
-          <div class="welcome-verdict">
-            <span class="welcome-verdict-icon welcome-verdict-pass">&#10003;</span>
-            <div><strong>PASS</strong><br><span style="color:var(--text2)">All acceptance criteria from the Jira ticket were met. You can approve or skim the evidence.</span></div>
-          </div>
-          <div class="welcome-verdict">
-            <span class="welcome-verdict-icon welcome-verdict-fail">&#10007;</span>
-            <div><strong>NEEDS FIXES</strong><br><span style="color:var(--text2)">Some criteria failed. The report lists which ones and shows the evidence for each.</span></div>
-          </div>
-          <div class="welcome-verdict">
-            <span class="welcome-verdict-icon welcome-verdict-review">!</span>
-            <div><strong>NEEDS REVIEW</strong><br><span style="color:var(--text2)">Some criteria couldn't be verified automatically. They need your judgment.</span></div>
-          </div>
-        </div>
-      </div>
-      <div class="welcome-nav">
-        <button class="welcome-btn welcome-btn-secondary" onclick="welcomeGoTo(0)" style="padding:0.45rem 1.25rem;font-size:0.8125rem">Back</button>
-        <span class="welcome-nav-step">1 / 3</span>
-        <button class="welcome-btn welcome-btn-primary" onclick="welcomeGoTo(2)" style="padding:0.45rem 1.25rem;font-size:0.8125rem">Next</button>
-      </div>
+    <div class="welcome-footer">
+      <button class="welcome-btn welcome-btn-primary" onclick="dismissWelcome(true)">Show me around</button>
+      <button class="welcome-btn welcome-btn-secondary" onclick="dismissWelcome(false)">Got it</button>
     </div>
-
-    <!-- Step 2: Your role -->
-    <div class="welcome-step" data-step="2">
-      <div class="welcome-header" style="padding-bottom:0.75rem">
-        <div class="welcome-step-indicator"><span class="welcome-dot"></span><span class="welcome-dot active"></span><span class="welcome-dot"></span></div>
-        <h2>Your role</h2>
-        <p>Most of the report is automated. But items marked <span class="badge badge-flagged" style="font-size:0.65rem;vertical-align:1px">FLAGGED</span> are the ones that need you.</p>
-      </div>
-      <div class="welcome-sections">
-        <div class="welcome-section" style="border-top:none;padding-top:0">
-          <p>The automated check couldn't make the call on these &mdash; maybe it requires comparing against an external system, or the criterion is subjective. Click any flagged item to see the evidence, then make the final call: pass or fail.</p>
-          <p style="margin-top:0.75rem">If the verdict is <strong>PASS</strong> and nothing is flagged, there is nothing for you to do &mdash; the report is informational.</p>
-        </div>
-      </div>
-      <div class="welcome-nav">
-        <button class="welcome-btn welcome-btn-secondary" onclick="welcomeGoTo(1)" style="padding:0.45rem 1.25rem;font-size:0.8125rem">Back</button>
-        <span class="welcome-nav-step">2 / 3</span>
-        <button class="welcome-btn welcome-btn-primary" onclick="welcomeGoTo(3)" style="padding:0.45rem 1.25rem;font-size:0.8125rem">Next</button>
-      </div>
-    </div>
-
-    <!-- Step 3: Finding your way -->
-    <div class="welcome-step" data-step="3">
-      <div class="welcome-header" style="padding-bottom:0.75rem">
-        <div class="welcome-step-indicator"><span class="welcome-dot"></span><span class="welcome-dot"></span><span class="welcome-dot active"></span></div>
-        <h2>Finding your way</h2>
-        <p>The report flows top to bottom:</p>
-      </div>
-      <div class="welcome-sections">
-        <div class="welcome-layout">
-          <div class="welcome-layout-col">
-            <strong>Main content</strong>
-            <span>Your results &mdash; the verdict, acceptance criteria with pass/fail/flagged verdicts, your review section, and the conclusion.</span>
-          </div>
-          <div class="welcome-layout-col">
-            <strong>Appendix</strong>
-            <span>The detailed evidence &mdash; persona walkthrough screenshots, usability scores, findings, design consistency checks, and iteration history. Use the tabs to navigate.</span>
-          </div>
-        </div>
-        <p class="welcome-layout-hint">Scroll down past the conclusion to find the <strong>Appendix</strong> with score cards, tabbed evidence, and the full supporting data.</p>
-      </div>
-      <div class="welcome-nav">
-        <button class="welcome-btn welcome-btn-secondary" onclick="welcomeGoTo(2)" style="padding:0.45rem 1.25rem;font-size:0.8125rem">Back</button>
-        <span class="welcome-nav-step">3 / 3</span>
-        <button class="welcome-btn welcome-btn-primary" onclick="dismissWelcome()" style="padding:0.45rem 1.25rem;font-size:0.8125rem">Done</button>
-      </div>
-    </div>
-
   </div>
 </div>
 
 <script>
-var welcomeCurrentStep = 0;
-var startTourAfterModal = false;
-
-function welcomeGoTo(step) {
-  document.querySelectorAll('.welcome-step').forEach(function(el) { el.classList.remove('active'); });
-  var target = document.querySelector('.welcome-step[data-step="' + step + '"]');
-  if (target) target.classList.add('active');
-  welcomeCurrentStep = step;
-}
-
-function dismissWelcome(skipTour) {
-  var overlay = document.getElementById('welcomeModal');
-  overlay.classList.remove('active');
-  try { localStorage.setItem('eval-report-welcomed', '1'); } catch(e) {}
-  if (!skipTour && startTourAfterModal) {
-    setTimeout(startTooltipTour, 400);
-  }
-}
-
-function skipWelcome() {
+function dismissWelcome(startTour) {
   document.getElementById('welcomeModal').classList.remove('active');
   try { localStorage.setItem('eval-report-welcomed', '1'); } catch(e) {}
+  if (startTour) setTimeout(startTooltipTour, 300);
 }
 
 function showWelcome() {
-  startTourAfterModal = true;
-  welcomeGoTo(0);
   document.getElementById('welcomeModal').classList.add('active');
 }
 
@@ -1639,81 +1538,31 @@ function showWelcome() {
 })();
 
 document.getElementById('welcomeModal').addEventListener('click', function(e) {
-  if (e.target === this) skipWelcome();
+  if (e.target === this) dismissWelcome(false);
 });
-
 document.addEventListener('keydown', function(e) {
   if (document.getElementById('welcomeModal').classList.contains('active')) {
-    if (e.key === 'Escape') skipWelcome();
-    if (e.key === 'ArrowRight' && welcomeCurrentStep > 0 && welcomeCurrentStep < 3) welcomeGoTo(welcomeCurrentStep + 1);
-    if (e.key === 'ArrowLeft' && welcomeCurrentStep > 1) welcomeGoTo(welcomeCurrentStep - 1);
+    if (e.key === 'Escape') dismissWelcome(false);
     return;
   }
   if (window._tourActive && e.key === 'Escape') endTooltipTour();
 });
 
-// --- Tooltip tour (fires after modal guide completes) ---
+// --- Inline tooltip tour (anchored to DOM) ---
 var tourSteps = [
-  {
-    target: '[data-tour="verdict"]',
-    title: 'Verdict',
-    text: 'The overall result. Tells you at a glance whether the prototype passed, needs fixes, or needs your review.',
-    panel: 'main'
-  },
-  {
-    target: '[data-tour="gap"]',
-    title: 'Gap analysis',
-    text: 'How many acceptance criteria were expected vs. how many actually passed. Failures and flagged items are listed here.',
-    panel: 'main'
-  },
-  {
-    target: '[data-tour="ac-table"]',
-    title: 'Acceptance criteria',
-    text: 'Each criterion from the Jira ticket with a verdict and evidence. PASS and FAIL are automated. FLAGGED means you decide.',
-    panel: 'main'
-  },
-  {
-    target: '[data-tour="flagged"]',
-    title: 'Flagged items',
-    text: 'Items the automated check could not verify. Click any one to see the evidence and override the verdict.',
-    panel: 'main'
-  },
-  {
-    target: '[data-tour="stats"]',
-    title: 'Score cards',
-    text: 'Quick counts in the appendix. Click any card to jump to that section.',
-    panel: 'main'
-  },
-  {
-    target: '[data-tour="tab-journeys"]',
-    title: 'Journeys tab',
-    text: 'Persona walkthroughs. Each persona navigated the prototype independently. Click a persona card to see their step-by-step screenshots.',
-    panel: 'main',
-    action: function() { switchAppendixTab('journeys'); }
-  },
-  {
-    target: '[data-tour="usability"]',
-    title: 'Usability scores',
-    text: 'Seven dimensions scored 0-3 each (21 total). Click the (?) to see how scores are calculated.',
-    panel: 'main',
-    action: function() { switchAppendixTab('usability'); }
-  },
-  {
-    target: '[data-tour="tab-findings"]',
-    title: 'Findings tab',
-    text: 'Fixes applied during the evaluation and issues found. Shows what was changed to pass acceptance criteria.',
-    panel: 'main',
-    action: function() { switchAppendixTab('findings'); }
-  },
-  {
-    target: '[data-tour="tab-consistency"]',
-    title: 'Consistency tab',
-    text: 'PatternFly design guideline checks. Flags violations in source code and screenshots against the design system.',
-    panel: 'main',
-    action: function() { switchAppendixTab('consistency'); }
-  }
+  { target: '[data-tour="dashboard"]', text: 'Takes you back to the SCOUT dashboard where you can see all eval reports and the Leaderboard of Pain.' },
+  { target: '[data-tour="breadcrumb"]', text: 'The traceability chain: Outcome, RFE, STRAT ticket, Prototype, and MR. Click any link to jump to that artifact in Jira or GitLab.' },
+  { target: '[data-tour="verdict"]', text: 'The overall result. Green means all criteria passed, red means some failed, amber means items need your review.' },
+  { target: '[data-tour="ac-table"]', text: 'Each acceptance criterion from the Jira ticket. Click "View walkthrough" on any row to open a modal with the screenshot evidence and persona narration.' },
+  { target: '.ac-view-link', text: 'Opens the walkthrough modal. Inside you will see task tabs at the top (one per user task), screenshots for each step, and a think-aloud narration panel on the right showing what the persona saw, thought, and tried.' },
+  { target: '[data-tour="flagged"]', text: 'These items need your judgment. Click any one to see the evidence and override the automated verdict.' },
+  { target: '.appendix-label', text: 'Everything below here is detailed supporting evidence. Use it to dig deeper or verify results.' },
+  { target: '[data-tour="appendix-tabs"]', text: 'Switch between evidence types: Journeys (persona walkthroughs), Usability (dimension scores), What Changed (fixed vs outstanding), Consistency, and Iterations.' },
+  { target: '[data-tour="personas"]', text: 'Each card is a simulated user who navigated the prototype. Click one to open a modal with task tabs, step-by-step screenshots, and think-aloud narration.', action: function() { switchAppendixTab('journeys'); } },
+  { target: '[data-tour="tab-findings"]', text: 'Shows what the evaluator fixed during iterations and any outstanding consistency warnings that remain.', action: function() { switchAppendixTab('findings'); } },
+  { target: '[data-tour="tab-consistency"]', text: 'PatternFly design guideline checks. Violations found in source code and captured screenshots.', action: function() { switchAppendixTab('consistency'); } },
+  { target: '[data-tour="tab-iterations"]', text: 'The full history of how the evaluator iterated on the prototype: what failed, what was fixed, root causes, and the final exit reason.', action: function() { switchAppendixTab('iterations'); } }
 ];
-
 var tourCurrentStep = 0;
 window._tourActive = false;
 
@@ -1736,65 +1585,33 @@ function removeTourTip() {
 function showTourStep() {
   removeTourTip();
   document.querySelectorAll('.tour-highlight').forEach(function(el) { el.classList.remove('tour-highlight'); });
-
   if (tourCurrentStep >= tourSteps.length) { endTooltipTour(); return; }
 
   var step = tourSteps[tourCurrentStep];
-
   if (step.action) step.action();
 
   var el = document.querySelector(step.target);
-
   if (!el || el.offsetParent === null) { tourCurrentStep++; showTourStep(); return; }
 
-  el.scrollIntoView({ behavior: 'smooth', block: 'center' });
   el.classList.add('tour-highlight');
+  el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 
   setTimeout(function() {
     var tip = document.createElement('div');
-    tip.className = 'tour-tip arrow-top';
-
-    var navHtml = '<div class="tour-tip-nav">';
-    if (tourCurrentStep > 0) {
-      navHtml += '<button class="tour-tip-btn" onclick="tourPrev()">Back</button>';
-    } else {
-      navHtml += '<span></span>';
-    }
-    navHtml += '<span class="tour-tip-counter">' + (tourCurrentStep + 1) + ' / ' + tourSteps.length + '</span>';
-    if (tourCurrentStep < tourSteps.length - 1) {
-      navHtml += '<button class="tour-tip-btn tour-tip-btn-primary" onclick="tourNext()">Next</button>';
-    } else {
-      navHtml += '<button class="tour-tip-btn tour-tip-btn-primary" onclick="endTooltipTour()">Done</button>';
-    }
-    navHtml += '</div>';
-
-    tip.innerHTML = '<div class="tour-tip-title">' + step.title + '</div>' + step.text + navHtml;
-
-    var rect = el.getBoundingClientRect();
-    var tipTop = rect.bottom + 10;
-    var tipLeft = rect.left;
-
-    if (tipLeft + 280 > window.innerWidth - 16) tipLeft = window.innerWidth - 296;
-    if (tipLeft < 8) tipLeft = 8;
-    if (tipTop + 200 > window.innerHeight) {
-      tipTop = rect.top - 200;
-      tip.className = 'tour-tip arrow-bottom';
-    }
-
-    tip.style.top = tipTop + 'px';
-    tip.style.left = tipLeft + 'px';
-
-    document.body.appendChild(tip);
-  }, 400);
+    tip.className = 'tour-tip';
+    tip.innerHTML = '<div class="tour-tip-text">' + step.text + '</div>'
+      + '<div class="tour-tip-nav">'
+      + '<span class="tour-tip-counter">' + (tourCurrentStep + 1) + ' / ' + tourSteps.length + '</span>'
+      + (tourCurrentStep < tourSteps.length - 1
+          ? '<button class="tour-tip-btn" onclick="tourNext()">Next</button>'
+          : '<button class="tour-tip-btn" onclick="endTooltipTour()">Done</button>')
+      + '</div>';
+    el.insertAdjacentElement('afterend', tip);
+    tip.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }, 350);
 }
 
 function tourNext() { tourCurrentStep++; showTourStep(); }
-function tourPrev() { tourCurrentStep--; showTourStep(); }
-function startTourFromGuide() {
-  startTourAfterModal = true;
-  welcomeGoTo(0);
-  document.getElementById('welcomeModal').classList.add('active');
-}
 </script>
 
 </body>

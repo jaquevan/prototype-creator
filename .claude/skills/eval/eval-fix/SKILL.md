@@ -71,6 +71,25 @@ For each `type: "ac_failure"` suggestion:
 4. Apply the fix
 5. If the fix requires a new file (e.g., missing route registration), create it following existing codebase patterns
 
+### Step 4b: Attempt FLAGGED item fixes
+
+For each AC with verdict FLAGGED in the CSV, check if a fix is feasible within the prototype scope:
+
+| FLAGGED reason | Fix approach |
+|---|---|
+| Feature state can't be toggled (hardcoded flag) | Add a mock disabled state or a toggle in the prototype's feature flags UI |
+| Wrong interaction pattern (e.g., expandable row instead of tooltip) | Change the component to match the AC specification |
+| Source-code-only verification | Add visual indicator that demonstrates the feature |
+| Cannot test in prototype | Skip — log as "deferred_to_human" with reason |
+
+For each fixable FLAGGED item:
+1. Read the AC text and FLAGGED rationale from the CSV
+2. Determine if a prototype-level fix exists (not a backend change)
+3. If fixable: apply the change and log in fix-log as `"type": "flagged_fix"`
+4. If not fixable in prototype scope: log in fix-log `"skipped"` array with reason
+
+This step allows the fix loop to resolve FLAGGED items that are actually fixable at the prototype level (like changing a component from expandable row to tooltip), while correctly deferring items that genuinely need human judgment or backend work.
+
 ### Step 5: Apply usability fixes (high/medium confidence only)
 
 For each `type: "usability"` suggestion with `confidence != "low"`:

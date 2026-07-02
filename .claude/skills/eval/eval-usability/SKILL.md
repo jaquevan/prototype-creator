@@ -31,8 +31,9 @@ Each persona navigates at their own competence level — an experienced user exp
 |------|-------------|
 | `.artifacts/<KEY>/journey-log.json` | Updated with `usability_dimensions` section |
 | `.artifacts/<KEY>/evaluation-report.csv` | Appended Section 2 (USABILITY DIMENSIONS) |
-| `.artifacts/<KEY>/usability-thinkaloud-<persona-id>.md` | Per-persona think-aloud trace |
-| `.artifacts/<KEY>/screenshots/persona-<persona-id>-step-N.png` | Per-persona walkthrough screenshots |
+| `.artifacts/<KEY>/usability-thinkaloud-<persona-id>-task-<N>.md` | Per-persona per-task think-aloud trace |
+| `.artifacts/<KEY>/screenshots/persona-<persona-id>-task-<N>-step-<M>.png` | Per-persona per-task walkthrough screenshots |
+| `.artifacts/<KEY>/persona-results.json` | Structured trace data for all persona+task runs |
 | `.artifacts/<KEY>/usability-eval-output/` | External usability evaluation output |
 | `.artifacts/<KEY>/refinement-suggestions.json` | Appended with usability suggestions for scores 0-1 |
 
@@ -98,22 +99,133 @@ This file defines the specific scoring criteria for each dimension (0-3 scale). 
 }
 ```
 
+### Step 1c-routes: Map tasks to distinct navigation targets
+
+Before generating Playwright scripts, plan WHERE each task navigates. This prevents all tasks from converging on the same page and producing identical screenshots.
+
+Read `extract-state.json > tasks_to_be_done` and workspace source (or `navigation-hints.json`) to determine a unique route + interaction for each task:
+
+For each task:
+1. What ACs does it cover? (from `covers_acs` field)
+2. What route/page tests those ACs? (from navigation-hints.json routes or workspace source)
+3. What INTERACTION distinguishes this task from others on the same page? (expand row, open modal, filter, click tab, scroll position)
+
+**Rules:**
+- No two tasks may share the same route + same interaction
+- If tasks must visit the same page, they MUST differ in: scroll position, filter state, expanded element, or tab selection
+- If a task describes a state that can't be shown (feature disabled, RBAC restricted), navigate to the closest relevant page (Settings, Feature Flags, admin panel) and STAY there. Do NOT fall back to the default page.
+- A task about "comparing two things" should show BOTH things side-by-side or in sequence, not just one
+
+**Write the task route mapping** as a comment block at the top of `persona-walkthrough.mjs`:
+
+```
+// TASK ROUTES (from Step 1c-routes):
+// Task 1 (covers AC-1,AC-4,AC-6): /ai-hub/models/deployments → expand pending row, view resource details
+// Task 2 (covers AC-2,AC-5): /settings or /feature-flags → observe toggle state, stay on settings page
+// Task 3 (covers AC-3,AC-7): /ai-hub/models/deployments → scroll right to compare managed vs unmanaged rows
+```
+
+This mapping drives all downstream Playwright generation. If the mapping shows two tasks with the same route + same interaction, revise BEFORE proceeding to Step 1d.
+
 ### Step 1d: Per-Persona Playwright Walkthroughs
 
 Each persona runs their OWN Playwright walkthrough as an independent sub-agent. Navigation behavior is driven by the persona's YAML fields — not a shared script.
 
-**How persona fields drive navigation:**
+**REQUIRED script structure for `persona-walkthrough.mjs`:**
 
-| YAML Field | Navigation Effect |
-|---|---|
-| `exploration_tendency: low` | Sticks to obvious path. Won't open Advanced Settings, won't expand optional sections. |
-| `exploration_tendency: high` | Proactively checks Advanced Settings, YAML views, logs, events. Drills into everything. |
-| `experience_level: junior` | Slower reading, confused by patterns without labels, misses non-obvious affordances. |
-| `experience_level: senior` | Efficient navigation, recognizes UI patterns (accordions, tabs), tries shortcuts. |
-| `domain_knowledge: {k8s: none}` | Nav items with K8s jargon ("Pods", "PVCs") trigger confusion events. |
-| `domain_knowledge: {k8s: expert}` | Understands all terminology, navigates directly to target. |
-| `constraints[]` | Hard behavioral rules: "After 3 confusion events, abandon", "CANNOT use mouse" (Sam). |
-| `behavioral_attributes.patience` | How fast frustration builds — Low drains 3x faster than High. |
+The generated script MUST have:
+- **One function per task:** `runTask1(page, persona)`, `runTask2(page, persona)`, `runTask3(page, persona)`
+- Each task function navigates to its MAPPED route from Step 1c-routes
+- Persona fields (`exploration_tendency`, `experience_level`) influence navigation behavior (see table below)
+- The `main()` loop calls task-specific functions, NOT a single shared `runPersonaTask()`
+- **Variable step counts:** each task has as many steps as needed (NOT a fixed 3). A simple task may have 2 steps, a complex one may have 7.
+
+**Navigation verification rules for each task function:**
+
+```javascript
+// Each task function MUST:
+// 1. Navigate AWAY from the homepage before taking step-2+ screenshots
+// 2. Verify navigation succeeded before screenshotting
+// 3. Only screenshot when the view MEANINGFULLY changed
+
+// WRONG (produces homepage-stuck screenshots):
+async function runTask1(page, persona) {
+  await page.goto(BASE_URL);
+  await page.screenshot(...);  // step 1: homepage OK
+  await page.screenshot(...);  // step 2: BUG still homepage!
+  await page.screenshot(...);  // step 3: BUG still homepage!
+}
+
+// CORRECT:
+async function runTask1(page, persona) {
+  await page.goto(BASE_URL);
+  await page.screenshot(...);  // step 1: homepage
+
+  // Navigate to target
+  await page.click('nav a:has-text("Models")');
+  // Wait for CONTENT not just container — table rows, not empty table
+  await page.waitForSelector('#deployments-table tbody tr', { timeout: 8000 });
+  await page.waitForTimeout(1500);  // settle time for SPA re-renders
+  await page.screenshot(...);  // step 2: deployments table WITH DATA (different view!)
+
+  // Interact with specific element
+  await page.click('button[aria-label="Expand row"]');
+  await page.waitForTimeout(1000);
+  await page.screenshot(...);  // step 3: expanded row (different view!)
+
+  // Continue as needed for task complexity...
+  await page.click('.resource-details-tab');
+  await page.screenshot(...);  // step 4: resource details
+}
+```
+
+**Screenshot timing rules (CRITICAL — prevents empty-state captures):**
+- After `page.goto`: wait for `networkidle` or a content selector (NOT just `domcontentloaded`)
+- After navigation click: wait for a DATA element to appear (table row, list item, form field with value)
+- Minimum 1500ms settle time after any selector wait (React re-renders, CSS transitions)
+- WRONG: `waitForSelector('#my-table')` then screenshot (captures empty table shell)
+- RIGHT: `waitForSelector('#my-table tbody tr')` then screenshot (captures table with data)
+
+**Step count guidelines by task type:**
+- Navigation + observe: 2-3 steps (go there, see it)
+- Navigation + interact + verify: 4-6 steps (go there, click something, verify result, check details)
+- Multi-page comparison: 5-7 steps (visit page A, capture, visit page B, capture, compare)
+- Feature exploration: 4-8 steps (find feature, try it, observe feedback, try edge case)
+
+```javascript
+// CORRECT structure:
+async function runTask1(page, persona) { /* navigate to deployments, expand pending row */ }
+async function runTask2(page, persona) { /* navigate to settings/feature-flags */ }
+async function runTask3(page, persona) { /* navigate to deployments, filter/scroll to unmanaged */ }
+
+async function main() {
+  for (const persona of personas) {
+    for (let i = 0; i < tasks.length; i++) {
+      const ctx = await browser.newContext(...);
+      const page = await ctx.newPage();
+      if (i === 0) await runTask1(page, persona);
+      else if (i === 1) await runTask2(page, persona);
+      else if (i === 2) await runTask3(page, persona);
+      await ctx.close();
+    }
+  }
+}
+```
+
+**How persona fields drive navigation AND interaction:**
+
+| YAML Field | Navigation Effect | Screenshot Impact |
+|---|---|---|
+| `exploration_tendency: low` | Sticks to obvious path. Won't open Advanced Settings, won't expand optional sections. | Fewer screenshots, all on primary path |
+| `exploration_tendency: high` | Proactively checks Advanced Settings, YAML views, logs, events. Drills into everything. | More screenshots, captures side panels and expanded sections |
+| `experience_level: junior` | Slower reading, confused by patterns without labels, misses non-obvious affordances. | Screenshots show reading/scanning states, sidebar still visible |
+| `experience_level: senior` | Efficient navigation, recognizes UI patterns (accordions, tabs), tries shortcuts. | Screenshots show target page directly, less intermediate state |
+| `domain_knowledge: {k8s: none}` | Nav items with K8s jargon ("Pods", "PVCs") trigger confusion events. | May screenshot wrong pages before finding the right one |
+| `domain_knowledge: {k8s: expert}` | Understands all terminology, navigates directly to target. | Direct path, fewer screenshots |
+| `constraints[]` | Hard behavioral rules: "After 3 confusion events, abandon", "CANNOT use mouse" (Sam). | Abandonment produces incomplete screenshot sequence |
+| `behavioral_attributes.patience` | How fast frustration builds — Low drains 3x faster than High. | Low patience may abandon mid-task = fewer screenshots |
+
+**These differences MUST produce visually different screenshot sequences** even when two personas visit the same page. A junior persona screenshot showing them reading a sidebar label is different from a senior persona already on the target page.
 
 **Launch one sub-agent PER PERSONA PER TASK (all in parallel):**
 
@@ -145,14 +257,25 @@ they first open the application. You have NOT been told where to go.
 Your task: <task from tasks_to_be_done[N].task>
 (Example: "Find out why your model deployment is queued and when it will be ready")
 
+CRITICAL: Your task determines WHERE you navigate. Different tasks = different destinations.
+If your task mentions a specific feature, screen, or state — navigate to THAT specific place.
+Do NOT follow the same navigation path as other tasks. Each task is testing a different part
+of the application.
+
 Find where to go and complete the task. Think aloud as you navigate.
 
-Respect your persona's constraints:
-- If exploration_tendency is low: stick to the obvious path, don't explore side menus
-- If exploration_tendency is high: check Advanced Settings, expand optional sections
-- If domain_knowledge shows a topic as none/minimal: be confused by jargon for that topic
-- If experience_level is junior: read labels carefully, take time, miss non-obvious affordances
-- If experience_level is senior/experienced: navigate efficiently, recognize UI patterns
+Respect your persona's constraints — these change HOW you interact, not just what you say:
+- If exploration_tendency is low: stick to the obvious path, don't explore side menus, take the first reasonable link
+- If exploration_tendency is high: check Advanced Settings, expand optional sections, open every accordion, check YAML views
+- If domain_knowledge shows a topic as none/minimal: be confused by jargon for that topic, try wrong paths first, trigger confusion events
+- If experience_level is junior: read labels carefully, take time, screenshot while still reading sidebar (shows scanning behavior), miss non-obvious affordances
+- If experience_level is senior/experienced: navigate efficiently, recognize UI patterns, skip intermediate states, use keyboard shortcuts if available
+
+Your persona attributes produce DIFFERENT screenshot sequences even on the same page:
+- A junior screenshots the sidebar while deciding where to click
+- A senior screenshots only after arriving at the target
+- High-exploration screenshots Advanced Settings panels others never open
+- Low-exploration never leaves the primary content area
 
 At each step:
 1. Describe what you see (from the persona's perspective and domain knowledge)
@@ -184,7 +307,7 @@ Write your think-aloud trace to: .artifacts/<KEY>/usability-thinkaloud-<persona-
 
 **Wait for all persona-task agents to complete.** Then read their output files.
 
-### Step 1d-verify: BLOCKING — Verify persona screenshots exist
+### Step 1d-verify: BLOCKING — Verify persona screenshots exist and are unique
 
 **Do NOT proceed to Step 2 without completing this check.**
 
@@ -194,7 +317,31 @@ After persona walkthroughs should complete, verify that per-persona screenshots 
 ls .artifacts/<KEY>/screenshots/persona-*.png
 ```
 
-For each selected persona, at least ONE file matching `persona-<persona-id>-step-*.png` MUST exist.
+For each selected persona, at least ONE file matching `persona-<persona-id>-task-*-step-*.png` MUST exist.
+
+**Screenshot uniqueness validation (FATAL — will block Phase B):**
+
+Different tasks MUST produce visually different screenshots (they test different features/flows). After capture, verify:
+
+```bash
+md5sum .artifacts/<KEY>/screenshots/persona-*-task-1-step-2.png .artifacts/<KEY>/screenshots/persona-*-task-2-step-2.png .artifacts/<KEY>/screenshots/persona-*-task-3-step-2.png
+```
+
+Compare step-2 (the first task-specific navigation step) across tasks for each persona.
+
+**If ANY two tasks share the same MD5 hash for step-2:**
+
+1. **DELETE** `persona-walkthrough.mjs` and ALL `persona-*.png` screenshots
+2. **Re-read** the task-to-route mapping from Step 1c-routes
+3. **Verify** the mapping has distinct routes/interactions per task. If not, revise the mapping first.
+4. **Regenerate** `persona-walkthrough.mjs` with per-task functions that navigate to DIFFERENT pages
+5. **Re-run** Playwright
+6. **Re-check** MD5 hashes
+
+If screenshots are STILL identical after one regeneration attempt:
+- FAIL Phase B with note: "Tasks converge on same view despite distinct route mapping. tasks_to_be_done may need redesign or prototype lacks distinct pages for these flows."
+- Continue to report generation (Phase B scores will be absent/incomplete)
+- Log this in `iteration-log.json` phase_b as `"screenshot_uniqueness_failed": true`
 
 **If persona screenshots do NOT exist:**
 - Step 1d was NOT completed — the persona walkthroughs did not actually run
@@ -203,8 +350,8 @@ For each selected persona, at least ONE file matching `persona-<persona-id>-step
   1. Create a new browser context for each persona
   2. Navigate to the prototype URL
   3. Follow the persona prompt (from Step 1d) to navigate as that persona
-  4. Take screenshots at each step: `persona-<persona-id>-step-N.png`
-  5. Write the think-aloud trace to `usability-thinkaloud-<persona-id>.md`
+  4. Take screenshots at each step: `persona-<persona-id>-task-<N>-step-<M>.png`
+  5. Write the think-aloud trace to `usability-thinkaloud-<persona-id>-task-<N>.md`
   6. Close the context, move to next persona
 
 **This step is BLOCKING.** Usability scoring without persona-specific screenshots produces inferior results — scores will be based on what the persona agent actually saw, not what a shared Phase A journey showed.
@@ -283,8 +430,13 @@ APPEND to existing `evaluation-report.csv` (do NOT overwrite Section 1):
 ```
 # USABILITY DIMENSIONS
 dimension_id,dimension_name,score,confidence,evidence,persona_scores
-workflow_continuity,Workflow Continuity,2,high,"journey-1 steps 1-4","{""deena-junior"":1,""deena-senior"":3}"
+workflow_continuity,Workflow Continuity,2.5,high,"journey-1 steps 1-4","{""deena-junior"":2,""deena-senior"":3}"
 ```
+
+**CRITICAL: The `score` column is the composite (average of per-persona scores). Preserve decimal
+values — if one persona scores 2 and another scores 3, write `2.5` not `2`. Do NOT floor or round.**
+
+The `persona_scores` column stores individual scores as a JSON object for attribution.
 
 ### Step 5: Think-Aloud Narration
 
@@ -294,9 +446,12 @@ For each selected persona (1-2), produce first-person think-aloud from the perso
 
 **Phase 2 — The Evaluator:** Switch to Senior UX Researcher. Score all 7 dimensions using Phase 1 trace as evidence. Map findings to JTBD.
 
-**REQUIRED: Write a standalone .md file for EACH evaluated persona:**
+**REQUIRED: Write a standalone .md file for EACH evaluated persona PER TASK:**
 
-File: `.artifacts/<KEY>/usability-thinkaloud-<persona-id>.md`
+File: `.artifacts/<KEY>/usability-thinkaloud-<persona-id>-task-<N>.md`
+
+Always use per-task naming even when there is only one task. This ensures consistent behavior
+in the report renderer regardless of task count.
 
 The file MUST contain (minimum 3000 characters — shorter means too shallow):
 
@@ -393,6 +548,45 @@ This step produces the richest usability data — an independent exploratory eva
 
 After this step, check that all 3 files exist and `summary.md` is non-empty. If these files do not exist, the step was NOT completed — go back and execute the protocol.
 
+### Step 6b: Write persona-results.json
+
+**ALWAYS produce this file**, regardless of single-task or multi-task runs. This structured JSON is the canonical source for persona walkthrough data consumed by the report renderer.
+
+Write to: `.artifacts/<KEY>/persona-results.json`
+
+Format: array of persona-task results, one entry per persona per task:
+
+```json
+[
+  {
+    "persona": "<persona-id>",
+    "persona_name": "<Full Display Name>",
+    "task_index": 1,
+    "task": "<task description from tasks_to_be_done>",
+    "trace": [
+      {
+        "step": 1,
+        "what_i_see": "...",
+        "what_im_thinking": "...",
+        "action": "...",
+        "confidence": "high|medium|low",
+        "patience": 100,
+        "screenshot": ".artifacts/<KEY>/screenshots/persona-<id>-task-1-step-1.png"
+      }
+    ],
+    "screenshots": ["<paths>"],
+    "patience_start": 100,
+    "patience_end": 85,
+    "confusion_events": 1,
+    "assisted": false,
+    "would_complete": true,
+    "outcome": "completed"
+  }
+]
+```
+
+Even for single-task runs, wrap the single task with `task_index: 1`. This eliminates the need for fallback paths in the renderer.
+
 ### Step 7: Generate refinement suggestions
 
 For dimensions scoring 0-1, generate suggestions:
@@ -482,5 +676,6 @@ Rules:
 - `dimensions[].id` MUST use the 7 standard IDs (workflow_continuity, cross_persona_handoffs, etc.)
 - `dimensions[].scores` MUST be keyed by persona ID with `{score, confidence, finding}`
 - `think_aloud.traces` MUST be populated when `--usability=deep` — this is what renders the persona insights in the report
+- `think_aloud.traces[].confusion_events` scalar MUST equal `expected_vs_actual.length + missing_feedback.length` (count BOTH types)
 - `think_aloud.traces[].narration_summary` appears in the Personas tab as the think-aloud narrative
 - `overall_score` MUST be a string in "X/21" format

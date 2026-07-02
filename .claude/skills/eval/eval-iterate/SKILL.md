@@ -36,6 +36,7 @@ Ensure `.context/usability-testing/`, `.context/consistency-checker/` are bootst
 | `--usability` | `deep` or `skip` | No | `deep` |
 | `--no-iterate` | flag | No | Off |
 | `--no-fix` | flag | No | Off |
+| `--reset` | flag | No | Off (evaluate current state; when set, hard-resets workspace to origin branch HEAD before eval) |
 
 ## Pipeline Flow (Two-Phase)
 
@@ -77,6 +78,48 @@ python3 .claude/skills/eval/scripts/eval_state.py init .artifacts/<KEY>/eval-sta
 # Question: "Did the code produce what the acceptance criteria specify?"
 # Method: Informed evaluator with full source + hint access
 # ═══════════════════════════════════════════════════════════════════
+
+# ── Workspace state capture ───────────────────────────────────────
+# The eval ALWAYS tests the current workspace state.
+# Designers iterate: make changes → run eval → see results → fix → re-run.
+# We never reset their work unless explicitly asked via --reset.
+
+if workspace provided:
+  cd <workspace>
+
+  # Capture current state for the report (what exactly are we evaluating?)
+  WORKSPACE_COMMIT=$(git log -1 --format="%h" 2>/dev/null || echo "unknown")
+  WORKSPACE_MSG=$(git log -1 --format="%s" 2>/dev/null || echo "")
+  WORKSPACE_DIRTY=$(git status --short 2>/dev/null | wc -l | tr -d ' ')
+
+  # Optional: --reset flag for CI or reproducible testing (NOT default)
+  if --reset:
+    git fetch origin 2>/dev/null
+    BRANCH=$(git branch --show-current)
+    git reset --hard origin/$BRANCH
+    echo "⚠ Workspace reset to origin/$BRANCH"
+    # Re-capture state after reset
+    WORKSPACE_COMMIT=$(git log -1 --format="%h")
+    WORKSPACE_DIRTY=0
+
+  # Log workspace state to eval-state.yaml for the report
+  python3 .claude/skills/eval/scripts/eval_state.py set .artifacts/<KEY>/eval-state.yaml \
+    workspace_commit=$WORKSPACE_COMMIT workspace_dirty=$WORKSPACE_DIRTY
+
+  # ── Detect server type (static vs dev/HMR) ──────────────────────
+  # Static servers (sirv, serve, http-server) don't rebuild on source changes.
+  # Dev servers (webpack serve, vite, next dev) auto-rebuild via HMR.
+  # This determines whether we need explicit `npm run build` after eval-fix.
+  SERVER_PID=$(lsof -ti:<PORT> 2>/dev/null | head -1)
+  SERVER_CMD=$(ps -p $SERVER_PID -o command= 2>/dev/null || echo "")
+
+  if SERVER_CMD contains "sirv" or "serve" or "http-server" or SERVER_CMD is empty:
+    NEEDS_REBUILD=true
+    echo "⚠ Static server detected (or server type unknown). Will rebuild after each fix iteration."
+    echo "  For faster iteration: use 'npm run start:dev' (webpack dev server with HMR) instead."
+  else:
+    NEEDS_REBUILD=false
+    echo "Dev server detected. HMR will handle rebuilds automatically."
 
 # ── Setup (runs once) ──────────────────────────────────────────────
 
@@ -127,27 +170,41 @@ LOOP:
   NEVER manually estimate these counts. Always compute from the CSV file.
 
   # ── Write iteration entry to iteration-log.json ────────────────
-  Append to .artifacts/<KEY>/iteration-log.json:
-    {
-      "iteration": <iteration>,
-      "phase": "a",
-      "pass_count": <computed from CSV>,
-      "fail_count": <computed from CSV>,
-      "flagged_count": <computed from CSV>,
-      "suggestions_generated": <count of entries in refinement-suggestions.json>,
-      "consistency_fixes": <count of type:consistency in refinement-suggestions.json>
-    }
+  # Use the append-iteration-log.js script for rich, consistent entries:
+  node .claude/skills/eval/scripts/append-iteration-log.js .artifacts/<KEY>/ <iteration> a
 
-  Also compute:
-    total_criteria_fixed = current pass_count - iteration 1 pass_count
-    (read iteration 1 from the iterations array, not estimated)
+  # This script reads CSV, journey-log, fix-log, refinement-suggestions, and
+  # consistency-report to produce a complete iteration entry including:
+  #   - pass/fail/flagged counts (from CSV)
+  #   - per-AC verdict details (from CSV)
+  #   - journey coverage mapping (from journey-log)
+  #   - changes_applied (from fix-log.json, if fix loop ran)
+  #   - root_cause (if any FAILs)
+  #   - consistency_summary (from consistency-report)
+  #   - timestamp for timing analysis
+
+  # Read the updated log to get computed counts for exit checks:
+  Read .artifacts/<KEY>/iteration-log.json for pass_count, fail_count from the last entry
 
   # ── Exit condition checks ──────────────────────────────────────
-  if fail_count == 0:
+  if fail_count == 0 AND flagged_count == 0:
     Set exit_reason = "all_pass"
     python3 .claude/skills/eval/scripts/eval_state.py set .artifacts/<KEY>/eval-state.yaml \
       exit_reason=all_pass ac_pass=true
     BREAK → proceed to Phase B
+
+  if fail_count == 0 AND flagged_count > 0:
+    # FLAGGED items may be fixable (e.g., wrong interaction pattern, missing mock state)
+    # Attempt fix loop on FLAGGED suggestions. If eval-fix produces no changes, exit.
+    if iteration > 1:
+      # Check if fix-log.json from last iteration had zero applied fixes for FLAGGED items
+      Read .artifacts/<KEY>/fix-log.json
+      if fix-log shows 0 applied fixes (all skipped/deferred):
+        Set exit_reason = "flagged_unfixable"
+        python3 .claude/skills/eval/scripts/eval_state.py set .artifacts/<KEY>/eval-state.yaml \
+          exit_reason=flagged_unfixable ac_pass=true
+        BREAK → proceed to Phase B (FLAGGED items need human review)
+    # Otherwise continue to fix loop — eval-fix will attempt FLAGGED suggestions
 
   if iteration > 1:
     Compare current CSV verdicts against previous iteration's archived CSV
@@ -178,12 +235,48 @@ LOOP:
     # Findings remain in refinement-suggestions.json for human/agent review
 
   Read .claude/skills/eval/eval-fix/SKILL.md and execute it
-  # Applies fixes from refinement-suggestions.json (AC failures + consistency)
+  # Applies fixes from refinement-suggestions.json (AC failures + consistency + flagged)
 
-  # Wait for dev server rebuild
-  sleep 3
+  # Record what was fixed into the iteration log (reads fix-log.json)
+  node .claude/skills/eval/scripts/append-iteration-log.js .artifacts/<KEY>/ <iteration> fix
+
+  # ── Rebuild so changes are visible to Playwright ─────────────────
+  if NEEDS_REBUILD:
+    cd <workspace>
+    npm run build
+    # Wait for build to complete (webpack production ~15-30s)
+    echo "Rebuilt dist after fixes — screenshots will reflect new code"
+  else:
+    # Dev server with HMR — changes visible after recompile
+    sleep 5
 
   GOTO LOOP
+
+# ═══════════════════════════════════════════════════════════════════
+# FINAL-STATE CAPTURE (N+1 pass — only when fix loop actually ran)
+# Ensures the report shows post-fix screenshots, not pre-fix evidence
+# ═══════════════════════════════════════════════════════════════════
+
+# Only run if the fix loop applied changes (iterations > 1)
+if iteration > 1:
+  # Archive the current screenshots as the last iteration's evidence
+  # (they may be from a selective rerun, not a full re-capture)
+
+  # Re-run eval-journey in screenshot-only mode: full journey set, no verdict changes
+  # This captures final-state screenshots that reflect all applied fixes
+  Read .claude/skills/eval/eval-journey/SKILL.md and execute in capture-only mode:
+    --mode=informed --capture-only --all-journeys
+  # This re-walks ALL journeys (not just the re-run set) and captures fresh screenshots
+  # to .artifacts/<KEY>/screenshots/ — overwriting the partial captures from fix iterations.
+  # Verdict CSV is NOT modified. journey-log.json step screenshots are updated in-place.
+
+  # Ensure the rebuild completed before capturing (static server needs explicit build)
+  if NEEDS_REBUILD:
+    cd <workspace>
+    npm run build
+    echo "Final rebuild complete — N+1 screenshots will show post-fix state"
+  else:
+    sleep 5
 
 # ═══════════════════════════════════════════════════════════════════
 # PHASE B: Blind Persona Walkthroughs
@@ -216,12 +309,7 @@ Read .claude/skills/eval/eval-usability/SKILL.md and execute it
 # Go back and re-run eval-usability — ensure Step 1d actually launches Playwright.
 
 # Update iteration log with usability results
-Append to .artifacts/<KEY>/iteration-log.json:
-  {
-    "phase": "b",
-    "usability_score": <read from journey-log.json usability_dimensions.overall_score>,
-    "personas_evaluated": <read from journey-log.json usability_dimensions.personas_evaluated>
-  }
+node .claude/skills/eval/scripts/append-iteration-log.js .artifacts/<KEY>/ <iteration> b
 
 # ═══════════════════════════════════════════════════════════════════
 # REPORT (always runs)
@@ -301,29 +389,46 @@ After each Phase A iteration (2+), compare verdicts against the previous CSV:
     {
       "iteration": 1,
       "phase": "a",
+      "timestamp": "2026-07-01T15:00:00.000Z",
       "pass_count": 4,
       "fail_count": 3,
       "flagged_count": 2,
+      "total_criteria": 9,
       "suggestions_generated": 5,
-      "consistency_fixes": 2
-    },
-    {
-      "iteration": 2,
-      "phase": "a",
-      "pass_count": 7,
-      "fail_count": 0,
-      "flagged_count": 2,
-      "suggestions_generated": 0,
-      "consistency_fixes": 0
+      "consistency_fixes": 2,
+      "details": {
+        "AC-1": { "verdict": "PASS", "tier": "T1" },
+        "AC-2": { "verdict": "FAIL", "tier": "T1" },
+        "AC-3": { "verdict": "FLAGGED", "tier": "T3" }
+      },
+      "journey_coverage": {
+        "AC-1": { "journey_id": "journey-1", "journey_title": "...", "verdict": "PASS", "steps_completed": 3 }
+      },
+      "root_cause": "3 criteria failed: AC-2, AC-4, AC-5",
+      "changes_applied": [
+        { "criterion": "AC-2", "type": "ac_failure", "file": "src/Component.tsx", "change": "Added missing button" }
+      ],
+      "files_modified": ["src/Component.tsx"],
+      "consistency_summary": { "violations": 0, "warnings": 3, "passes": 5 }
     }
   ],
   "phase_b": {
+    "phase": "b",
+    "timestamp": "2026-07-01T15:10:00.000Z",
     "usability_score": "15.5/21",
-    "personas_evaluated": ["deena-junior", "deena-senior"]
+    "personas_evaluated": ["deena-junior", "deena-senior"],
+    "dimension_scores": {
+      "workflow_continuity": 2.5,
+      "system_status": 3
+    },
+    "persona_summary": [
+      { "persona": "deena-junior", "patience_end": 70, "confusion_events": 2, "abandoned": false }
+    ]
   },
   "exit_reason": "all_pass",
   "total_criteria_fixed": 3,
-  "total_regressions": 0
+  "total_regressions": 0,
+  "files_modified": ["src/Component.tsx"]
 }
 ```
 
