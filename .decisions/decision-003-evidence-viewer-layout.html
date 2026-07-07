@@ -1,0 +1,725 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Decision 3: Evidence Viewer Layout — Evaluation Report Redesign</title>
+  <link href="https://fonts.googleapis.com/css2?family=Red+Hat+Display:wght@400;500;700&family=Red+Hat+Text:wght@400;500&family=Red+Hat+Mono&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Red Hat Text', -apple-system, sans-serif; background: #f1f5f9; color: #1a1a2e; min-height: 100vh; padding: 2rem; line-height: 1.6; }
+    header { text-align: center; margin-bottom: 2.5rem; padding-bottom: 1.5rem; border-bottom: 2px solid #e2e8f0; max-width: 1200px; margin-left: auto; margin-right: auto; }
+    .decision-number { font-size: 0.75rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: #64748b; }
+    header h1 { font-family: 'Red Hat Display', sans-serif; font-size: 1.6rem; font-weight: 700; color: #0f172a; letter-spacing: -0.02em; margin-top: 0.25rem; }
+    .category-badge { display: inline-block; padding: 4px 12px; border-radius: 999px; font-size: 0.7rem; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; margin-top: 0.5rem; }
+    .category-badge.interaction { background: #e0f2fe; color: #0369a1; }
+    .decision-description { font-size: 1rem; color: #475569; margin-top: 0.75rem; max-width: 700px; margin-left: auto; margin-right: auto; line-height: 1.7; }
+    .instruction { margin-top: 1rem; font-size: 0.85rem; background: #eff6ff; color: #1d4ed8; padding: 0.6rem 1.25rem; border-radius: 8px; display: inline-block; border: 1px solid #bfdbfe; }
+    .options-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; max-width: 1200px; margin: 0 auto 3rem; }
+    .option-card { background: white; border-radius: 16px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.08), 0 4px 16px rgba(0,0,0,0.04); border: 2px solid #e2e8f0; transition: all 0.2s ease; display: flex; flex-direction: column; }
+    .option-card:hover { border-color: #0066cc; box-shadow: 0 4px 20px rgba(0,102,204,0.12); }
+    .card-header { padding: 1rem 1.25rem 0.75rem; border-bottom: 1px solid #f1f5f9; display: flex; flex-direction: column; gap: 0.2rem; }
+    .card-header-top { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
+    .option-label { font-size: 0.65rem; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; }
+    .option-card.option-a .option-label { color: #7c3aed; }
+    .option-card.option-b .option-label { color: #0891b2; }
+    .option-card.option-c .option-label { color: #059669; }
+    .option-card.option-d .option-label { color: #dc2626; }
+    .option-title { font-family: 'Red Hat Display', sans-serif; font-size: 1.05rem; font-weight: 600; color: #0f172a; }
+    .recommended-badge { background: #f59e0b; color: white; padding: 3px 10px; border-radius: 999px; font-size: 0.65rem; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; white-space: nowrap; }
+    .card-badges { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; flex-shrink: 0; }
+    .chosen-badge { background: #059669; color: white; padding: 3px 10px; border-radius: 999px; font-size: 0.65rem; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; display: none; }
+    .option-card.chosen .chosen-badge { display: inline-block; }
+    .option-card.chosen { border: 3px solid #059669; box-shadow: 0 4px 20px rgba(5,150,105,0.15); }
+    .option-card.not-chosen { opacity: 0.55; filter: grayscale(20%); }
+    .option-card.not-chosen:hover { opacity: 0.8; filter: none; }
+    .visual-preview { padding: 1.25rem; background: #f8fafc; min-height: 280px; display: flex; align-items: center; justify-content: center; flex: 1; }
+    .option-summary { padding: 1rem 1.25rem; font-size: 0.875rem; color: #334155; line-height: 1.65; border-top: 1px solid #f1f5f9; }
+    .verdict { display: grid; grid-template-columns: 1fr 1fr; border-top: 1px solid #f1f5f9; }
+    .pros, .cons { padding: 1rem 1.25rem; }
+    .pros { border-right: 1px solid #f1f5f9; }
+    .pros h3, .cons h3 { font-size: 0.65rem; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 0.5rem; }
+    .pros h3 { color: #059669; }
+    .cons h3 { color: #e11d48; }
+    .verdict ul { list-style: none; padding: 0; }
+    .verdict li { font-size: 0.8rem; color: #475569; line-height: 1.5; padding: 0.15rem 0; padding-left: 1rem; position: relative; }
+    .pros li::before { content: "\2713 "; color: #059669; font-weight: 700; position: absolute; left: 0; }
+    .cons li::before { content: "! "; color: #e11d48; font-weight: 700; position: absolute; left: 0; }
+    .card-footer { padding: 0.75rem 1.25rem; background: #f8fafc; border-top: 1px solid #f1f5f9; }
+    .tell-ai { font-size: 0.75rem; color: #64748b; background: #f1f5f9; padding: 0.35rem 0.65rem; border-radius: 6px; display: block; font-family: 'Red Hat Mono', monospace; }
+    .comparison-section { max-width: 1200px; margin: 0 auto 3rem; }
+    .comparison-section h2 { font-family: 'Red Hat Display', sans-serif; font-size: 1.1rem; font-weight: 700; color: #0f172a; margin-bottom: 1rem; }
+    .comparison-table-wrapper { overflow-x: auto; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.08), 0 4px 16px rgba(0,0,0,0.04); }
+    .comparison-table { width: 100%; border-collapse: collapse; background: white; font-size: 0.85rem; }
+    .comparison-table th { padding: 0.85rem 1rem; text-align: left; font-weight: 700; font-size: 0.75rem; letter-spacing: 0.05em; text-transform: uppercase; border-bottom: 2px solid #e2e8f0; white-space: nowrap; }
+    .comparison-table th:first-child { position: sticky; left: 0; z-index: 2; background: #f8fafc; color: #64748b; }
+    .comparison-table th.col-a { color: #7c3aed; }
+    .comparison-table th.col-b { color: #0891b2; }
+    .comparison-table th.col-c { color: #059669; }
+    .comparison-table th.col-d { color: #dc2626; }
+    .comparison-table td { padding: 0.75rem 1rem; border-bottom: 1px solid #f1f5f9; color: #334155; }
+    .comparison-table td:first-child { font-weight: 600; color: #475569; position: sticky; left: 0; background: #f8fafc; }
+    .comparison-table tr:nth-child(even) td { background: #fafbfc; }
+    .comparison-table tr:nth-child(even) td:first-child { background: #f1f5f9; }
+    .comparison-table .col-recommended { background: #fffbeb !important; }
+    .comparison-table tr:last-child td { border-bottom: none; }
+    .page-footer { max-width: 1200px; margin: 0 auto; text-align: center; padding: 1.5rem; background: white; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+    .page-footer p { font-size: 0.85rem; color: #64748b; margin: 0.3rem 0; }
+    .page-footer strong { color: #334155; }
+    .back-link { display: inline-block; margin-bottom: 1.5rem; font-size: 0.85rem; color: #0066cc; text-decoration: none; }
+    .back-link:hover { text-decoration: underline; }
+    @media (max-width: 768px) { .options-grid { grid-template-columns: 1fr; } body { padding: 1rem; } }
+
+    /* Modal wireframe styles */
+    .modal-wireframe {
+      width: 100%;
+      max-width: 300px;
+      background: #1a1a1a;
+      border-radius: 8px;
+      overflow: hidden;
+      font-family: 'Red Hat Text', sans-serif;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+    }
+
+    .mw-titlebar {
+      background: #2a2a2e;
+      padding: 6px 10px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid #3a3a3e;
+    }
+
+    .mw-titlebar-text {
+      font-size: 9px;
+      font-weight: 600;
+      color: #e4e4e7;
+    }
+
+    .mw-close {
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: #ef4444;
+      opacity: 0.8;
+    }
+
+    .mw-filter-bar {
+      background: #2a2a2e;
+      padding: 5px 10px;
+      display: flex;
+      gap: 4px;
+      border-bottom: 1px solid #3a3a3e;
+      flex-wrap: wrap;
+    }
+
+    .mw-chip {
+      padding: 2px 6px;
+      border-radius: 3px;
+      font-size: 7px;
+      font-weight: 600;
+      background: #3a3a3e;
+      color: #a1a1aa;
+    }
+
+    .mw-chip.active {
+      background: #0066cc;
+      color: white;
+    }
+
+    .mw-body {
+      display: flex;
+      min-height: 180px;
+    }
+
+    .mw-body-stack {
+      display: flex;
+      flex-direction: column;
+      min-height: 180px;
+    }
+
+    .mw-sidebar {
+      width: 90px;
+      background: #222226;
+      border-right: 1px solid #3a3a3e;
+      padding: 6px;
+      overflow: hidden;
+    }
+
+    .mw-tree-item {
+      padding: 3px 5px;
+      font-size: 7px;
+      color: #a1a1aa;
+      border-radius: 3px;
+      margin-bottom: 1px;
+      display: flex;
+      align-items: center;
+      gap: 3px;
+    }
+
+    .mw-tree-item.active {
+      background: #3a3a3e;
+      color: #e4e4e7;
+    }
+
+    .mw-tree-item.persona {
+      font-weight: 700;
+      color: #e4e4e7;
+      margin-top: 4px;
+    }
+
+    .mw-tree-item.persona:first-child {
+      margin-top: 0;
+    }
+
+    .mw-dot {
+      width: 5px;
+      height: 5px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    .mw-dot.orange { background: #f97316; }
+    .mw-dot.dim { background: #4a4a4e; }
+
+    .mw-main {
+      flex: 1;
+      padding: 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .mw-screenshot {
+      background: #2a2a2e;
+      border-radius: 4px;
+      height: 90px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 8px;
+      color: #6b7280;
+      border: 1px solid #3a3a3e;
+    }
+
+    .mw-context {
+      background: #222226;
+      border-radius: 4px;
+      padding: 6px 8px;
+      font-size: 7px;
+      color: #a1a1aa;
+      line-height: 1.5;
+      flex: 1;
+    }
+
+    .mw-context strong {
+      color: #e4e4e7;
+      display: block;
+      margin-bottom: 2px;
+    }
+
+    .mw-nav-buttons {
+      display: flex;
+      gap: 4px;
+      justify-content: flex-end;
+      padding: 4px 8px;
+      background: #2a2a2e;
+      border-top: 1px solid #3a3a3e;
+    }
+
+    .mw-btn {
+      padding: 3px 8px;
+      border-radius: 3px;
+      font-size: 7px;
+      font-weight: 600;
+      background: #3a3a3e;
+      color: #e4e4e7;
+    }
+
+    .mw-btn.primary {
+      background: #0066cc;
+      color: white;
+    }
+
+    .mw-top-panel {
+      padding: 8px;
+      border-bottom: 1px solid #3a3a3e;
+    }
+
+    .mw-bottom-panel {
+      flex: 1;
+      padding: 8px;
+    }
+
+    .mw-horizontal-tree {
+      display: flex;
+      gap: 3px;
+      padding: 4px 0;
+      overflow: hidden;
+    }
+
+    .mw-h-step {
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background: #3a3a3e;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 6px;
+      color: #a1a1aa;
+      flex-shrink: 0;
+    }
+
+    .mw-h-step.active {
+      background: #0066cc;
+      color: white;
+    }
+
+    .mw-h-step.evidence {
+      background: #f97316;
+      color: white;
+    }
+
+    .mw-persona-tabs {
+      display: flex;
+      gap: 0;
+      border-bottom: 1px solid #3a3a3e;
+      margin-bottom: 6px;
+    }
+
+    .mw-persona-tab {
+      padding: 4px 8px;
+      font-size: 7px;
+      color: #a1a1aa;
+      border-bottom: 2px solid transparent;
+    }
+
+    .mw-persona-tab.active {
+      color: #e4e4e7;
+      border-bottom-color: #0066cc;
+    }
+
+    .mw-drawer-handle {
+      width: 100%;
+      height: 3px;
+      background: #4a4a4e;
+      border-radius: 2px;
+      margin: 4px auto;
+      max-width: 40px;
+    }
+  </style>
+</head>
+<body>
+  <a href="index.html" class="back-link">&larr; All Decisions</a>
+
+  <header>
+    <span class="decision-number">Decision 3 of 5</span>
+    <h1>Evidence Viewer Layout</h1>
+    <span class="category-badge interaction">Interaction</span>
+    <p class="decision-description">
+      This is the interactive modal that replaces "View Walkthrough." When a designer clicks "View Evidence" from the AC table, this opens. It needs to show: an AC filter bar, a persona-organized tree of walkthrough steps, and a detail panel with screenshots + think-aloud text. The question is how these three elements are physically arranged.
+    </p>
+    <p class="instruction">
+      Respond with: <strong>"Option B"</strong> &middot; <strong>"Option A but [change]"</strong> &middot; <strong>"more options"</strong>
+    </p>
+  </header>
+
+  <main class="options-grid">
+    <!-- OPTION A -->
+    <article class="option-card option-a">
+      <div class="card-header">
+        <div class="card-header-top">
+          <span class="option-label">Option A</span>
+          <div class="card-badges">
+            <span class="recommended-badge">Recommended</span>
+            <span class="chosen-badge">Chosen</span>
+          </div>
+        </div>
+        <h2 class="option-title">Sidebar Tree + Main Panel</h2>
+      </div>
+
+      <div class="visual-preview">
+        <div class="modal-wireframe">
+          <div class="mw-titlebar">
+            <div class="mw-titlebar-text">Evidence Viewer</div>
+            <div class="mw-close"></div>
+          </div>
+          <div class="mw-filter-bar">
+            <div class="mw-chip active">AC-1</div>
+            <div class="mw-chip">AC-2</div>
+            <div class="mw-chip">AC-3</div>
+            <div class="mw-chip">AC-4</div>
+            <div class="mw-chip">All</div>
+          </div>
+          <div class="mw-body">
+            <div class="mw-sidebar">
+              <div class="mw-tree-item persona">Deena Jr</div>
+              <div class="mw-tree-item"><span class="mw-dot dim"></span> Step 1</div>
+              <div class="mw-tree-item active"><span class="mw-dot orange"></span> Step 2</div>
+              <div class="mw-tree-item"><span class="mw-dot orange"></span> Step 3</div>
+              <div class="mw-tree-item"><span class="mw-dot dim"></span> Step 4</div>
+              <div class="mw-tree-item persona">Maude Sr</div>
+              <div class="mw-tree-item"><span class="mw-dot orange"></span> Step 1</div>
+              <div class="mw-tree-item"><span class="mw-dot dim"></span> Step 2</div>
+              <div class="mw-tree-item"><span class="mw-dot dim"></span> Step 3</div>
+            </div>
+            <div class="mw-main">
+              <div class="mw-screenshot">[Screenshot: RBAC table view]</div>
+              <div class="mw-context">
+                <strong>What I see:</strong> A table with 4 roles listed...
+                <br><strong>What I'm thinking:</strong> Looking for the "Add role" button...
+                <br><strong>Confidence:</strong> High &middot; <strong>Patience:</strong> 90%
+              </div>
+            </div>
+          </div>
+          <div class="mw-nav-buttons">
+            <div class="mw-btn">&larr; Prev</div>
+            <div class="mw-btn primary">Next &rarr;</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="option-summary">
+        The classic IDE/file-explorer pattern. Left sidebar shows the persona tree with step nodes (orange dots for evidence). Right panel shows the selected step's screenshot and think-aloud detail. AC filter chips live in a top bar above both panels. I recommend this because it's the most natural mapping to Zack's spec — tree on left, detail on right, filter across the top.
+      </div>
+
+      <div class="verdict">
+        <div class="pros">
+          <h3>Works well when</h3>
+          <ul>
+            <li>Multiple personas with 8-10 steps each — tree stays navigable</li>
+            <li>Familiar pattern (VS Code, Finder) — low learning curve</li>
+            <li>Persistent tree lets you jump between any step instantly</li>
+          </ul>
+        </div>
+        <div class="cons">
+          <h3>Watch out for</h3>
+          <ul>
+            <li>Sidebar takes horizontal space from the screenshot</li>
+            <li>On narrow viewports, sidebar may need to collapse</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="card-footer">
+        <code class="tell-ai">Respond with: "Option A"</code>
+      </div>
+    </article>
+
+    <!-- OPTION B -->
+    <article class="option-card option-b">
+      <div class="card-header">
+        <div class="card-header-top">
+          <span class="option-label">Option B</span>
+          <div class="card-badges">
+            <span class="chosen-badge">Chosen</span>
+          </div>
+        </div>
+        <h2 class="option-title">Horizontal Stepper + Detail Below</h2>
+      </div>
+
+      <div class="visual-preview">
+        <div class="modal-wireframe">
+          <div class="mw-titlebar">
+            <div class="mw-titlebar-text">Evidence Viewer</div>
+            <div class="mw-close"></div>
+          </div>
+          <div class="mw-filter-bar">
+            <div class="mw-chip active">AC-1</div>
+            <div class="mw-chip">AC-2</div>
+            <div class="mw-chip">AC-3</div>
+            <div class="mw-chip">All</div>
+          </div>
+          <div class="mw-body-stack">
+            <div class="mw-top-panel">
+              <div class="mw-persona-tabs">
+                <div class="mw-persona-tab active">Deena Jr</div>
+                <div class="mw-persona-tab">Maude Sr</div>
+              </div>
+              <div class="mw-horizontal-tree">
+                <div class="mw-h-step">1</div>
+                <div class="mw-h-step evidence">2</div>
+                <div class="mw-h-step evidence">3</div>
+                <div class="mw-h-step">4</div>
+                <div class="mw-h-step">5</div>
+                <div class="mw-h-step evidence">6</div>
+                <div class="mw-h-step">7</div>
+                <div class="mw-h-step">8</div>
+                <div class="mw-h-step">9</div>
+                <div class="mw-h-step">10</div>
+              </div>
+            </div>
+            <div class="mw-bottom-panel">
+              <div class="mw-screenshot" style="height:70px;">[Screenshot: Step 2 view]</div>
+              <div class="mw-context" style="margin-top:4px;">
+                <strong>What I see:</strong> Table with role assignments...
+                <br><strong>Thinking:</strong> Where is the create button?
+              </div>
+            </div>
+          </div>
+          <div class="mw-nav-buttons">
+            <div class="mw-btn">&larr; Prev</div>
+            <div class="mw-btn primary">Next &rarr;</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="option-summary">
+        Personas switch via tabs at the top. Steps are a horizontal dot sequence (like a progress bar) with orange highlights for evidence. The detail panel lives below the stepper. Full-width layout gives the screenshot maximum space. Feels like stepping through a photo gallery.
+      </div>
+
+      <div class="verdict">
+        <div class="pros">
+          <h3>Works well when</h3>
+          <ul>
+            <li>Screenshots need maximum width (full modal width)</li>
+            <li>Linear step-through is the primary use case</li>
+            <li>Fewer personas (2-3) — tabs work well</li>
+          </ul>
+        </div>
+        <div class="cons">
+          <h3>Watch out for</h3>
+          <ul>
+            <li>10+ steps overflow horizontally — needs scroll</li>
+            <li>Can't see both personas' trees simultaneously</li>
+            <li>Less spatial overview than a vertical tree</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="card-footer">
+        <code class="tell-ai">Respond with: "Option B"</code>
+      </div>
+    </article>
+
+    <!-- OPTION C -->
+    <article class="option-card option-c">
+      <div class="card-header">
+        <div class="card-header-top">
+          <span class="option-label">Option C</span>
+          <div class="card-badges">
+            <span class="chosen-badge">Chosen</span>
+          </div>
+        </div>
+        <h2 class="option-title">Split Screen (Screenshot | Context)</h2>
+      </div>
+
+      <div class="visual-preview">
+        <div class="modal-wireframe">
+          <div class="mw-titlebar">
+            <div class="mw-titlebar-text">Evidence Viewer &middot; Deena Jr &middot; Step 2 of 8</div>
+            <div class="mw-close"></div>
+          </div>
+          <div class="mw-filter-bar">
+            <div class="mw-chip">Deena Jr</div>
+            <div class="mw-chip">Maude Sr</div>
+            <div style="flex:1;"></div>
+            <div class="mw-chip active">AC-1</div>
+            <div class="mw-chip">AC-2</div>
+          </div>
+          <div class="mw-body">
+            <div style="flex:1.2;padding:8px;display:flex;align-items:center;justify-content:center;">
+              <div class="mw-screenshot" style="height:150px;width:100%;">[Screenshot: Full-size RBAC view]</div>
+            </div>
+            <div style="flex:0.8;padding:8px;background:#222226;border-left:1px solid #3a3a3e;">
+              <div class="mw-context" style="background:transparent;padding:0;">
+                <strong>Step 2 of 8</strong>
+                <br><br><strong>What I see:</strong> A table showing 4 roles with checkboxes...
+                <br><br><strong>What I'm thinking:</strong> I need to find where to create a new role...
+                <br><br><strong>Action:</strong> Click "Add role" button in top right
+                <br><br><strong>Confidence:</strong> High
+                <br><strong>Patience:</strong> 90%
+                <br><br><span style="color:#f97316;">Evidence for: AC-1</span>
+              </div>
+            </div>
+          </div>
+          <div class="mw-nav-buttons">
+            <div class="mw-btn">&larr; Prev</div>
+            <div class="mw-btn">Step 2/8</div>
+            <div class="mw-btn primary">Next &rarr;</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="option-summary">
+        A horizontal split: screenshot takes 60% left, think-aloud context takes 40% right. No persistent tree — navigation is purely sequential (prev/next). Persona and AC selection happens via the top bar. The tree is replaced by a "Step N of M" indicator. Prioritizes immersion in each step over overview.
+      </div>
+
+      <div class="verdict">
+        <div class="pros">
+          <h3>Works well when</h3>
+          <ul>
+            <li>Detailed reading of each step's think-aloud is the goal</li>
+            <li>Large screenshots need significant viewport space</li>
+            <li>Linear walkthrough (like watching a replay)</li>
+          </ul>
+        </div>
+        <div class="cons">
+          <h3>Watch out for</h3>
+          <ul>
+            <li>No tree overview — can't see which steps have evidence at a glance</li>
+            <li>Jumping to a specific step requires sequential nav</li>
+            <li>Doesn't match the "evidence tree" spec from the ticket</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="card-footer">
+        <code class="tell-ai">Respond with: "Option C"</code>
+      </div>
+    </article>
+
+    <!-- OPTION D -->
+    <article class="option-card option-d">
+      <div class="card-header">
+        <div class="card-header-top">
+          <span class="option-label">Option D</span>
+          <div class="card-badges">
+            <span class="chosen-badge">Chosen</span>
+          </div>
+        </div>
+        <h2 class="option-title">Full-Page Overlay (No Modal)</h2>
+      </div>
+
+      <div class="visual-preview">
+        <div class="modal-wireframe" style="border-radius:0;">
+          <div class="mw-titlebar" style="background:#1a1a1a;">
+            <div class="mw-titlebar-text">&larr; Back to Report</div>
+            <div style="display:flex;gap:4px;">
+              <div class="mw-chip active">AC-1</div>
+              <div class="mw-chip">AC-2</div>
+              <div class="mw-chip">All</div>
+            </div>
+          </div>
+          <div class="mw-body" style="min-height:200px;">
+            <div class="mw-sidebar" style="width:100px;">
+              <div class="mw-tree-item persona">Deena Jr</div>
+              <div class="mw-tree-item"><span class="mw-dot dim"></span> Step 1</div>
+              <div class="mw-tree-item active"><span class="mw-dot orange"></span> Step 2</div>
+              <div class="mw-tree-item"><span class="mw-dot orange"></span> Step 3</div>
+              <div class="mw-tree-item"><span class="mw-dot dim"></span> Step 4</div>
+              <div class="mw-tree-item"><span class="mw-dot dim"></span> Step 5</div>
+              <div class="mw-tree-item persona">Maude Sr</div>
+              <div class="mw-tree-item"><span class="mw-dot orange"></span> Step 1</div>
+              <div class="mw-tree-item"><span class="mw-dot dim"></span> Step 2</div>
+              <div class="mw-tree-item"><span class="mw-dot dim"></span> Step 3</div>
+              <div class="mw-tree-item"><span class="mw-dot dim"></span> Step 4</div>
+            </div>
+            <div class="mw-main" style="gap:4px;">
+              <div class="mw-screenshot" style="height:110px;">[Full-width screenshot]</div>
+              <div class="mw-context" style="flex:1;">
+                <strong>What I see:</strong> A table with 4 roles...
+                <br><strong>Thinking:</strong> Need the create button...
+                <br><strong>Patience:</strong> 90% &middot; <strong>Conf:</strong> High
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="option-summary">
+        Not a modal at all — the evidence viewer takes over the entire page, with a "Back to Report" link in the header. Same sidebar tree + main panel layout as Option A, but with maximum viewport real estate. The screenshot can be truly full-size. Browser back button returns to the report.
+      </div>
+
+      <div class="verdict">
+        <div class="pros">
+          <h3>Works well when</h3>
+          <ul>
+            <li>Evidence review is a serious task, not a quick glance</li>
+            <li>Maximum screenshot fidelity needed</li>
+            <li>Long exploration sessions with many steps</li>
+          </ul>
+        </div>
+        <div class="cons">
+          <h3>Watch out for</h3>
+          <ul>
+            <li>Loses report context — can't see AC table while viewing evidence</li>
+            <li>Feels like a separate tool rather than part of the report</li>
+            <li>Self-contained HTML can't use URL routing (no back button)</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="card-footer">
+        <code class="tell-ai">Respond with: "Option D"</code>
+      </div>
+    </article>
+  </main>
+
+  <!-- COMPARISON TABLE -->
+  <section class="comparison-section">
+    <h2>How They Compare</h2>
+    <div class="comparison-table-wrapper">
+      <table class="comparison-table">
+        <thead>
+          <tr>
+            <th></th>
+            <th class="col-a col-recommended">A: Sidebar Tree</th>
+            <th class="col-b">B: Horizontal Stepper</th>
+            <th class="col-c">C: Split Screen</th>
+            <th class="col-d">D: Full-Page Overlay</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Evidence tree visible</td>
+            <td class="col-recommended">Always (left sidebar)</td>
+            <td>As dots (horizontal)</td>
+            <td>No tree — sequential only</td>
+            <td>Always (left sidebar)</td>
+          </tr>
+          <tr>
+            <td>Screenshot space</td>
+            <td class="col-recommended">Good (minus sidebar width)</td>
+            <td>Excellent (full width)</td>
+            <td>Good (60% split)</td>
+            <td>Excellent (full page)</td>
+          </tr>
+          <tr>
+            <td>Jump to any step</td>
+            <td class="col-recommended">One click</td>
+            <td>One click (dot)</td>
+            <td>Sequential only</td>
+            <td>One click</td>
+          </tr>
+          <tr>
+            <td>Cross-persona comparison</td>
+            <td class="col-recommended">Both visible in tree</td>
+            <td>Switch tabs to compare</td>
+            <td>Switch via top bar</td>
+            <td>Both visible in tree</td>
+          </tr>
+          <tr>
+            <td>Matches ticket spec</td>
+            <td class="col-recommended">Exact match (tree structure)</td>
+            <td>Partial (flat stepper)</td>
+            <td>No (missing tree)</td>
+            <td>Matches (tree) but not modal</td>
+          </tr>
+          <tr>
+            <td>Report context preserved</td>
+            <td class="col-recommended">Yes (modal overlay)</td>
+            <td>Yes (modal overlay)</td>
+            <td>Yes (modal overlay)</td>
+            <td>No (full page takeover)</td>
+          </tr>
+          <tr>
+            <td>Implementation complexity</td>
+            <td class="col-recommended">Medium</td>
+            <td>Low</td>
+            <td>Low</td>
+            <td>High (view switching)</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <div class="page-footer">
+    <p>Respond with: <strong>"Option A"</strong>, <strong>"Option C but [your change]"</strong>, or <strong>"more options"</strong></p>
+    <p>To change a past decision: <strong>"for decision-001 I want Option C instead"</strong></p>
+  </div>
+
+</body>
+</html>

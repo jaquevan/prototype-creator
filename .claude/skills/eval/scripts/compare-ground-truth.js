@@ -4,7 +4,7 @@
 const fs = require('fs');
 const path = require('path');
 
-const projectRoot = path.resolve(__dirname, '..');
+const projectRoot = require('./resolve-root').resolveProjectRoot();
 const artifactsBase = path.join(projectRoot, '.artifacts');
 
 // UX Designer manual evaluations from the Google Sheet (last synced 2026-06-16)

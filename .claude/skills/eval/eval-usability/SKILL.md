@@ -228,6 +228,10 @@ async function main() {
 
 **Launch one sub-agent PER PERSONA PER TASK (all in parallel):**
 
+CRITICAL: Use the Task tool with `run_in_background: true` for each persona-task pair to maximize parallelism. Each sub-agent gets its own Playwright browser context. Wait for ALL to complete before proceeding to Step 2.
+
+If parallel sub-agents are not available in the current execution context, fall back to sequential execution with separate browser contexts per persona. NEVER skip Playwright walkthroughs and score from Phase A evidence alone — Phase B REQUIRES independent persona navigation.
+
 Each persona completes ALL tasks from `extract-state.json > tasks_to_be_done`. For 2 personas and 3 tasks, this means 6 parallel sub-agents.
 
 Each persona-task agent receives ONLY:
@@ -298,6 +302,19 @@ Screenshot rules (these are seen by a human reviewer):
 
 Save screenshots to: .artifacts/<KEY>/screenshots/persona-<persona-id>-task-<N>-step-<M>.png
 Write your think-aloud trace to: .artifacts/<KEY>/usability-thinkaloud-<persona-id>-task-<N>.md
+
+CRITICAL — SYNCHRONOUS TRACE WRITING:
+At EACH step, you MUST write BOTH:
+1. Append the step to the markdown think-aloud file (Phase 1 Actor format)
+2. Write the step entry to .artifacts/<KEY>/persona-results.json trace[] array
+
+The persona-results.json entry for this step must include:
+  { "step": M, "what_i_see": "...", "what_im_thinking": "...", "action": "...",
+    "confidence": "high|medium|low", "patience": N,
+    "screenshot": ".artifacts/<KEY>/screenshots/persona-<id>-task-<N>-step-<M>.png",
+    "evidence_for_acs": ["AC-X"] }
+
+Do NOT defer trace writing to a later step. Each screenshot MUST have a corresponding trace entry written at the same time.
 ```
 
 **Screenshot naming:** `persona-<id>-task-<N>-step-<M>.png` where N is the task index (1-based) and M is the step number. This separates screenshots by journey.
@@ -423,6 +440,17 @@ Scale: 0=Broken, 1=Fragmented, 2=Functional, 3=Seamless.
 - Use strictest interpretation (expected path, not alternate paths)
 - Journey count must be deterministic (from extract-state.json)
 
+**DIMENSION 2 CONTEXT RULE (Cross-Persona Handoffs):**
+If ALL of the following are true:
+  - extract-state.json has only 1 persona type in journey_definitions (e.g., only "data scientist" variants)
+  - No AC mentions "handoff", "collaboration", "share", "another user", or "another role"
+  - The feature is inherently single-user (creation, viewing, configuration — not admin→user workflows)
+Then: Score Dimension 2 as **N/A**. Compute overall_score from 6 dimensions (out of 18 max).
+Write `"score": "N/A"` in the CSV usability section and note "single-user feature" in evidence.
+
+If the feature involves ANY cross-role interaction (e.g., admin creates policy, user consumes it):
+Score normally using the full rubric criteria.
+
 ### Step 4: Append Section 2 to CSV
 
 APPEND to existing `evaluation-report.csv` (do NOT overwrite Section 1):
@@ -438,13 +466,17 @@ values — if one persona scores 2 and another scores 3, write `2.5` not `2`. Do
 
 The `persona_scores` column stores individual scores as a JSON object for attribution.
 
-### Step 5: Think-Aloud Narration
+### Step 5: Phase 2 Evaluator Append
 
-For each selected persona (1-2), produce first-person think-aloud from the persona walkthrough evidence:
+This step ONLY appends the Phase 2 Evaluator section to existing think-aloud markdown files.
+It NEVER rewrites or replaces Phase 1 Actor steps (those were written synchronously during Step 1d walkthroughs).
 
-**Phase 1 — The Actor:** Walk through journey evidence in-character. Track patience, confusion events, CLI escapes. Log special events: `[CLI ESCAPE]`, `[CONTEXT LOSS]`, `[EXPECTED vs ACTUAL]`, `[MISSING FEEDBACK]`.
+**If the think-aloud markdown file does NOT already contain Phase 1 steps:**
+Stop. The walkthrough did not produce trace data. Go back and re-run Step 1d for this persona — do NOT generate retrospective narration from screenshots alone.
 
-**Phase 2 — The Evaluator:** Switch to Senior UX Researcher. Score all 7 dimensions using Phase 1 trace as evidence. Map findings to JTBD.
+For each persona-task markdown file that already has Phase 1 Actor content, APPEND the Phase 2 Evaluator section:
+
+**Phase 2 — The Evaluator:** Switch to Senior UX Researcher. Score all 7 dimensions using the Phase 1 trace (already written above) as evidence. Map findings to JTBD.
 
 **REQUIRED: Write a standalone .md file for EACH evaluated persona PER TASK:**
 
@@ -500,7 +532,37 @@ Overall: X/21
 Key insight: [most actionable finding]
 ```
 
+**After scoring all 7 dimensions**, the evaluator must annotate each trace step with AC attribution:
+
+For each step in the persona's trace, add `evidence_for_acs: string[]` — the AC IDs for which that step provides observable evidence (positive or negative). The evaluator determines evidence by cross-referencing the task's `covers_acs` (from `extract-state.json > tasks_to_be_done[]`) with what was actually observed or attempted at that step. Only steps where the persona interacted with UI directly related to a criterion get tagged. Steps with no AC relevance (e.g., initial navigation, waiting for page load) get an empty array `[]`.
+
+Example: If a task covers `["AC-1", "AC-4", "AC-6"]` and step 3 shows the persona expanding a deployment row that demonstrates AC-4's queue status visibility, then step 3 gets `evidence_for_acs: ["AC-4"]`. A step where the persona merely clicks a nav link to reach the page gets `evidence_for_acs: []`.
+
+> **REQUIRED:** The `evidence_for_acs` field is REQUIRED on every trace step. If a step has no AC relevance, use an empty array `[]`. This enables the discoverability matrix — cross-referencing Phase A PASS verdicts with Phase B persona navigation success.
+
 This file is what renders in the report's Personas tab. If it doesn't exist, the tab shows degraded content. The file must cover EVERY journey step with the persona's reaction — not a summary, but a step-by-step trace.
+
+**Discoverability Summary (write after all persona walkthroughs):**
+
+After all persona-task traces are complete, produce `.artifacts/<KEY>/discoverability-matrix.json`:
+
+```json
+{
+  "generated_at": "<ISO timestamp>",
+  "acs": [
+    { "criterion_id": "AC-1", "phase_a_verdict": "PASS", "persona_discovered": true, "discovery_method": "independent" },
+    { "criterion_id": "AC-4", "phase_a_verdict": "PASS", "persona_discovered": true, "discovery_method": "assisted" },
+    { "criterion_id": "AC-6", "phase_a_verdict": "PASS", "persona_discovered": false, "discovery_method": "not_reached" }
+  ],
+  "discoverability_rate": 0.67,
+  "summary": "4/6 passed ACs were independently discoverable by personas"
+}
+```
+
+For each AC that passed Phase A, check whether ANY persona trace step has `evidence_for_acs` containing that AC ID:
+- `"independent"` — persona found it without hints
+- `"assisted"` — persona found it via navigation-hints.json (assisted step)
+- `"not_reached"` — no persona trace step references this AC
 
 ### Step 6: Write persona-results.json
 
@@ -525,7 +587,8 @@ Format: array of persona-task results, one entry per persona per task:
         "action": "...",
         "confidence": "high|medium|low",
         "patience": 100,
-        "screenshot": ".artifacts/<KEY>/screenshots/persona-<id>-task-1-step-1.png"
+        "screenshot": ".artifacts/<KEY>/screenshots/persona-<id>-task-1-step-1.png",
+        "evidence_for_acs": ["AC-1"]
       }
     ],
     "screenshots": ["<paths>"],
@@ -540,6 +603,8 @@ Format: array of persona-task results, one entry per persona per task:
 ```
 
 Even for single-task runs, wrap the single task with `task_index: 1`. This eliminates the need for fallback paths in the renderer.
+
+**VALIDATION GATE (BLOCKING):** After writing persona-results.json, verify that EVERY entry has a non-empty `trace[]` array. If any entry has `trace: []` (empty), the walkthrough for that persona-task pair FAILED to produce live trace data and MUST be re-run (return to Step 1d for that persona-task). Do NOT proceed to Step 7 with empty traces — this was the root cause of the hydrate dependency.
 
 ### Step 7: Generate refinement suggestions
 

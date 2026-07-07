@@ -15,6 +15,7 @@ Phase 1 of the eval pipeline. Gathers all context needed for evaluation from Jir
 |-------|-------------|----------|
 | Jira story key | e.g., `RHAISTRAT-1536` | Yes |
 | `--workspace` | Path to prototype repo (for MR delta extraction) | No |
+| `--force-extract` | Skip cache check and re-fetch from Jira | No |
 | `.artifacts/<KEY>/rfe-snapshot.md` | Frozen RFE content from prototype creation | No |
 | `.artifacts/<KEY>/decisions/decisions.json` | Design decisions from prototype creation | No |
 | `.artifacts/<KEY>/decisions/strategy-brief.md` | Strategy brief from creation | No |
@@ -29,6 +30,22 @@ Phase 1 of the eval pipeline. Gathers all context needed for evaluation from Jir
 | `.artifacts/<KEY>/outcome-context.json` | Parent Outcome ticket context (if discoverable) |
 
 ## Procedure
+
+### Step 0: Cache Check
+
+Before fetching from Jira, check if cached artifacts exist and are fresh:
+
+```
+if .artifacts/<KEY>/extract-state.json exists:
+  Read extracted_at field from the file
+  if extracted_at exists AND (now - extracted_at) < 24 hours AND --force-extract NOT set:
+    echo "Using cached extract ($(age) old). Pass --force-extract to re-fetch."
+    EXIT EARLY — skip Steps 1–9, reuse existing artifacts
+  else:
+    Proceed with full extraction (cache expired or forced)
+else:
+  Proceed with full extraction (no cache)
+```
 
 ### Step 1: Fetch Jira Story
 
@@ -135,6 +152,20 @@ After journeys are defined, produce a `tasks_to_be_done` array in extract-state.
   ]
 }
 ```
+
+**After generating tasks_to_be_done**, compute uncovered ACs:
+```
+uncovered = ac_list.filter(ac => no task in tasks_to_be_done has ac.criterion_id in covers_acs)
+```
+If any ACs are uncovered, add to extract-state.json:
+```json
+{
+  "phase_a_only_acs": [
+    { "criterion_id": "AC-9", "reason": "backend-only (BFF size limit)" }
+  ]
+}
+```
+These ACs will be verified by Phase A (code analysis + Playwright) but NOT exercised in Phase B persona walkthroughs. The report will show them with a "Phase A only" badge.
 
 ### Step 6: Build Breadcrumb
 

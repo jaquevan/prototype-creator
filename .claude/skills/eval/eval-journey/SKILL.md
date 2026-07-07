@@ -373,9 +373,28 @@ Even in x-ray mode where all journeys may visit the same route, each journey MUS
 
 Do NOT reuse screenshots across journeys with `screenshot_reused: true` unless the step is genuinely verifying the exact same visual element that a prior journey already captured. Convenience reuse (same page, different AC) produces misleading evidence.
 
+**MANDATORY FINAL-STEP CAPTURE:**
+
+Every journey function MUST end with a screenshot capture as the final line before returning. This captures the post-action state (the result of the last assertion). The generated script pattern:
+
+```javascript
+async function runJourney1(page) {
+  // ... navigation and assertions ...
+  // MANDATORY: final screenshot showing post-action state
+  await captureAndValidate(page, 'screenshots/journey-1-step-N.png', null);
+}
+```
+
+**Per-step screenshot uniqueness enforcement:**
+- Each step `M` in journey `N` MUST write to `screenshots/journey-N-step-M.png` (matching its own indices).
+- If a step's `screenshot` field in journey-log.json references a DIFFERENT step's file (e.g., step 4 points to `journey-1-step-3.png`), AND `"screenshot_reused": true` is NOT set on that step, the journey is INVALID and must be re-run with a corrected script.
+- After running `journey-test.mjs`, validate: count screenshot files per journey matches step count. If mismatch, regenerate and re-run before writing journey-log.json.
+
 ### Step 6: Assign verdicts (EVERY AC must get exactly one verdict)
 
 After all journeys complete, assign verdicts for EVERY AC in the CSV.
+
+**T5 criteria (headless limitation):** Skip journey generation for T5 ACs entirely. They are pre-assigned verdict=FLAGGED with rationale="Requires headed browser" and human_action="Verify manually in headed browser" at classify time. Do not attempt Playwright verification.
 
 **Journey verdict is determined by AC-critical steps only:**
 
@@ -435,6 +454,16 @@ Before writing the CSV, verify that journey-log.json and CSV verdicts are consis
 - If identical screenshots exist across all steps of a journey (same visual state), that journey cannot provide PASS evidence — the feature was not demonstrated visually.
 
 Update `evaluation-report.csv` Section 1 with verdicts, rationale, evidence, fix_action, fix_file.
+
+**MANDATORY AUTOMATED VALIDATION — run AFTER writing CSV:**
+
+```bash
+node .claude/skills/eval/scripts/validate-verdicts.js .artifacts/<KEY>/
+```
+
+If this script exits with code 1 (violations found), you MUST fix the CSV before proceeding to Step 7. For each violation:
+- If the journey FAIL was legitimate (feature not demonstrated visually), change CSV verdict to FAIL or FLAGGED.
+- If the journey FAIL was a locator/timing issue but the feature IS visible in screenshots, keep CSV as PASS and update the journey-log.json entry to reflect the corrected verdict with rationale.
 
 ### Step 7: Write journey-log.json
 
@@ -587,3 +616,27 @@ if (visible) {
 ```
 
 The generated script MUST use Playwright's `.isVisible()` before treating any element as present. If the script uses `page.evaluate()` for verification, it MUST also confirm visibility with Playwright's API.
+
+### Locator Strategy Hierarchy
+
+When selecting elements for interaction or verification, prefer strategies higher in this list. Use lower strategies ONLY when those above are unavailable in the page:
+
+1. **data-testid attribute:** `page.locator('[data-testid="deploy-agent-btn"]')`
+2. **Role + accessible name:** `page.getByRole('button', { name: 'Deploy agent' })`
+3. **Row-scoped selector:** `page.locator('tr').filter({ hasText: 'my-agent' }).locator('button')`
+4. **Text content:** `page.getByText('Deploy agent', { exact: true })`
+5. **CSS class (PF-prefixed):** `page.locator('.pf-v6-c-button.pf-m-primary')`
+6. **Element ID (LAST RESORT):** `page.locator('#deploy-btn')`
+
+**Table/list-specific rule:** When verifying content in a table or list, ALWAYS scope to the target row first. NEVER use bare ID selectors for elements that appear in repeated rows.
+
+```javascript
+// WRONG — ID may repeat across rows or match wrong row
+const status = page.locator('#agent-status');
+
+// RIGHT — scope to the specific row first
+const row = page.locator('tr').filter({ hasText: 'my-agent-name' });
+const status = row.locator('[data-label="Status"]');
+```
+
+**Locator retry on timeout:** If a locator times out (30s), try the next strategy in the hierarchy before failing the step. Log the fallback as `"locator_fallback": true` in the journey step metadata.

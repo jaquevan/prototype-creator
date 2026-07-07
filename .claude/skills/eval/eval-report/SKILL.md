@@ -90,6 +90,8 @@ console.log('journey-log.json format validated: ' + jl.journeys.length + ' journ
 
 If validation fails, the journey-log must be fixed before rendering. The format errors will tell you exactly which fields are missing.
 
+**Note on persona-results.json:** Trace step objects may include an optional `evidence_for_acs: string[]` field containing AC IDs for which that step provides observable evidence. This field is accepted but not required — when absent, the report renderer falls back to task-level `covers_acs` for step highlighting.
+
 ### Step 2: Render the HTML report
 
 ```bash

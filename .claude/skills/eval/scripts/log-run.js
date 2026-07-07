@@ -15,7 +15,7 @@ const noteArg = process.argv.find(a => a.startsWith('--note='));
 const note = noteArg ? noteArg.slice(7).replace(/"/g, '') : '';
 
 const absArtifacts = path.resolve(artifactsDir);
-const projectRoot = path.resolve(__dirname, '..');
+const projectRoot = require('./resolve-root').resolveProjectRoot();
 const runsDir = path.join(projectRoot, '.artifacts', 'runs');
 const logPath = path.join(runsDir, 'run-log.csv');
 

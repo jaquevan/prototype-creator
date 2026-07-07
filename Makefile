@@ -1,4 +1,4 @@
-.PHONY: test test-unit test-scripts setup clean context
+.PHONY: test test-unit test-scripts setup clean clean-key context
 
 # Run all tests
 test:
@@ -37,3 +37,10 @@ report:
 publish-report:
 	@if [ -z "$(KEY)" ]; then echo "Usage: make publish-report KEY=RHAISTRAT-1536"; exit 1; fi
 	bash .claude/skills/eval/scripts/publish-report.sh .artifacts/$(KEY)/
+
+# Clean artifacts for a single prototype key
+# Usage: make clean-key KEY=RHAISTRAT-1742
+clean-key:
+	@if [ -z "$(KEY)" ]; then echo "Usage: make clean-key KEY=RHAISTRAT-1234"; exit 1; fi
+	rm -rf .artifacts/$(KEY)/
+	@echo "Cleared .artifacts/$(KEY)/"

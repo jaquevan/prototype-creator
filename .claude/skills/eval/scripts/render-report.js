@@ -13,7 +13,7 @@ if (!artifactsDir) {
 }
 
 const absArtifacts = path.resolve(artifactsDir);
-const projectRoot = path.resolve(__dirname, '..');
+const projectRoot = require('./resolve-root').resolveProjectRoot();
 const templatePath = path.join(projectRoot, 'templates', 'evaluation-report.html');
 
 // ---------------------------------------------------------------------------
@@ -63,7 +63,7 @@ function badgeHtml(verdict, acId) {
   const v = String(verdict).toUpperCase();
   const cls = v === 'PASS' ? 'badge-pass' : v === 'FAIL' ? 'badge-fail' : 'badge-flagged';
   if (v === 'FLAGGED' && acId) {
-    return `<span class="badge ${cls}" style="cursor:pointer" onclick="openReviewModal('${escapeHtml(acId)}')" title="Click to review">${v}</span>`;
+    return `<span class="badge ${cls}" style="cursor:pointer" onclick="openReviewPanel('${escapeHtml(acId)}')" title="Click to review">${v}</span>`;
   }
   return `<span class="badge ${cls}">${v}</span>`;
 }
@@ -384,38 +384,6 @@ function loadScreenshots(screenshotsDir) {
 // Build tokens
 // ---------------------------------------------------------------------------
 
-function buildReportIntroHtml() {
-  const extractState = readJsonOr(path.join(absArtifacts, 'extract-state.json'), null);
-  const delta = normalizeDelta(readJsonOr(path.join(absArtifacts, 'mr-delta.json'), null));
-  const protoId = extractPrototypeId();
-
-  const knownMRs = { 'RHAISTRAT-1527':168,'RHAISTRAT-133':169,'RHAISTRAT-1492':170,'RHAISTRAT-1267':167,'RHAISTRAT-1536':171,'RHAISTRAT-1535':172,'RHAISTRAT-1745':176,'RHAISTRAT-1474':173,'RHAISTRAT-1740':175,'RHAISTRAT-432':174,'RHAISTRAT-1521':177,'RHAISTRAT-1433':178,'RHAISTRAT-1762':180,'RHAISTRAT-1761':183,'RHAISTRAT-1758':181,'RHAISTRAT-1744':182,'RHAISTRAT-1742':184,'RHAISTRAT-1741':179 };
-  const mrNum = delta ? (delta.mr_number || knownMRs[protoId]) : knownMRs[protoId];
-  const filesChanged = delta ? delta.total_files_changed : 0;
-  const baseBranch = delta ? (delta.base_branch || '3.5') : '3.5';
-
-  const title = extractState ? (extractState.story_title || extractState.title || '') : '';
-  const rfeKey = extractState ? (extractState.rfe_key || '') : '';
-  const tasks = extractState ? (extractState.tasks_to_be_done || []) : [];
-  const taskSummary = tasks.length ? tasks[0].task : '';
-
-  let html = '';
-  html += `<p style="margin:0 0 0.25rem;font-size:1rem;font-weight:600">${escapeHtml(title || protoId)}</p>`;
-
-  const meta = [];
-  meta.push(`<strong>${escapeHtml(protoId)}</strong>`);
-  if (rfeKey) meta.push(`from ${escapeHtml(rfeKey)}`);
-  if (mrNum) meta.push(`MR !${mrNum}`);
-  if (filesChanged) meta.push(`${filesChanged} files changed against ${escapeHtml(baseBranch)}`);
-  html += `<p class="small muted" style="margin:0 0 0.35rem">${meta.join(' · ')}</p>`;
-
-  if (taskSummary) {
-    html += `<p class="small" style="margin:0;color:var(--text)"><strong>User task:</strong> ${escapeHtml(taskSummary)}</p>`;
-  }
-
-  return html;
-}
-
 function buildDeltaHtml() {
   const deltaPath = path.join(absArtifacts, 'mr-delta.json');
   const delta = normalizeDelta(readJsonOr(deltaPath, null));
@@ -564,90 +532,6 @@ function getPersonaAvatar(pid) {
   return { svg, color };
 }
 
-function buildPersonaProfilesHtml() {
-  const journeyLog = readJsonOr(path.join(absArtifacts, 'journey-log.json'), null);
-  const ud = journeyLog ? normalizeUsabilityDimensions(journeyLog.usability_dimensions) : null;
-  if (!ud || !ud.personas_evaluated) return '';
-
-  const contextDir = path.join(path.resolve(__dirname, '..'), '.context', 'usability-testing', 'personas');
-  let html = '';
-
-  for (const pid of ud.personas_evaluated) {
-    const yamlPath = path.join(contextDir, pid + '.yaml');
-    const raw = readFileOr(yamlPath, '');
-    if (!raw) continue;
-
-    const nameMatch = raw.match(/^name:\s*"?(.+?)"?\s*$/m);
-    const roleMatch = raw.match(/^rh_persona:\s*(.+)$/m);
-    const archetypeMatch = raw.match(/^rh_persona_archetype:\s*(.+)$/m);
-    const levelMatch = raw.match(/^experience_level:\s*(.+)$/m);
-    const patienceMatch = raw.match(/^\s+patience:\s*(\w+)/m);
-    const explorationMatch = raw.match(/^\s+exploration_tendency:\s*(\w+)/m);
-    const errorRecoveryMatch = raw.match(/^\s+error_recovery:\s*(\w+)/m);
-
-    const name = nameMatch ? nameMatch[1] : pid;
-    const role = roleMatch ? roleMatch[1].trim() : '';
-    const archetype = archetypeMatch ? archetypeMatch[1].trim() : '';
-    const level = levelMatch ? levelMatch[1].trim() : '';
-    const patience = patienceMatch ? patienceMatch[1].trim() : '';
-    const exploration = explorationMatch ? explorationMatch[1].trim() : '';
-    const errorRecovery = errorRecoveryMatch ? errorRecoveryMatch[1].trim() : '';
-    const avatar = getPersonaAvatar(pid);
-
-    html += `<div class="persona-card">`;
-    html += `<div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:0.5rem">`;
-    html += `<div style="width:2.5rem;height:2.5rem;border-radius:50%;background:${avatar.color};display:flex;align-items:center;justify-content:center;flex-shrink:0">${avatar.svg}</div>`;
-    html += `<div><h4 style="margin:0">${escapeHtml(name)}</h4>`;
-    html += `<span style="font-size:0.75rem;color:var(--text2)">${escapeHtml(level)}</span></div>`;
-    html += `</div>`;
-    html += `<div class="persona-meta">`;
-    html += `<span>${escapeHtml(role)}</span>`;
-    if (archetype) html += `<span>${escapeHtml(archetype)}</span>`;
-    html += `</div>`;
-
-    // Behavioral attributes
-    html += `<div class="persona-meta">`;
-    html += `<span>Patience: <strong>${escapeHtml(patience)}</strong></span>`;
-    if (exploration) html += `<span>Exploration: <strong>${escapeHtml(exploration)}</strong></span>`;
-    if (errorRecovery) html += `<span>Error recovery: <strong>${escapeHtml(errorRecovery)}</strong></span>`;
-    html += `</div>`;
-
-    // Domain knowledge as color-coded tags
-    const knowledgeSection = raw.match(/domain_knowledge:\n((?:\s+\w+:.+\n?)+)/);
-    if (knowledgeSection) {
-      const entries = knowledgeSection[1].match(/^\s+(\w+):\s*(\w+)/gm);
-      if (entries) {
-        html += `<div class="persona-knowledge">`;
-        for (const entry of entries) {
-          const [, domain, level] = entry.trim().match(/(\w+):\s*(\w+)/) || [];
-          if (!domain) continue;
-          let cls = 'knowledge-tag';
-          if (['strong', 'competent', 'intermediate'].includes(level)) cls += ' strong';
-          else if (['basic', 'minimal'].includes(level)) cls += ' basic';
-          else if (level === 'none') cls += ' none';
-          html += `<span class="${cls}">${escapeHtml(domain)}: ${escapeHtml(level)}</span>`;
-        }
-        html += `</div>`;
-      }
-    }
-
-    // Pain points
-    const painMatch = raw.match(/known_pain_points:\n((?:\s+-\s+.+\n?)+)/);
-    if (painMatch) {
-      const pains = painMatch[1].match(/-\s+"?(.+?)"?\s*$/gm);
-      if (pains && pains.length) {
-        html += `<details><summary class="small muted">Known pain points</summary><ul class="small" style="margin:0.25rem 0 0 1rem">`;
-        for (const p of pains.slice(0, 5)) {
-          html += `<li>${escapeHtml(p.replace(/^-\s+"?/, '').replace(/"$/, ''))}</li>`;
-        }
-        html += `</ul></details>`;
-      }
-    }
-    html += `</div>`;
-  }
-  return html;
-}
-
 function buildPersonaWalkthroughsHtml() {
   const screenshotsDir = path.join(absArtifacts, 'screenshots');
   const journeyLog = readJsonOr(path.join(absArtifacts, 'journey-log.json'), null);
@@ -658,7 +542,7 @@ function buildPersonaWalkthroughsHtml() {
     return '<p class="muted small">No persona walkthrough data. Phase B did not produce per-persona screenshots.</p>';
   }
 
-  const contextDir = path.join(path.resolve(__dirname, '..'), '.context', 'usability-testing', 'personas');
+  const contextDir = path.join(require('./resolve-root').resolveProjectRoot(), '.context', 'usability-testing', 'personas');
   const overlays = ud.persona_overlays || [];
   const thinkAloud = ud.think_aloud || {};
   const traces = thinkAloud.traces || [];
@@ -695,7 +579,7 @@ function buildPersonaWalkthroughsHtml() {
 
     const assistedCount = (overlay.confusion_events || []).filter(e => e.trigger && e.trigger.includes('assisted')).length;
 
-    html += `<div class="card" style="cursor:pointer;transition:box-shadow 0.15s,border-color 0.15s" onclick="openPersonaModal('${escapeHtml(pid)}')" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor=''">`;
+    html += `<div class="card" style="cursor:pointer;transition:box-shadow 0.15s,border-color 0.15s" onclick="openEvidenceViewer()" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor=''">`;
     html += `<div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:0.75rem">`;
     html += `<div style="width:2.5rem;height:2.5rem;border-radius:50%;background:${avatar.color};display:flex;align-items:center;justify-content:center;flex-shrink:0">${avatar.svg}</div>`;
     html += `<div><h4 style="margin:0;font-size:0.9375rem">${escapeHtml(name)}</h4>`;
@@ -962,6 +846,245 @@ function buildPersonaWalkthroughData() {
   return JSON.stringify(data);
 }
 
+function getPersonaMetadata(pid) {
+  const personaDir = path.join(require('./resolve-root').resolveProjectRoot(), '.context', 'usability-testing', 'personas');
+  const yamlPath = path.join(personaDir, `${pid}.yaml`);
+  const meta = { role: '', experience: '', exploration: '', patience_level: '' };
+  try {
+    if (!fs.existsSync(yamlPath)) return meta;
+    const raw = fs.readFileSync(yamlPath, 'utf8');
+    const nameMatch = raw.match(/^name:\s*"?([^"\n]+)"?/m);
+    if (nameMatch) meta.role = nameMatch[1].replace(/^[^-]+-\s*/, '').trim();
+    const expMatch = raw.match(/^experience_level:\s*(\w+)/m);
+    if (expMatch) meta.experience = expMatch[1];
+    const archMatch = raw.match(/^rh_persona_archetype:\s*(.+)/m);
+    if (archMatch) meta.archetype = archMatch[1].trim();
+    if (raw.includes('exploration_tendency')) {
+      const expl = raw.match(/exploration_tendency:\s*(\w+)/);
+      if (expl) meta.exploration = expl[1].toLowerCase();
+    } else if (raw.includes('proactively check') || raw.includes('drill down')) {
+      meta.exploration = 'high';
+    }
+    if (raw.includes('does not abandon') || raw.includes('high patience')) {
+      meta.patience_level = 'high';
+    } else if (raw.includes('time_pressure: variable')) {
+      meta.patience_level = 'medium';
+    }
+  } catch (e) { /* persona YAML not available */ }
+  return meta;
+}
+
+function buildEvidenceViewerData() {
+  const screenshotsDir = path.join(absArtifacts, 'screenshots');
+  const journeyLog = readJsonOr(path.join(absArtifacts, 'journey-log.json'), null);
+  const extractState = readJsonOr(path.join(absArtifacts, 'extract-state.json'), null);
+  const csvRaw = readFileOr(path.join(absArtifacts, 'evaluation-report.csv'), '');
+  const csvRows = parseCsv(csvRaw);
+  let personaResults = readJsonOr(path.join(absArtifacts, 'persona-results.json'), null);
+
+  if (personaResults && !Array.isArray(personaResults)) {
+    const arr = [];
+    for (const [pid, tasks] of Object.entries(personaResults)) {
+      if (Array.isArray(tasks)) {
+        for (const task of tasks) {
+          arr.push({
+            persona: pid,
+            task_index: task.task_index || 1,
+            task: task.task_name || task.task || '',
+            trace: task.steps || task.trace || [],
+            screenshots: task.screenshots || [],
+            patience_start: task.patience_start || 100,
+            patience_end: task.patience_end || 100,
+            confusion_events: task.confusion_events || 0,
+            outcome: task.outcome || (task.completed ? 'completed' : 'incomplete')
+          });
+        }
+      }
+    }
+    personaResults = arr;
+  }
+
+  const ud = journeyLog ? normalizeUsabilityDimensions(journeyLog.usability_dimensions) : null;
+  const tasksDefined = extractState ? (extractState.tasks_to_be_done || []) : [];
+
+  // --- personas ---
+  const personas = {};
+
+  if (ud && ud.personas_evaluated) {
+    const overlays = ud.persona_overlays || [];
+
+    for (const pid of ud.personas_evaluated) {
+      const overlay = overlays.find(o => o.persona === pid) || {};
+      const confusionEvents = overlay.confusion_events || [];
+      const personaEntries = personaResults ? personaResults.filter(r => r.persona === pid) : [];
+
+      const allPersonaScreenshots = fs.existsSync(screenshotsDir)
+        ? fs.readdirSync(screenshotsDir).filter(f => f.startsWith(`persona-${pid}-`) && f.endsWith('.png')).sort()
+        : [];
+
+      const displayName = pid.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+      const tasks = [];
+
+      if (personaEntries.length > 0) {
+        for (const entry of personaEntries) {
+          const taskIdx = entry.task_index || 1;
+          const ssFiles = allPersonaScreenshots
+            .filter(f => f.match(new RegExp(`task-${taskIdx}-step`)))
+            .map(f => ({ file: f, step: parseInt((f.match(/step-(\d+)/) || [])[1] || '0', 10) }));
+
+          const traceSteps = entry.trace || [];
+          const steps = [];
+
+          for (let si = 0; si < traceSteps.length; si++) {
+            const t = traceSteps[si];
+            const stepNum = t.step || si + 1;
+            const ssEntry = ssFiles.find(s => s.step === stepNum);
+            let ssB64 = '';
+            if (ssEntry) {
+              const ssPath = path.join(screenshotsDir, ssEntry.file);
+              if (fs.existsSync(ssPath)) {
+                ssB64 = fs.readFileSync(ssPath).toString('base64');
+              }
+            }
+
+            const stepConfusion = confusionEvents.filter(e => e.step === stepNum);
+
+            steps.push({
+              step: stepNum,
+              what_i_see: t.what_i_see || '',
+              what_im_thinking: t.what_im_thinking || '',
+              action: t.action || '',
+              confidence: t.confidence || 'medium',
+              patience: t.patience != null ? t.patience : 100,
+              screenshot: ssB64 ? `data:image/png;base64,${ssB64}` : '',
+              evidence_for_acs: t.evidence_for_acs || [],
+              confusion_event: stepConfusion.length > 0 ? stepConfusion[0] : null
+            });
+          }
+
+          const taskDef = tasksDefined[taskIdx - 1] || {};
+          tasks.push({
+            task: entry.task || taskDef.task || `Task ${taskIdx}`,
+            covers_acs: taskDef.covers_acs || [],
+            steps
+          });
+        }
+      } else {
+        const hasMultiTask = allPersonaScreenshots.some(f => f.match(/task-\d+-step/));
+
+        if (hasMultiTask) {
+          const taskScreenshots = {};
+          for (const f of allPersonaScreenshots) {
+            const m = f.match(/task-(\d+)-step-(\d+)/);
+            if (m) {
+              const ti = parseInt(m[1], 10);
+              if (!taskScreenshots[ti]) taskScreenshots[ti] = [];
+              taskScreenshots[ti].push({ file: f, step: parseInt(m[2], 10) });
+            }
+          }
+
+          for (const [taskIdx, ssFiles] of Object.entries(taskScreenshots)) {
+            const taskDef = tasksDefined[parseInt(taskIdx) - 1] || {};
+            const steps = [];
+            for (const ss of ssFiles.sort((a, b) => a.step - b.step)) {
+              const ssPath = path.join(screenshotsDir, ss.file);
+              const ssB64 = fs.existsSync(ssPath) ? fs.readFileSync(ssPath).toString('base64') : '';
+              const stepConfusion = confusionEvents.filter(e => e.step === ss.step);
+              steps.push({
+                step: ss.step,
+                what_i_see: '',
+                what_im_thinking: '',
+                action: '',
+                confidence: 'medium',
+                patience: 100,
+                screenshot: ssB64 ? `data:image/png;base64,${ssB64}` : '',
+                evidence_for_acs: [],
+                confusion_event: stepConfusion.length > 0 ? stepConfusion[0] : null
+              });
+            }
+            tasks.push({
+              task: taskDef.task || `Task ${taskIdx}`,
+              covers_acs: taskDef.covers_acs || [],
+              steps
+            });
+          }
+        } else if (allPersonaScreenshots.length > 0) {
+          const ssFiles = allPersonaScreenshots.map(f => {
+            const m = f.match(/step-(\d+)/);
+            return { file: f, step: m ? parseInt(m[1], 10) : 0 };
+          });
+          const taskDef = tasksDefined[0] || {};
+          const steps = [];
+          for (const ss of ssFiles.sort((a, b) => a.step - b.step)) {
+            const ssPath = path.join(screenshotsDir, ss.file);
+            const ssB64 = fs.existsSync(ssPath) ? fs.readFileSync(ssPath).toString('base64') : '';
+            const stepConfusion = confusionEvents.filter(e => e.step === ss.step);
+            steps.push({
+              step: ss.step,
+              what_i_see: '',
+              what_im_thinking: '',
+              action: '',
+              confidence: 'medium',
+              patience: 100,
+              screenshot: ssB64 ? `data:image/png;base64,${ssB64}` : '',
+              evidence_for_acs: [],
+              confusion_event: stepConfusion.length > 0 ? stepConfusion[0] : null
+            });
+          }
+          tasks.push({
+            task: taskDef.task || 'Primary task',
+            covers_acs: taskDef.covers_acs || [],
+            steps
+          });
+        }
+      }
+
+      personas[pid] = {
+        name: displayName,
+        tasks,
+        ...getPersonaMetadata(pid)
+      };
+    }
+  }
+
+  // --- ac_list ---
+  const acList = csvRows.map(r => ({
+    id: r.criterion_id || '',
+    text: r.criterion_text || '',
+    verdict: (r.verdict || '').toUpperCase()
+  }));
+
+  // --- ac_to_steps ---
+  const acToSteps = {};
+  for (const ac of acList) {
+    if (!ac.id) continue;
+    const refs = [];
+
+    for (const [pid, pData] of Object.entries(personas)) {
+      for (let ti = 0; ti < pData.tasks.length; ti++) {
+        const task = pData.tasks[ti];
+        const hasStepLevelEvidence = task.steps.some(s => s.evidence_for_acs && s.evidence_for_acs.length > 0);
+
+        if (hasStepLevelEvidence) {
+          for (let si = 0; si < task.steps.length; si++) {
+            if (task.steps[si].evidence_for_acs && task.steps[si].evidence_for_acs.includes(ac.id)) {
+              refs.push({ persona: pid, task: ti, step: si });
+            }
+          }
+        } else if (task.covers_acs && task.covers_acs.includes(ac.id)) {
+          for (let si = 0; si < task.steps.length; si++) {
+            refs.push({ persona: pid, task: ti, step: si });
+          }
+        }
+      }
+    }
+
+    acToSteps[ac.id] = refs;
+  }
+
+  return { personas, ac_list: acList, ac_to_steps: acToSteps };
+}
+
 function parseThinkAloudSteps(thinkaloudRaw, screenshots, screenshotsDir, confusionEvents, consistencyReport) {
   const parsed = parseTaSteps(thinkaloudRaw);
   const steps = [];
@@ -1164,6 +1287,82 @@ function buildCodeDeltasHtml() {
     html += `<p class="small muted mt1">${escapeHtml(delta.summary)}</p>`;
   }
 
+  return html;
+}
+
+function buildHeroStatus(csvRows, passCount, failCount, flaggedCount, extractState, iterationLog) {
+  const totalCount = passCount + failCount + flaggedCount;
+  const passPercent = totalCount > 0 ? Math.round((passCount / totalCount) * 100) : 0;
+
+  const delta = normalizeDelta(readJsonOr(path.join(absArtifacts, 'mr-delta.json'), null));
+  const filesChanged = delta ? (delta.total_files_changed || 0) : '—';
+  const routeCount = delta && delta.new_routes ? delta.new_routes.length : 0;
+  const iterCount = iterationLog && iterationLog.iterations ? iterationLog.iterations.length : 0;
+  const totalFixed = iterationLog ? (iterationLog.total_criteria_fixed || 0) : 0;
+
+  const hasProblems = failCount > 0 || flaggedCount > 0;
+  const heroColor = hasProblems ? (failCount > 0 ? 'var(--status-danger)' : 'var(--status-warning)') : 'var(--status-success)';
+
+  let html = '<section class="status-section">';
+
+  html += `<div class="status-hero" style="border-left:4px solid ${heroColor}">`;
+  html += `<div class="status-hero-value" style="color:${heroColor}">${passCount}/${totalCount}</div>`;
+  html += '<div class="status-hero-label">acceptance criteria passing</div>';
+  html += '<div class="status-bar">';
+  html += `<div class="status-bar-fill" style="width:${passPercent}%;background:${heroColor}"></div>`;
+  html += '</div>';
+
+  const metaParts = [];
+  if (filesChanged !== '—') metaParts.push(`${filesChanged} files`);
+  if (routeCount > 0) metaParts.push(`${routeCount} routes`);
+  if (totalFixed > 0) metaParts.push(`${totalFixed} fix${totalFixed !== 1 ? 'es' : ''} applied`);
+  else if (iterCount > 1) metaParts.push(`${iterCount} eval iterations`);  if (metaParts.length) {
+    html += `<div class="status-hero-meta">${metaParts.join(' · ')}</div>`;
+  }
+
+  // Inline problem callouts within the hero card
+  if (failCount > 0) {
+    const failItems = csvRows.filter(r => (r.verdict || '').toUpperCase() === 'FAIL');
+    html += '<div class="status-hero-issues">';
+    for (const f of failItems) {
+      const acId = f.criterion_id || '?';
+      const text = (f.criterion_text || '').substring(0, 60);
+      html += `<div class="status-hero-issue fail"><span class="status-hero-issue-icon">✗</span> <strong>${escapeHtml(acId)}</strong>: ${escapeHtml(text)}${text.length >= 60 ? '…' : ''}</div>`;
+    }
+    html += '</div>';
+  }
+  if (flaggedCount > 0) {
+    const flagItems = csvRows.filter(r => (r.verdict || '').toUpperCase() === 'FLAGGED');
+    html += '<div class="status-hero-issues">';
+    for (const f of flagItems) {
+      const acId = f.criterion_id || '?';
+      const action = (f.human_action || f.criterion_text || '').substring(0, 60);
+      html += `<div class="status-hero-issue flag"><span class="status-hero-issue-icon">⚠</span> <strong>${escapeHtml(acId)}</strong>: ${escapeHtml(action)}${action.length >= 60 ? '…' : ''}</div>`;
+    }
+    html += '</div>';
+  }
+
+  html += '</div>';
+
+  // Action CTAs
+  let primaryText, primaryAction;
+  if (flaggedCount > 0) {
+    primaryText = `Review ${flaggedCount} flagged item${flaggedCount !== 1 ? 's' : ''}`;
+    primaryAction = "openReviewPanel()";
+  } else if (failCount > 0) {
+    primaryText = `View ${failCount} failure${failCount !== 1 ? 's' : ''}`;
+    primaryAction = "scrollToSection('ac-results')";
+  } else {
+    primaryText = 'All clear — ready to submit';
+    primaryAction = "scrollToSection('conclusion')";
+  }
+
+  html += '<div class="status-actions">';
+  html += `<button class="status-cta-primary" onclick="${primaryAction}">${escapeHtml(primaryText)}</button>`;
+  html += '<button class="status-cta-secondary" onclick="openEvidenceViewer()">View evidence</button>';
+  html += '</div>';
+
+  html += '</section>';
   return html;
 }
 
@@ -1429,7 +1628,7 @@ function buildReviewItemsHtml(csvRows, journeyLog, screenshots) {
     }
 
     if (screenshotSrc) {
-      html += `<div class="review-item-screenshot"><img loading="lazy" src="${screenshotSrc}" alt="Screenshot for ${escapeHtml(acId)}"></div>`;
+      html += `<div class="review-item-screenshot" onclick="openImageLightbox(this.querySelector('img').src)"><img loading="lazy" src="${screenshotSrc}" alt="Screenshot for ${escapeHtml(acId)}"></div>`;
     }
 
     html += `<div class="review-override" data-override-ac="${escapeHtml(acId)}">`;
@@ -1442,7 +1641,7 @@ function buildReviewItemsHtml(csvRows, journeyLog, screenshots) {
     html += `<textarea class="review-textarea" data-ac="${escapeHtml(acId)}" placeholder="Your assessment — what did you observe when testing this in the prototype?"></textarea>`;
     html += `<div style="margin-top:0.5rem;display:flex;gap:0.5rem">`;
     html += `<a href="#ac-results" onclick="scrollToSection('ac-results');return false" style="font-size:0.7rem;color:var(--accent)">View in AC table</a>`;
-    html += `<a href="#" onclick="openReviewModal('${escapeHtml(acId)}');return false" style="font-size:0.7rem;color:var(--accent)">Open review modal</a>`;
+    html += `<a href="#" onclick="openReviewPanel('${escapeHtml(acId)}');return false" style="font-size:0.7rem;color:var(--accent)">Open review panel</a>`;
     html += `</div>`;
     html += `</div></div>`;
   }
@@ -1455,7 +1654,16 @@ function buildFixesAppliedHtml() {
   const appliedFixes = fixLog ? (Array.isArray(fixLog) ? fixLog : fixLog.applied || []) : [];
 
   if (!appliedFixes.length) {
-    return '<p class="muted small">No changes were applied — all acceptance criteria passed without modification.</p>';
+    const csvRaw = readFileOr(path.join(absArtifacts, 'evaluation-report.csv'), '');
+    const hasFlagged = csvRaw.includes(',FLAGGED,');
+    const hasFail = csvRaw.includes(',FAIL,');
+    if (hasFlagged && !hasFail) {
+      const flaggedCount = (csvRaw.match(/,FLAGGED,/g) || []).length;
+      return `<p class="muted small">No automated fixes needed. ${flaggedCount} criterion${flaggedCount !== 1 ? 'a' : ''} flagged for human review.</p>`;
+    } else if (hasFail) {
+      return '<p class="muted small">Fix loop was not triggered. Some criteria still failing — review refinement suggestions.</p>';
+    }
+    return '<p class="muted small">All acceptance criteria passed without modification.</p>';
   }
 
   let html = `<div style="display:flex;flex-direction:column;gap:1rem">`;
@@ -1486,28 +1694,33 @@ function buildFixesAppliedHtml() {
     }
 
     // Before/after screenshot comparison
-    if (fix.criterion_id || fix.ac_id) {
-      const acId = fix.criterion_id || fix.ac_id;
-      const journeyIdx = findJourneyForAC(journeyLog, acId);
+    const rawAcId = fix.criterion_id || fix.ac_id || fix.criterion || '';
+    const firstAcId = rawAcId.split(',')[0].trim();
+    if (firstAcId) {
+      const journeyIdx = findJourneyForAC(journeyLog, firstAcId);
       if (journeyIdx !== null) {
-        const beforeDir = path.join(absArtifacts, 'screenshots-iter-1');
-        const afterDir = path.join(absArtifacts, 'screenshots');
+        // Look for the true original broken state in nested screenshots dir
+        const originalDir = path.join(absArtifacts, 'screenshots-iter-1', 'screenshots');
+        const beforeDir = fs.existsSync(originalDir) ? originalDir : path.join(absArtifacts, 'screenshots-iter-1');
+        const afterDir = fs.existsSync(originalDir)
+          ? path.join(absArtifacts, 'screenshots-iter-1')  // iter-1 top-level is the first working state
+          : path.join(absArtifacts, 'screenshots');
         const beforeFile = findScreenshotForJourney(beforeDir, journeyIdx);
         const afterFile = findScreenshotForJourney(afterDir, journeyIdx);
 
-        if (beforeFile && afterFile && beforeFile !== afterFile) {
+        if (beforeFile && afterFile) {
           const beforeB64 = fs.readFileSync(beforeFile).toString('base64');
           const afterB64 = fs.readFileSync(afterFile).toString('base64');
           html += `<div style="display:grid;grid-template-columns:1fr 1fr;gap:0.5rem;margin-top:0.75rem">`;
-          html += `<div><p class="small muted" style="margin:0 0 0.25rem">Before (iteration 1)</p>`;
-          html += `<img src="data:image/png;base64,${beforeB64}" style="width:100%;border:1px solid var(--border);border-radius:4px" /></div>`;
-          html += `<div><p class="small muted" style="margin:0 0 0.25rem">After (final)</p>`;
-          html += `<img src="data:image/png;base64,${afterB64}" style="width:100%;border:1px solid var(--border);border-radius:4px" /></div>`;
+          html += `<div><p class="small muted" style="margin:0 0 0.25rem">Before (original MR state)</p>`;
+          html += `<img src="data:image/png;base64,${beforeB64}" style="width:100%;border:1px solid var(--border);border-radius:4px;cursor:pointer" onclick="openImageLightbox(this.src)" /></div>`;
+          html += `<div><p class="small muted" style="margin:0 0 0.25rem">After (fix applied)</p>`;
+          html += `<img src="data:image/png;base64,${afterB64}" style="width:100%;border:1px solid var(--border);border-radius:4px;cursor:pointer" onclick="openImageLightbox(this.src)" /></div>`;
           html += `</div>`;
         } else if (afterFile) {
           const afterB64 = fs.readFileSync(afterFile).toString('base64');
           html += `<div style="margin-top:0.75rem"><p class="small muted" style="margin:0 0 0.25rem">Result after fix</p>`;
-          html += `<img src="data:image/png;base64,${afterB64}" style="width:100%;border:1px solid var(--border);border-radius:4px" /></div>`;
+          html += `<img src="data:image/png;base64,${afterB64}" style="width:100%;border:1px solid var(--border);border-radius:4px;cursor:pointer" onclick="openImageLightbox(this.src)" /></div>`;
         }
       }
     }
@@ -1531,15 +1744,21 @@ function buildFixesOutstandingHtml() {
     for (const f of applied) {
       if (f.guideline_id) appliedIds.add(f.guideline_id);
       if (f.criterion_id) appliedIds.add(f.criterion_id);
+      if (f.criterion) {
+        for (const cid of f.criterion.split(',')) appliedIds.add(cid.trim());
+      }
     }
   }
 
-  const outstandingViols = consistencyViols.filter(v => !appliedIds.has(v.guideline_id));
+  // Filter: exclude consistency-type (shown in Compliance tab) and already-applied fixes
   const outstandingSuggestions = allSuggestions.filter(s =>
-    s.type === 'usability' || (s.type === 'consistency' && !appliedIds.has(s.guideline_id))
+    s.type !== 'consistency' && !s.applied && !appliedIds.has(s.criterion_id)
   );
 
-  const findings = outstandingViols.length ? outstandingViols : outstandingSuggestions;
+  // Add consistency violations as outstanding items (not auto-fixed)
+  const outstandingConsistency = consistencyViols.filter(v => !appliedIds.has(v.guideline_id));
+
+  const findings = [...outstandingSuggestions, ...outstandingConsistency];
 
   if (!findings.length) {
     return '<p class="muted small">No outstanding issues. Everything identified was either auto-fixed or is acceptable.</p>';
@@ -1548,13 +1767,13 @@ function buildFixesOutstandingHtml() {
   let html = `<div style="display:flex;flex-direction:column;gap:0.75rem">`;
 
   for (const f of findings) {
-    const guideline = f.guideline_id || f.dimension || '';
+    const guideline = f.guideline_id || f.criterion_id || f.dimension || '';
     const severity = f.severity || 'warning';
     const sevColor = severity === 'error' ? 'var(--status-danger)' : 'var(--status-warning)';
-    const file = f.file || '';
-    const line = f.line || '';
-    const description = f.description || f.current || f.problem || '';
-    const suggestion = f.suggestion || f.fix || f.suggested_fix || '';
+    const file = f.file || f.fix_file || '';
+    const line = f.line || (Array.isArray(f.lines) ? f.lines[0] : '') || '';
+    const description = f.description || f.message || f.rationale || f.current || f.problem || '';
+    const suggestion = f.suggestion || f.fix || f.suggested_fix || f.fix_action || '';
 
     html += `<div class="card card-compact card-warning">`;
     html += `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.5rem">`;
@@ -1743,228 +1962,156 @@ function buildConsistencyHtml() {
   return html;
 }
 
-function buildExplorationHtml() {
-  const journeyLog = readJsonOr(path.join(absArtifacts, 'journey-log.json'), null);
-  if (!journeyLog || !journeyLog.exploration || !journeyLog.exploration.length) return '';
 
-  let html = '';
 
-  for (const expl of journeyLog.exploration) {
-    const pName = escapeHtml(expl.persona_name || expl.persona);
-    const goal = escapeHtml(expl.goal || '');
-    const gap = escapeHtml(expl.prescribed_gap || '');
-    const paths = (expl.paths_covered || []).map(p => '<code>' + escapeHtml(p) + '</code>').join(', ');
 
-    html += `<div class="card" style="margin:0.75rem 0;border-left:3px solid var(--status-warning)">`;
-    html += `<h4 style="margin:0 0 0.25rem">${pName} — Exploratory Navigation</h4>`;
-    html += `<p class="small muted" style="margin:0 0 0.35rem">${goal}</p>`;
-    if (gap) html += `<p class="small" style="margin:0 0 0.35rem"><strong>Why explored:</strong> ${gap}</p>`;
-    if (paths) html += `<p class="small" style="margin:0"><strong>Paths covered:</strong> ${paths}</p>`;
-    html += `</div>`;
+// ---------------------------------------------------------------------------
+// Narrative builders for appendix tabs
+// ---------------------------------------------------------------------------
 
-    const steps = expl.steps || [];
-    if (steps.length) {
-      html += `<details><summary>Exploration Steps (${steps.length})</summary>`;
-      for (const step of steps) {
-        html += `<div class="ta-step">`;
-        html += `<div class="ta-step-head">Step ${step.step} — ${escapeHtml(step.action || '')} → <code>${escapeHtml(step.target || '')}</code> · ${badgeHtml(step.result === 'success' ? 'PASS' : 'FAIL')}</div>`;
-
-        if (step.narration) {
-          html += `<div class="narration">${escapeHtml(step.narration)}</div>`;
-        }
-        if (step.persona_reaction) {
-          html += `<div class="ta-think">${escapeHtml(step.persona_reaction)}</div>`;
-        }
-
-        // Screenshot
-        const ssFile = step.screenshot ? path.basename(step.screenshot) : null;
-        if (ssFile) {
-          const ssPath = path.join(absArtifacts, 'screenshots', ssFile);
-          if (fs.existsSync(ssPath)) {
-            const data = fs.readFileSync(ssPath);
-            const src = 'data:image/png;base64,' + data.toString('base64');
-            html += `<div class="screenshot"><img loading="lazy" src="${src}" alt="Step ${step.step}"></div>`;
-          }
-        }
-
-        if (step.error) {
-          html += `<div class="ta-callout ta-callout-confusion"><strong>Error:</strong> ${escapeHtml(step.error)}</div>`;
-        }
-        html += `</div>`;
-      }
-      html += `</details>`;
+function buildFixHistoryNarrative() {
+  const fixLog = readJsonOr(path.join(absArtifacts, 'fix-log.json'), null);
+  const iterLog = readJsonOr(path.join(absArtifacts, 'iteration-log.json'), null);
+  const applied = fixLog ? (Array.isArray(fixLog) ? fixLog.filter(f => f.applied !== false).length : (fixLog.applied ? fixLog.applied.length : 0)) : 0;
+  const iters = iterLog && iterLog.iterations ? iterLog.iterations.length : 0;
+  if (!applied && !iters) return '';
+  if (!applied) {
+    const csvRaw = readFileOr(path.join(absArtifacts, 'evaluation-report.csv'), '');
+    const flaggedCount = (csvRaw.match(/,FLAGGED,/g) || []).length;
+    if (flaggedCount > 0) {
+      return `<p class="appendix-narrative">No code changes were applied. ${flaggedCount} criterion${flaggedCount !== 1 ? 'a require' : ' requires'} human review.</p>`;
     }
+    return `<p class="appendix-narrative">All acceptance criteria passed on first evaluation — no fix loop needed.</p>`;
   }
-
-  return html;
+  return `<p class="appendix-narrative">prototype-creator applied ${applied} fix${applied !== 1 ? 'es' : ''} across ${iters} iteration${iters !== 1 ? 's' : ''}.</p>`;
 }
 
-
-
+function buildComplianceNarrative() {
+  const cr = readJsonOr(path.join(absArtifacts, 'consistency-report.json'), null);
+  if (!cr || cr.skipped) return '';
+  const violations = (cr.source_mode && cr.source_mode.violations) ? cr.source_mode.violations.length : 0;
+  const checked = cr.source_mode && cr.source_mode.guidelines_checked ? cr.source_mode.guidelines_checked : 0;
+  if (!violations) return `<p class="appendix-narrative">All ${checked} PatternFly guidelines checked — no violations found.</p>`;
+  return `<p class="appendix-narrative">${violations} PatternFly guideline violation${violations !== 1 ? 's' : ''} found across ${checked} guidelines checked.</p>`;
+}
 
 // ---------------------------------------------------------------------------
-// Narrative Summary (designer-facing "what" section)
+// Tabbed Executive Summary (replaces old narrative summary)
 // ---------------------------------------------------------------------------
 
-function buildNarrativeSummary() {
+function buildTabbedExecSummary() {
   const extractState = readJsonOr(path.join(absArtifacts, 'extract-state.json'), null);
-  const csvRaw = readFileOr(path.join(absArtifacts, 'evaluation-report.csv'), '');
-  const journeyLog = readJsonOr(path.join(absArtifacts, 'journey-log.json'), null);
-  const refinements = readJsonOr(path.join(absArtifacts, 'refinement-suggestions.json'), null);
+  const mrDelta = normalizeDelta(readJsonOr(path.join(absArtifacts, 'mr-delta.json'), null));
   const iterationLog = readJsonOr(path.join(absArtifacts, 'iteration-log.json'), null);
+  const outcomeContext = readJsonOr(path.join(absArtifacts, 'outcome-context.json'), null);
   const protoId = extractPrototypeId();
 
-  const csvRows = parseCsv(csvRaw);
-  let passCount = 0, failCount = 0, flaggedCount = 0;
-  for (const r of csvRows) {
-    const v = (r.verdict || '').toUpperCase();
-    if (v === 'PASS') passCount++;
-    else if (v === 'FAIL') failCount++;
-    else if (v === 'FLAGGED') flaggedCount++;
-  }
-  const totalAc = passCount + failCount + flaggedCount;
-
-  const ud = journeyLog ? normalizeUsabilityDimensions(journeyLog.usability_dimensions) : null;
-  const usabilityScore = ud ? ud.overall_score || null : null;
-  const storyTitle = (extractState && extractState.ticket_summary) || protoId;
-  const suggestions = Array.isArray(refinements) ? refinements : (refinements && refinements.suggestions ? refinements.suggestions : []);
-  const fixedSuggestions = suggestions.filter(s => (s.verdict || '').toUpperCase() === 'FIXED');
-  const openSuggestions = suggestions.filter(s => (s.verdict || '').toUpperCase() !== 'FIXED');
-
-  // --- Verdict ---
-  let verdictClass, verdictLabel, verdictIcon;
-  if (failCount === 0 && flaggedCount === 0) {
-    verdictClass = 'verdict-pass';
-    verdictLabel = 'PASS';
-    verdictIcon = '&#10003;';
-  } else if (failCount > 0) {
-    verdictClass = 'verdict-fail';
-    verdictLabel = 'NEEDS FIXES';
-    verdictIcon = '&#10007;';
-  } else {
-    verdictClass = 'verdict-review';
-    verdictLabel = 'NEEDS REVIEW';
-    verdictIcon = '&#9888;';
-  }
-
-  // --- Gap items ---
-  const failedRows = csvRows.filter(r => (r.verdict || '').toUpperCase() === 'FAIL');
-  const flaggedRows = csvRows.filter(r => (r.verdict || '').toUpperCase() === 'FLAGGED');
-
-  let gapHtml = '';
-  if (failedRows.length === 0 && flaggedRows.length === 0) {
-    gapHtml = `<p class="gap-clear">None &mdash; ready to approve</p>`;
-  } else {
-    gapHtml = '<div class="gap-items">';
-    for (const row of failedRows) {
-      const id = row.criterion_id || '?';
-      const text = row.criterion_text || '';
-      const short = text.length > 70 ? text.slice(0, 67) + '...' : text;
-      gapHtml += `<div class="gap-item gap-fail">`;
-      gapHtml += `<span class="badge badge-fail">FAIL</span>`;
-      gapHtml += `<span class="gap-text"><strong>${escapeHtml(id)}</strong>: ${escapeHtml(short)}</span>`;
-      gapHtml += `<button class="action-btn action-fix" onclick="scrollToSection('ac-results')">Fix this</button>`;
-      gapHtml += `</div>`;
-    }
-    for (const row of flaggedRows) {
-      const id = row.criterion_id || '?';
-      const text = row.criterion_text || '';
-      const short = text.length > 70 ? text.slice(0, 67) + '...' : text;
-      gapHtml += `<div class="gap-item gap-flagged">`;
-      gapHtml += `<span class="badge badge-flagged">REVIEW</span>`;
-      gapHtml += `<span class="gap-text"><strong>${escapeHtml(id)}</strong>: ${escapeHtml(short)}</span>`;
-      gapHtml += `<button class="action-btn action-review" onclick="scrollToSection('flagged')">Review</button>`;
-      gapHtml += `</div>`;
-    }
-    gapHtml += '</div>';
-  }
-
-  // --- Auto-fixed section ---
-  let autoFixedHtml = '';
-  if (fixedSuggestions.length > 0 || (iterationLog && iterationLog.total_criteria_fixed > 0)) {
-    const fixCount = fixedSuggestions.length || (iterationLog ? iterationLog.total_criteria_fixed : 0);
-    autoFixedHtml = `<div class="autofixed-section">`;
-    autoFixedHtml += `<h4>Auto-fixed by the eval (no action needed)</h4>`;
-    autoFixedHtml += `<p>${fixCount} issue${fixCount > 1 ? 's' : ''} resolved automatically:</p>`;
-    autoFixedHtml += `<ul>`;
-    for (const s of fixedSuggestions.slice(0, 5)) {
-      autoFixedHtml += `<li>${escapeHtml(s.criterion_text || s.description || s.fix_action || '').slice(0, 80)}</li>`;
-    }
-    autoFixedHtml += `</ul>`;
-    autoFixedHtml += `</div>`;
-  }
-
-  // --- Action buttons ---
-  let actionsHtml = '';
-  if (failCount === 0 && flaggedCount === 0) {
-    actionsHtml = '';
-  } else if (failCount > 0) {
-    actionsHtml = `<div class="action-bar"><button class="action-btn action-fix" onclick="scrollToSection('ac-results')">View Failures</button></div>`;
-  } else {
-    actionsHtml = `<div class="action-bar"><button class="action-btn action-review" onclick="scrollToSection('flagged')">Review Flagged Items</button></div>`;
-  }
-
-  // --- RFE / Outcome summary ---
-  const outcomeContext = readJsonOr(path.join(absArtifacts, 'outcome-context.json'), null);
+  const key = (extractState && extractState.key) || protoId;
+  const title = (extractState && (extractState.title || extractState.ticket_summary || extractState.story_title)) || protoId;
+  const acCount = (extractState && Array.isArray(extractState.ac_list)) ? extractState.ac_list.length : 0;
   const rfeKey = extractState ? extractState.rfe_key : null;
-  let rfeSummaryHtml = '';
-  if (outcomeContext && outcomeContext.problem_statement) {
-    rfeSummaryHtml = `<div class="overview-rfe"><p class="overview-rfe-text">${escapeHtml(outcomeContext.problem_statement)}</p></div>`;
+  const breadcrumb = (extractState && extractState.breadcrumb) || '';
+
+  // --- Pipeline config (best-effort read) ---
+  let pipelineConfig = null;
+  const configPath = path.join(absArtifacts, 'pipeline-config.yaml');
+  if (fs.existsSync(configPath)) {
+    try {
+      const raw = fs.readFileSync(configPath, 'utf8');
+      pipelineConfig = {};
+      for (const line of raw.split('\n')) {
+        const m = line.match(/^(\w+):\s*(.+)/);
+        if (m) pipelineConfig[m[1]] = m[2].trim();
+      }
+    } catch { /* ignore */ }
   }
 
-  // --- Iteration summary ---
-  let iterSummaryHtml = '';
+  // === Summary panel ===
+  let summaryInner = '';
+  summaryInner += `<p class="exec-detail"><strong>Acceptance criteria:</strong> ${acCount}</p>`;
+  if (rfeKey) summaryInner += `<p class="exec-detail"><strong>Linked RFE:</strong> ${escapeHtml(rfeKey)}</p>`;
+  if (outcomeContext && outcomeContext.problem_statement) {
+    summaryInner += `<p class="exec-detail exec-problem">${escapeHtml(outcomeContext.problem_statement)}</p>`;
+  }
+
+  // === MR Delta panel ===
+  let deltaInner = '';
+  if (mrDelta) {
+    const filesChanged = mrDelta.total_files_changed || 0;
+    deltaInner += `<p class="exec-detail"><strong>Files changed:</strong> ${filesChanged}</p>`;
+    const routes = mrDelta.new_routes || [];
+    if (routes.length) {
+      deltaInner += `<p class="exec-detail"><strong>Routes affected:</strong> ${routes.map(r => '<code>' + escapeHtml(r) + '</code>').join(', ')}</p>`;
+    } else if (mrDelta.route_changes) {
+      deltaInner += `<p class="exec-detail"><strong>Routes:</strong> modified</p>`;
+    }
+    if (mrDelta.summary) {
+      deltaInner += `<p class="exec-detail">${escapeHtml(mrDelta.summary)}</p>`;
+    }
+    const allChanged = mrDelta.changed_files || [];
+    if (allChanged.length) {
+      const shortFiles = allChanged.slice(0, 5).map(f => f.replace('src/app/', '').replace('src/', ''));
+      deltaInner += `<p class="exec-detail muted small">${shortFiles.join(', ')}${allChanged.length > 5 ? ' +' + (allChanged.length - 5) + ' more' : ''}</p>`;
+    }
+  } else {
+    deltaInner = `<p class="exec-detail muted">Standalone prototype &mdash; no workspace diff available.</p>`;
+  }
+
+  // === Pipeline panel ===
+  let pipelineInner = '';
+  if (pipelineConfig) {
+    if (pipelineConfig.fidelity) pipelineInner += `<p class="exec-detail"><strong>Fidelity:</strong> ${escapeHtml(pipelineConfig.fidelity)}</p>`;
+    if (pipelineConfig.mode) pipelineInner += `<p class="exec-detail"><strong>Mode:</strong> ${escapeHtml(pipelineConfig.mode)}</p>`;
+    if (pipelineConfig.depth) pipelineInner += `<p class="exec-detail"><strong>Depth:</strong> ${escapeHtml(pipelineConfig.depth)}</p>`;
+  }
   if (iterationLog) {
     const iters = iterationLog.iterations || [];
     const iterCount = iters.length;
-    const exitReason = iterationLog.exit_reason || '';
     const totalFixed = iterationLog.total_criteria_fixed || 0;
     const consistencyFixes = iters.reduce((sum, i) => sum + (i.consistency_fixes || 0), 0);
-    const phaseB = iterationLog.phase_b || {};
-    const personasEvaluated = phaseB.personas_evaluated || [];
-
-    let iterParts = [];
-    if (iterCount > 0) iterParts.push(`${iterCount} iteration${iterCount > 1 ? 's' : ''}`);
-    if (totalFixed > 0) iterParts.push(`${totalFixed} criteria fixed`);
-    if (consistencyFixes > 0) iterParts.push(`${consistencyFixes} consistency fixes applied`);
-    if (personasEvaluated.length > 0) iterParts.push(`${personasEvaluated.length} persona${personasEvaluated.length > 1 ? 's' : ''} tested`);
-
-    if (iterParts.length) {
-      iterSummaryHtml = `<div class="overview-iter"><p class="small" style="color:var(--text2);margin:0">${iterParts.join(' · ')}</p></div>`;
-    }
+    pipelineInner += `<p class="exec-detail"><strong>Iterations:</strong> ${iterCount}</p>`;
+    if (totalFixed > 0) pipelineInner += `<p class="exec-detail"><strong>Criteria fixed:</strong> ${totalFixed}</p>`;
+    if (consistencyFixes > 0) pipelineInner += `<p class="exec-detail"><strong>Consistency fixes:</strong> ${consistencyFixes}</p>`;
+    if (iterationLog.exit_reason) pipelineInner += `<p class="exec-detail"><strong>Exit reason:</strong> ${escapeHtml(iterationLog.exit_reason)}</p>`;
+  } else {
+    pipelineInner += `<p class="exec-detail muted">Single pass &mdash; no iteration history.</p>`;
   }
 
-  // --- Assemble ---
-  let html = `<section class="report-overview" data-onboarding="true">`;
+  // === Assemble ===
+  let html = `<section class="exec-summary" data-tour="context">`;
 
-  html += `<div class="overview-verdict ${verdictClass}" data-tour="verdict">`;
-  html += `<span class="verdict-icon">${verdictIcon}</span>`;
-  html += `<span class="verdict-label">${verdictLabel}</span>`;
+  html += `<div class="exec-header">`;
+  html += `<span class="exec-key">${escapeHtml(key)}</span>`;
+  html += `<h2 class="exec-title">${escapeHtml(title)}</h2>`;
   html += `</div>`;
 
-  html += `<div class="overview-context">`;
-  html += `<p class="overview-title">${escapeHtml(storyTitle)}</p>`;
-  html += `<p class="overview-meta">${escapeHtml(protoId)}${rfeKey ? ' · RFE: ' + escapeHtml(rfeKey) : ''}${usabilityScore ? ' · Usability: ' + escapeHtml(String(usabilityScore)) : ''}</p>`;
+  html += `<div class="exec-tabs">`;
+  html += `<button class="exec-tab active" onclick="switchExecTab('summary')">Summary</button>`;
+  html += `<button class="exec-tab" onclick="switchExecTab('mr-delta')">MR Delta</button>`;
+  html += `<button class="exec-tab" onclick="switchExecTab('pipeline')">Pipeline</button>`;
   html += `</div>`;
 
-  html += rfeSummaryHtml;
-  html += iterSummaryHtml;
-
-  html += `<div class="overview-gap" data-tour="gap">`;
-  html += `<div class="gap-header">`;
-  html += `<span class="gap-expected"><strong>Expected:</strong> ${totalAc} acceptance criteria</span>`;
-  html += `<span class="gap-actual"><strong>Actual:</strong> ${passCount}/${totalAc} met${flaggedCount > 0 ? ', ' + flaggedCount + ' need review' : ''}${failCount > 0 ? ', ' + failCount + ' failed' : ''}</span>`;
+  html += `<div class="exec-panels">`;
+  html += `<div class="exec-panel active" id="exec-panel-summary">${summaryInner}</div>`;
+  html += `<div class="exec-panel" id="exec-panel-mr-delta">${deltaInner}</div>`;
+  html += `<div class="exec-panel" id="exec-panel-pipeline">${pipelineInner}</div>`;
   html += `</div>`;
-  html += gapHtml;
-  html += `</div>`;
-
-  html += autoFixedHtml;
-
-  html += `<div data-tour="actions">${actionsHtml}</div>`;
 
   html += `</section>`;
 
   return html;
+}
+
+function registerScreenshot(filename, narration, stepContext, screenshots, ssState) {
+  const src = screenshots[filename];
+  if (!src) return -1;
+  const idx = ssState.nextIdx++;
+  ssState.indexMap[filename] = idx;
+  ssState.array.push({
+    src, narration: narration || '', filename,
+    step: stepContext || null
+  });
+  return idx;
 }
 
 function buildTokens(opts = {}) {
@@ -2059,38 +2206,6 @@ function buildTokens(opts = {}) {
     ? ` <span class="sa-tag sa-error" style="font-size:0.55rem;vertical-align:middle" title="${consistencyViolationIds.size} design guideline violations found on prototype pages">${consistencyViolationIds.size} design issues</span>`
     : '';
 
-  // Build AC-to-screenshot map from journeys for clickable evidence
-  const acScreenshotMap = {};
-  for (const journey of journeys) {
-    const acIds = journey.ac_ids || [];
-    const steps = journey.steps || [];
-    for (const acId of acIds) {
-      if (acScreenshotMap[acId]) continue;
-      const lastStep = steps[steps.length - 1];
-      if (lastStep && lastStep.screenshot) {
-        const ssFile = path.basename(lastStep.screenshot);
-        if (screenshots[ssFile]) {
-          acScreenshotMap[acId] = { file: ssFile, journey: journey.title || '', persona: journey.persona || '' };
-        }
-      }
-    }
-  }
-
-  // Count persona coverage per AC from task definitions
-  const tasksDefined = extractState ? (extractState.tasks_to_be_done || []) : [];
-  const acPersonaCoverage = {};
-  const acToTaskIndex = {};
-  const ud2 = journeyLog ? normalizeUsabilityDimensions(journeyLog.usability_dimensions) : null;
-  const personasEval = (ud2 && ud2.personas_evaluated) ? ud2.personas_evaluated : [];
-  for (let ti = 0; ti < tasksDefined.length; ti++) {
-    const td = tasksDefined[ti];
-    for (const acId of (td.covers_acs || [])) {
-      if (!acPersonaCoverage[acId]) acPersonaCoverage[acId] = 0;
-      acPersonaCoverage[acId] += personasEval.length;
-      if (!acToTaskIndex[acId]) acToTaskIndex[acId] = ti + 1;
-    }
-  }
-
   function buildAcRow(r) {
     const id = escapeHtml(r.criterion_id);
     const rawText = r.criterion_text || '';
@@ -2109,21 +2224,9 @@ function buildTokens(opts = {}) {
     }
 
     const verdict = badgeHtml(r.verdict, r.criterion_id);
-    const hasPersonaEvidence = acPersonaCoverage[r.criterion_id] > 0;
-    const ssInfo = acScreenshotMap[r.criterion_id];
 
-    let evidenceHtml = '';
-    if (hasPersonaEvidence) {
-      const taskIdx = acToTaskIndex[r.criterion_id] || 1;
-      evidenceHtml = `<a href="#" class="ac-view-link" onclick="openPersonaWalkthrough(${taskIdx - 1});return false">View walkthrough</a>`;
-      if (evidenceText) evidenceHtml += `<span class="ac-evidence-text">${escapeHtml(evidenceText)}</span>`;
-    } else if (ssInfo) {
-      evidenceHtml = `<a href="#" class="ac-view-link" onclick="openAcEvidence('${escapeHtml(r.criterion_id)}');return false">View walkthrough</a>`;
-      if (evidenceText) evidenceHtml += `<span class="ac-evidence-text">${escapeHtml(evidenceText)}</span>`;
-    } else {
-      const reason = evidenceText || 'Verified via code inspection (no walkthrough available)';
-      evidenceHtml = `<span class="ac-evidence-text">${escapeHtml(reason)}</span>`;
-    }
+    let evidenceHtml = `<a href="#" class="ac-view-link" onclick="openEvidenceViewer('${escapeHtml(r.criterion_id)}');return false">View evidence →</a>`;
+    if (evidenceText) evidenceHtml += `<span class="ac-evidence-text">${escapeHtml(evidenceText)}</span>`;
 
     return `<tr><td><strong>${id}</strong></td><td>${criterionHtml}</td><td>${verdict}</td><td class="small">${evidenceHtml}</td></tr>`;
   }
@@ -2189,21 +2292,7 @@ function buildTokens(opts = {}) {
   }
 
   // ---- Screenshot array for modal JS ----
-  const screenshotArray = [];
-  let screenshotIdx = 0;
-  const screenshotIndexMap = {};
-
-  function registerScreenshot(filename, narration, stepContext) {
-    const src = screenshots[filename];
-    if (!src) return -1;
-    const idx = screenshotIdx++;
-    screenshotIndexMap[filename] = idx;
-    screenshotArray.push({
-      src, narration: narration || '', filename,
-      step: stepContext || null
-    });
-    return idx;
-  }
+  const ssState = { nextIdx: 0, indexMap: {}, array: [] };
 
   // ---- Consistency lookup for screenshot annotations ----
   const consistencyReport = readJsonOr(path.join(absArtifacts, 'consistency-report.json'), null);
@@ -2470,10 +2559,10 @@ function buildTokens(opts = {}) {
           }, {})
         };
 
-        const idx = registerScreenshot(ssFilename, mergedNarrations, stepCtx);
+        const idx = registerScreenshot(ssFilename, mergedNarrations, stepCtx, screenshots, ssState);
         if (idx >= 0) {
           block += `<div class="screenshot-card">`;
-          block += `<div class="screenshot" data-idx="${idx}"><img loading="lazy" src="${screenshots[ssFilename]}" alt="Step ${step.step}"></div>`;
+          block += `<div class="screenshot" data-idx="${idx}" onclick="openImageLightbox(this.querySelector('img').src)" style="cursor:pointer"><img loading="lazy" src="${screenshots[ssFilename]}" alt="Step ${step.step}"></div>`;
 
           if (mergedNarrations) {
             block += `<div class="narration">${escapeHtml(mergedNarrations)}</div>`;
@@ -2580,10 +2669,10 @@ function buildTokens(opts = {}) {
             personaReaction: step.persona_reaction ? { name: pName, text: step.persona_reaction } : null,
             scoreImpacts: []
           };
-          const idx = registerScreenshot(ssFile, step.narration || '', exploCtx);
+          const idx = registerScreenshot(ssFile, step.narration || '', exploCtx, screenshots, ssState);
           if (idx >= 0) {
             block += `<div class="screenshot-card">`;
-            block += `<div class="screenshot" data-idx="${idx}"><img loading="lazy" src="${screenshots[ssFile]}" alt="Explore step ${step.step}"></div>`;
+            block += `<div class="screenshot" data-idx="${idx}" onclick="openImageLightbox(this.querySelector('img').src)" style="cursor:pointer"><img loading="lazy" src="${screenshots[ssFile]}" alt="Explore step ${step.step}"></div>`;
             if (step.narration) block += `<div class="narration">${escapeHtml(step.narration)}</div>`;
             if (step.persona_reaction) {
               block += `<div class="screenshot-persona"><strong>${pName}:</strong> <em>${escapeHtml(step.persona_reaction)}</em></div>`;
@@ -2630,26 +2719,33 @@ function buildTokens(opts = {}) {
     const sensitivityItems = [];
 
     for (const dim of ud.dimensions) {
-      let row = `<td>${escapeHtml(dim.name)}</td>`;
+      const isNA = dim.composite_score === 'N/A' || dim.composite_score === 'n/a';
+      let row = `<td>${escapeHtml(dim.name)}${isNA ? ' <span class="score-na-label" title="Not applicable — single-user feature with no cross-persona handoff">N/A</span>' : ''}</td>`;
       const scores = [];
       let anyConf = '';
 
       for (const p of personas) {
         const s = dim.scores[p];
         if (s) {
-          row += `<td>${s.score}/3</td>`;
-          scores.push(s.score);
+          const sVal = s.score === 'N/A' || s.score === 'n/a'
+            ? '<span class="score-na">N/A</span>'
+            : `${s.score}/3`;
+          row += `<td>${sVal}</td>`;
+          if (s.score !== 'N/A' && s.score !== 'n/a') scores.push(s.score);
           anyConf = s.confidence || anyConf;
         } else {
           row += `<td>—</td>`;
         }
       }
 
-      row += `<td><strong>${dim.composite_score}/3</strong></td>`;
+      const compDisplay = isNA
+        ? '<span class="score-na" title="Not applicable — single-user feature">N/A</span>'
+        : `<strong>${dim.composite_score}/3</strong>`;
+      row += `<td>${compDisplay}</td>`;
       row += `<td>${escapeHtml(anyConf)}</td>`;
       const finding = dim.scores[personas[0]] ? dim.scores[personas[0]].finding : '';
-      row += `<td class="small">${escapeHtml(finding)}</td>`;
-      tbodyRows += `<tr>${row}</tr>`;
+      row += `<td class="small">${escapeHtml(isNA ? 'Single-user feature — no cross-persona handoff to evaluate' : finding)}</td>`;
+      tbodyRows += `<tr${isNA ? ' class="dim-na"' : ''}>${row}</tr>`;
 
       if (scores.length >= 2) {
         const maxS = Math.max(...scores);
@@ -2705,6 +2801,7 @@ function buildTokens(opts = {}) {
     for (const trace of ud.think_aloud.traces) {
       if (trace.dimension_scores) {
         for (const [key, val] of Object.entries(trace.dimension_scores)) {
+          if (val.score === 'N/A' || val.score === 'n/a') continue;
           if (!taAvg[key]) taAvg[key] = { sum: 0, count: 0 };
           taAvg[key].sum += val.score;
           taAvg[key].count++;
@@ -2715,6 +2812,10 @@ function buildTokens(opts = {}) {
     for (const [key, label] of Object.entries(dimNames)) {
       const inf = infDims[key] !== undefined ? infDims[key] : '—';
       const ta = taAvg[key] ? (taAvg[key].sum / taAvg[key].count).toFixed(1) : '—';
+      if (inf === 'N/A' || inf === 'n/a' || (ta === '—' && inf === '—')) {
+        compRows += `<tr class="dim-na"><td>${label}</td><td colspan="3" class="small muted">N/A — not scored for this feature</td></tr>`;
+        continue;
+      }
       const delta = (inf !== '—' && ta !== '—') ? (parseFloat(ta) - parseFloat(inf)).toFixed(1) : '—';
       const deltaStr = delta !== '—' && parseFloat(delta) !== 0 ? (parseFloat(delta) > 0 ? '+' + delta : delta) : '0';
       compRows += `<tr><td>${label}</td><td>${inf}/3</td><td>${ta}/3</td><td><strong>${deltaStr}</strong></td></tr>`;
@@ -2812,6 +2913,7 @@ function buildTokens(opts = {}) {
   const methodologyHtml = methodologyFallback;
 
   // ---- Conclusion (generated from results) ----
+  const personasEvaluated = ud ? (ud.personas_evaluated || []) : [];
   let conclusionHtml = '';
   if (passCount + failCount + flaggedCount > 0) {
     const total = passCount + failCount + flaggedCount;
@@ -2820,7 +2922,6 @@ function buildTokens(opts = {}) {
     const iterations = iterLog ? (iterLog.iterations || []).length : 1;
     const fixCount = iterLog ? iterLog.total_criteria_fixed || 0 : 0;
     const usabilityScore = ud ? ud.overall_score : null;
-    const personasEvaluated = ud ? (ud.personas_evaluated || []) : [];
     const extractState = readJsonOr(path.join(absArtifacts, 'extract-state.json'), null);
 
     conclusionHtml += `<p>This evaluation identified <strong>${total} acceptance criteria</strong> from the Jira ticket`;
@@ -2883,26 +2984,6 @@ function buildTokens(opts = {}) {
   const aiInsights = '';
   const aiInsightsDisplay = 'display:none';
 
-  // ---- Outcome context for modal display (loaded earlier in function) ----
-
-  // ---- Screenshot array for JS ----
-  const screenshotArrayStr = screenshotArray.map(s =>
-    `{src:${JSON.stringify(s.src)},narration:${JSON.stringify(s.narration)},filename:${JSON.stringify(s.filename)},step:${JSON.stringify(s.step || null)}}`
-  ).join(',\n');
-
-  // Build AC evidence data for client-side openAcEvidence()
-  const acEvidenceData = {};
-  for (const [acId, info] of Object.entries(acScreenshotMap)) {
-    const idx = screenshotIndexMap[info.file];
-    if (idx !== undefined) {
-      acEvidenceData[acId] = { idx, journey: info.journey, persona: info.persona };
-    } else if (screenshots[info.file]) {
-      const newIdx = registerScreenshot(info.file, `Evidence for ${acId}`, { ac: acId });
-      if (newIdx >= 0) acEvidenceData[acId] = { idx: newIdx, journey: info.journey, persona: info.persona };
-    }
-  }
-  const acEvidenceStr = JSON.stringify(acEvidenceData);
-
   // ---- CSV data for download (full 3-section format) ----
   const fullCsv = buildFullCsv(csvRaw, journeyLog, passCount, failCount, flaggedCount);
   const csvDataEscaped = fullCsv.replace(/\\/g, '\\\\').replace(/`/g, '\\`').replace(/\$/g, '\\$');
@@ -2938,70 +3019,56 @@ function buildTokens(opts = {}) {
     '{{PROTOTYPE_ID}}': protoId,
     '{{ARTIFACTS_PATH}}': absArtifacts,
     '{{JIRA_URL}}': jiraUrl,
-    '{{PROTOTYPE_URL}}': prototypeUrl,
     '{{RFE_URL}}': rfeUrl,
     '{{PROTOTYPE_REPO_URL}}': protoRepoUrl,
     '{{MR_URL}}': mrUrl,
     '{{MR_LABEL}}': mrNumber ? `MR !${mrNumber}` : 'MRs',
-    '{{DESCRIPTION}}': escapeHtml(description),
-    '{{STORY_TITLE}}': escapeHtml(storyTitle),
-    '{{DEPTH}}': escapeHtml(depth),
-    '{{EVAL_DATE}}': escapeHtml(evalDate),
     '{{USABILITY_SCORE}}': escapeHtml(String(usabilityScore)),
-    '{{JOURNEY_SUMMARY}}': escapeHtml(journeySummary),
-    '{{GAPS_SUMMARY}}': escapeHtml(gapsSummary),
     '{{PASS_COUNT}}': String(passCount),
     '{{FAIL_COUNT}}': String(failCount),
     '{{FLAGGED_COUNT}}': String(flaggedCount),
     '{{JOURNEY_RATIO}}': journeyRatio,
+    '{{STATUS_SECTION_HTML}}': buildHeroStatus(csvRows, passCount, failCount, flaggedCount, extractState, readJsonOr(path.join(absArtifacts, 'iteration-log.json'), null)),
     '{{STAT_DELTAS}}': buildStatDeltas(passCount, failCount, flaggedCount, usabilityScore, journeyLog),
-    '{{BREADCRUMB_HTML}}': breadcrumbHtml,
     '{{AC_TABLE_ROWS_JIRA}}': acTableRowsJira,
     '{{AC_TABLE_ROWS_INFERRED}}': acTableRowsInferred,
     '{{AC_JIRA_COUNT}}': String(acJiraCount),
     '{{INFERRED_CHECKS_DISPLAY}}': inferredRows.length ? '' : 'display:none',
     '{{METHODOLOGY_HTML}}': methodologyHtml,
     '{{USABILITY_TABLE}}': usabilityTable,
-    '{{PERSONA_SENSITIVITY}}': personaSensitivity,
     '{{PATIENCE_TRACKING}}': patienceTracking,
     '{{THINK_ALOUD_COMPARISON}}': thinkAloudComparison,
     '{{PATH_COMPARISON_TABLE}}': pathComparisonTable,
-    '{{JOURNEY_BLOCKS}}': journeyBlocksHtml,
     '{{THINK_ALOUD_NARRATIVES}}': thinkAloudNarratives,
     '{{FLAGGED_HTML}}': flaggedHtml,
     '{{CONCLUSION_HTML}}': conclusionHtml,
     '{{AI_INSIGHTS}}': aiInsights,
     '{{AI_INSIGHTS_DISPLAY}}': aiInsightsDisplay,
     '{{DELTA_HTML}}': buildDeltaHtml(),
-    '{{REPORT_INTRO_HTML}}': buildReportIntroHtml(),
     '{{DELTA_DISPLAY}}': fs.existsSync(path.join(absArtifacts, 'mr-delta.json')) ? '' : 'display:none',
-    '{{ITERATION_DISPLAY}}': fs.existsSync(path.join(absArtifacts, 'iteration-log.json')) ? '' : 'display:none',
+    '{{ITERATION_DISPLAY}}': (fs.existsSync(path.join(absArtifacts, 'iteration-log.json')) || fs.existsSync(path.join(absArtifacts, 'mr-delta.json'))) ? '' : 'display:none',
     '{{ITERATION_TIMELINE_HTML}}': buildIterationTimelineHtml(),
     '{{CSV_DATA}}': csvDataEscaped,
-    '{{SCREENSHOT_ARRAY}}': screenshotArrayStr,
-    '{{AC_EVIDENCE_DATA}}': acEvidenceStr,
     '{{FLAGGED_DATA}}': buildFlaggedDataArray(csvRows, journeyLog, screenshots),
-    '{{PERSONAS_TAB_DISPLAY}}': (ud && ud.personas_evaluated && ud.personas_evaluated.length) ? '' : 'display:none',
-    '{{DELTAS_TAB_DISPLAY}}': fs.existsSync(path.join(absArtifacts, 'mr-delta.json')) ? '' : 'display:none',
     '{{PERSONA_SELECTION_HTML}}': buildPersonaSelectionHtml(),
-    '{{PERSONA_PROFILES_HTML}}': buildPersonaProfilesHtml(),
     '{{PERSONA_WALKTHROUGHS_HTML}}': buildPersonaWalkthroughsHtml(),
     '{{PERSONA_WALKTHROUGH_DATA}}': buildPersonaWalkthroughData(),
+    '{{EVIDENCE_VIEWER_DATA}}': JSON.stringify(buildEvidenceViewerData()),
     '{{CODE_DELTAS_HTML}}': buildCodeDeltasHtml(),
     '{{FIXES_APPLIED_HTML}}': buildFixesAppliedHtml(),
-    '{{FIXES_OUTSTANDING_HTML}}': buildFixesOutstandingHtml(),
     '{{FIXES_TAB_DISPLAY}}': fs.existsSync(path.join(absArtifacts, 'refinement-suggestions.json')) || fs.existsSync(path.join(absArtifacts, 'fix-log.json')) || fs.existsSync(path.join(absArtifacts, 'consistency-report.json')) ? '' : 'display:none',
     '{{CONSISTENCY_HTML}}': buildConsistencyHtml(),
     '{{CONSISTENCY_TAB_DISPLAY}}': fs.existsSync(path.join(absArtifacts, 'consistency-report.json')) ? '' : 'display:none',
-    '{{REVIEW_TAB_DISPLAY}}': flaggedCount > 0 ? '' : 'display:none',
     '{{REVIEW_ITEMS_HTML}}': buildReviewItemsHtml(csvRows, journeyLog, screenshots),
+    '{{FIX_COUNT}}': String((() => { const fl = readJsonOr(path.join(absArtifacts, 'fix-log.json'), null); const rs = readJsonOr(path.join(absArtifacts, 'refinement-suggestions.json'), null); const applied = fl ? (Array.isArray(fl) ? fl.length : (fl.applied || []).length) : 0; const outstanding = rs ? (Array.isArray(rs) ? rs.filter(s => s.type !== 'consistency').length : 0) : 0; return applied + outstanding; })()),
+    '{{COMPLIANCE_COUNT}}': String((() => { const cr2 = readJsonOr(path.join(absArtifacts, 'consistency-report.json'), null); return cr2 && cr2.source_mode && cr2.source_mode.violations ? cr2.source_mode.violations.length : 0; })()),
+    '{{PERSONA_COUNT}}': String(personasEvaluated.length),
+    '{{PIPELINE_COUNT}}': String((() => { const d = normalizeDelta(readJsonOr(path.join(absArtifacts, 'mr-delta.json'), null)); return d ? (d.total_files_changed || 0) : 0; })()),
+    '{{FIX_HISTORY_NARRATIVE}}': buildFixHistoryNarrative(),
+    '{{COMPLIANCE_NARRATIVE}}': buildComplianceNarrative(),
     '{{OUTCOME_DISPLAY}}': outcomeContext ? '' : 'display:none',
     '{{OUTCOME_LINK_URL}}': outcomeContext ? jiraUrlForKey(outcomeContext.key) : '',
-    '{{OUTCOME_LINK}}': outcomeContext ? `<a href="${escapeHtml(jiraUrlForKey(outcomeContext.key))}" target="_blank">${escapeHtml(outcomeContext.key)}</a> — ${escapeHtml((outcomeContext.title || '').slice(0, 60))}` : '',
-    '{{STORY_SOURCE}}': rfeKey
-      ? `<a href="${escapeHtml(rfeUrl)}" target="_blank">${escapeHtml(rfeKey)}</a> (RFE)${outcomeContext ? ` → <a href="${escapeHtml(jiraUrlForKey(outcomeContext.key))}" target="_blank">${escapeHtml(outcomeContext.key)}</a> (Outcome)` : ''}`
-      : `<a href="${escapeHtml(jiraUrl)}" target="_blank">${escapeHtml(protoId)}</a> (STRAT only)`,
-    '{{NARRATIVE_SUMMARY}}': buildNarrativeSummary()
+    '{{EXEC_SUMMARY_HTML}}': buildTabbedExecSummary()
   };
 }
 
@@ -3015,15 +3082,19 @@ function parseTaSteps(md) {
   // Support two heading formats:
   // Format A: "### STEP 1 — Title" (markdown heading with dash separator)
   // Format B: "STEP 1:" (plain text, no heading)
+  // Format C: "## STEP 1:" (h2 heading without dash separator)
   const formatA = /^###\s+STEP\s+(\d+)\s*[—–-]\s*(.+)$/gm;
   const formatB = /^STEP\s+(\d+):\s*$/gm;
+  const formatC = /^##\s+STEP\s+(\d+):\s*$/gm;
 
   let match;
   const positions = [];
   const useFormatA = formatA.test(md);
   formatA.lastIndex = 0;
+  const useFormatC = !useFormatA && formatC.test(md);
+  formatC.lastIndex = 0;
 
-  const regex = useFormatA ? formatA : formatB;
+  const regex = useFormatA ? formatA : (useFormatC ? formatC : formatB);
   while ((match = regex.exec(md)) !== null) {
     positions.push({
       index: match.index,

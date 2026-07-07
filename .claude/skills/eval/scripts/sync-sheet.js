@@ -7,7 +7,7 @@ const { execSync } = require('child_process');
 
 const SPREADSHEET_ID = '1pVpmc4RKLwM-fLAH8mR2uj2hlWX30TGiot8kpg5ETEo';
 const EVAL_SHEET = 'Automated Eval';
-const ARTIFACTS_BASE = path.join(path.resolve(__dirname, '..'), '.artifacts');
+const ARTIFACTS_BASE = path.join(require('./resolve-root').resolveProjectRoot(), '.artifacts');
 const API_BASE = `https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}`;
 
 const C = {

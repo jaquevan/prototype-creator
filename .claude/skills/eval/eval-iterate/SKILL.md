@@ -37,6 +37,7 @@ Ensure `.context/usability-testing/`, `.context/consistency-checker/` are bootst
 | `--no-iterate` | flag | No | Off |
 | `--no-fix` | flag | No | Off |
 | `--reset` | flag | No | Off (evaluate current state; when set, hard-resets workspace to origin branch HEAD before eval) |
+| `--fresh` | flag | No | Off (when set, deletes .artifacts/<KEY>/ before starting for a clean-slate run) |
 
 ## Pipeline Flow (Two-Phase)
 
@@ -44,12 +45,20 @@ Ensure `.context/usability-testing/`, `.context/consistency-checker/` are bootst
 PHASE A (X-Ray — Informed AC Validation Loop):
   eval-extract → eval-consistency (once) → eval-classify → eval-journey (informed)
                                                               ↓
-                                                      All PASS? → Phase B
+                                                      Exit condition met? → Phase B (ALWAYS)
                                                       FAIL + cycle ≤ max → eval-fix → loop from eval-classify
-                                                      FAIL + cycle > max → Flag for human, then Phase B
 
-PHASE B (Blind — Per-Persona Usability Walkthroughs):
+  Exit conditions (any triggers Phase B):
+    all_pass          — 0 FAIL, 0 FLAGGED (clean pass)
+    flagged_unfixable — 0 FAIL, FLAGGED items unfixable (pass with caveats)
+    max_iterations    — still has FAILs after N loops (best-effort)
+    regression        — fix loop broke a previously-passing AC (degraded)
+    no_fix/no_iterate — user flag or single-run mode
+
+PHASE B (Blind — Per-Persona Usability Walkthroughs) — ALWAYS FIRES:
   eval-usability (per-persona Playwright, think-aloud, 7-dimension scoring) → eval-report
+  Note: Phase B runs on whatever prototype state exists after Phase A exits.
+  When exit_reason != all_pass, usability scores may reflect missing features.
 ```
 
 ## Goal Condition
@@ -66,6 +75,26 @@ FLAGGED items are acceptable (they need human review). The Phase A loop only tar
 iteration = 0
 max_iterations = parse --max-iterations (default: 3)
 no_fix = parse --no-fix (default: false)
+
+# ── Fresh flag handling ────────────────────────────────────────────
+# --fresh deletes all prior artifacts for this KEY before starting.
+if --fresh:
+  rm -rf .artifacts/<KEY>/
+  echo "Cleared .artifacts/<KEY>/ (--fresh)"
+
+# ── Staleness detection ────────────────────────────────────────────
+# If prior artifacts exist, check if the Jira ticket was updated since last extract.
+if .artifacts/<KEY>/extract-state.json exists AND NOT --fresh:
+  Read .artifacts/<KEY>/extract-state.json for extracted_at field
+  if extracted_at exists:
+    Call getJiraIssue(<KEY>, fields: [updated]) to get ticket_updated timestamp
+    if ticket_updated > extracted_at:
+      echo "Warning: Jira ticket updated since last extract ($(extracted_at)). Clearing stale artifacts."
+      rm .artifacts/<KEY>/extract-state.json
+      rm .artifacts/<KEY>/evaluation-report.csv 2>/dev/null
+      rm .artifacts/<KEY>/iteration-log.json 2>/dev/null
+    else:
+      echo "extract-state.json is current (fetched $(extracted_at))"
 
 # Initialize persistent state (survives context compression)
 python3 .claude/skills/eval/scripts/eval_state.py init .artifacts/<KEY>/eval-state.yaml \
@@ -159,6 +188,11 @@ LOOP:
       --mode=informed --rerun-only=<FAIL+FLAGGED AC IDs from previous CSV>
     # Only runs Playwright for journeys testing failing criteria
     # Carries forward PASS verdicts from previous iteration
+
+  # ── Verdict cross-check (automated) ─────────────────────────────
+  node .claude/skills/eval/scripts/validate-verdicts.js .artifacts/<KEY>/
+  # If violations found (exit 1): fix CSV verdicts to FLAGGED for contradicted ACs before continuing.
+  # A journey FAIL + CSV PASS is never acceptable unless journey-log is corrected with visual evidence.
 
   # ── Archive this iteration ─────────────────────────────────────
   cp .artifacts/<KEY>/evaluation-report.csv → .artifacts/<KEY>/evaluation-report-iter-<iteration>.csv
@@ -299,6 +333,7 @@ python3 .claude/skills/eval/scripts/eval_state.py set .artifacts/<KEY>/eval-stat
 # Do NOT skip the Playwright walkthroughs and score from Phase A evidence alone.
 
 Read .claude/skills/eval/eval-usability/SKILL.md and execute it
+# Use Task tool with run_in_background=true for each persona-task pair when possible.
 # Produces: per-persona screenshots, think-aloud traces, 7-dimension scores,
 #           usability suggestions for human review
 
@@ -306,6 +341,16 @@ Read .claude/skills/eval/eval-usability/SKILL.md and execute it
 # Check: ls .artifacts/<KEY>/screenshots/persona-*.png
 # If no persona screenshots exist, Phase B did not run correctly.
 # Go back and re-run eval-usability — ensure Step 1d actually launches Playwright.
+
+# VALIDATE: Verify persona-results.json has non-empty trace[] arrays.
+# If any persona-task entry has empty trace[], the walkthrough failed to write live data.
+# In that case, re-run eval-usability for the affected persona (do NOT hydrate post-hoc).
+# The hydrate-persona-results.js script is DEPRECATED — trace data must be written during Step 1d.
+Read .artifacts/<KEY>/persona-results.json
+if any entry has trace == [] (empty array):
+  echo "WARNING: persona-results.json has empty trace[] — re-running eval-usability"
+  Read .claude/skills/eval/eval-usability/SKILL.md and execute it
+  # This should not happen if Step 1d synchronous writing is followed correctly
 
 # Update iteration log with usability results
 node .claude/skills/eval/scripts/append-iteration-log.js .artifacts/<KEY>/ <iteration> b

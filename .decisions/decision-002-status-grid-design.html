@@ -1,0 +1,730 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Decision 2: Status Grid Design — Evaluation Report Redesign</title>
+  <link href="https://fonts.googleapis.com/css2?family=Red+Hat+Display:wght@400;500;700&family=Red+Hat+Text:wght@400;500&family=Red+Hat+Mono&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Red Hat Text', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+      background: #f1f5f9;
+      color: #1a1a2e;
+      min-height: 100vh;
+      padding: 2rem;
+      line-height: 1.6;
+    }
+
+    header {
+      text-align: center;
+      margin-bottom: 2.5rem;
+      padding-bottom: 1.5rem;
+      border-bottom: 2px solid #e2e8f0;
+      max-width: 1200px;
+      margin-left: auto;
+      margin-right: auto;
+    }
+
+    .decision-number {
+      font-size: 0.75rem;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: #64748b;
+    }
+
+    header h1 {
+      font-family: 'Red Hat Display', -apple-system, sans-serif;
+      font-size: 1.6rem;
+      font-weight: 700;
+      color: #0f172a;
+      letter-spacing: -0.02em;
+      margin-top: 0.25rem;
+    }
+
+    .category-badge {
+      display: inline-block;
+      padding: 4px 12px;
+      border-radius: 999px;
+      font-size: 0.7rem;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      margin-top: 0.5rem;
+    }
+
+    .category-badge.visual { background: #fce7f3; color: #be185d; }
+
+    .decision-description {
+      font-size: 1rem;
+      color: #475569;
+      margin-top: 0.75rem;
+      max-width: 700px;
+      margin-left: auto;
+      margin-right: auto;
+      line-height: 1.7;
+    }
+
+    .instruction {
+      margin-top: 1rem;
+      font-size: 0.85rem;
+      background: #eff6ff;
+      color: #1d4ed8;
+      padding: 0.6rem 1.25rem;
+      border-radius: 8px;
+      display: inline-block;
+      border: 1px solid #bfdbfe;
+    }
+
+    .options-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1.5rem;
+      max-width: 1200px;
+      margin: 0 auto 3rem;
+    }
+
+    .option-card {
+      background: white;
+      border-radius: 16px;
+      overflow: hidden;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.08), 0 4px 16px rgba(0,0,0,0.04);
+      border: 2px solid #e2e8f0;
+      transition: all 0.2s ease;
+      display: flex;
+      flex-direction: column;
+      position: relative;
+    }
+
+    .option-card:hover { border-color: #0066cc; box-shadow: 0 4px 20px rgba(0,102,204,0.12); }
+
+    .card-header {
+      padding: 1rem 1.25rem 0.75rem;
+      border-bottom: 1px solid #f1f5f9;
+      display: flex;
+      flex-direction: column;
+      gap: 0.2rem;
+    }
+
+    .card-header-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.5rem;
+    }
+
+    .option-label {
+      font-size: 0.65rem;
+      font-weight: 800;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+    }
+
+    .option-card.option-a .option-label { color: #7c3aed; }
+    .option-card.option-b .option-label { color: #0891b2; }
+    .option-card.option-c .option-label { color: #059669; }
+    .option-card.option-d .option-label { color: #dc2626; }
+
+    .option-title {
+      font-family: 'Red Hat Display', -apple-system, sans-serif;
+      font-size: 1.05rem;
+      font-weight: 600;
+      color: #0f172a;
+    }
+
+    .recommended-badge {
+      background: #f59e0b;
+      color: white;
+      padding: 3px 10px;
+      border-radius: 999px;
+      font-size: 0.65rem;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+
+    .card-badges { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; flex-shrink: 0; }
+    .chosen-badge { background: #059669; color: white; padding: 3px 10px; border-radius: 999px; font-size: 0.65rem; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; white-space: nowrap; display: none; }
+    .option-card.chosen .chosen-badge { display: inline-block; }
+    .option-card.chosen { border: 3px solid #059669; box-shadow: 0 4px 20px rgba(5,150,105,0.15); }
+    .option-card.not-chosen { opacity: 0.55; filter: grayscale(20%); }
+    .option-card.not-chosen:hover { opacity: 0.8; filter: none; }
+
+    .visual-preview {
+      padding: 1.25rem;
+      background: #f8fafc;
+      min-height: 260px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex: 1;
+    }
+
+    .option-summary { padding: 1rem 1.25rem; font-size: 0.875rem; color: #334155; line-height: 1.65; border-top: 1px solid #f1f5f9; }
+
+    .verdict { display: grid; grid-template-columns: 1fr 1fr; border-top: 1px solid #f1f5f9; }
+    .pros, .cons { padding: 1rem 1.25rem; }
+    .pros { border-right: 1px solid #f1f5f9; }
+    .pros h3, .cons h3 { font-size: 0.65rem; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 0.5rem; }
+    .pros h3 { color: #059669; }
+    .cons h3 { color: #e11d48; }
+    .verdict ul { list-style: none; padding: 0; }
+    .verdict li { font-size: 0.8rem; color: #475569; line-height: 1.5; padding: 0.15rem 0; padding-left: 1rem; position: relative; }
+    .pros li::before { content: "\2713 "; color: #059669; font-weight: 700; position: absolute; left: 0; }
+    .cons li::before { content: "! "; color: #e11d48; font-weight: 700; position: absolute; left: 0; }
+
+    .card-footer { padding: 0.75rem 1.25rem; background: #f8fafc; border-top: 1px solid #f1f5f9; }
+    .tell-ai { font-size: 0.75rem; color: #64748b; background: #f1f5f9; padding: 0.35rem 0.65rem; border-radius: 6px; display: block; font-family: 'Red Hat Mono', monospace; }
+
+    .comparison-section { max-width: 1200px; margin: 0 auto 3rem; }
+    .comparison-section h2 { font-family: 'Red Hat Display', -apple-system, sans-serif; font-size: 1.1rem; font-weight: 700; color: #0f172a; margin-bottom: 1rem; }
+    .comparison-table-wrapper { overflow-x: auto; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.08), 0 4px 16px rgba(0,0,0,0.04); }
+    .comparison-table { width: 100%; border-collapse: collapse; background: white; font-size: 0.85rem; }
+    .comparison-table th { padding: 0.85rem 1rem; text-align: left; font-weight: 700; font-size: 0.75rem; letter-spacing: 0.05em; text-transform: uppercase; border-bottom: 2px solid #e2e8f0; white-space: nowrap; }
+    .comparison-table th:first-child { position: sticky; left: 0; z-index: 2; background: #f8fafc; color: #64748b; }
+    .comparison-table th.col-a { color: #7c3aed; }
+    .comparison-table th.col-b { color: #0891b2; }
+    .comparison-table th.col-c { color: #059669; }
+    .comparison-table th.col-d { color: #dc2626; }
+    .comparison-table td { padding: 0.75rem 1rem; border-bottom: 1px solid #f1f5f9; color: #334155; }
+    .comparison-table td:first-child { font-weight: 600; color: #475569; position: sticky; left: 0; background: #f8fafc; }
+    .comparison-table tr:nth-child(even) td { background: #fafbfc; }
+    .comparison-table tr:nth-child(even) td:first-child { background: #f1f5f9; }
+    .comparison-table .col-recommended { background: #fffbeb !important; }
+    .comparison-table tr:last-child td { border-bottom: none; }
+
+    .page-footer { max-width: 1200px; margin: 0 auto; text-align: center; padding: 1.5rem; background: white; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+    .page-footer p { font-size: 0.85rem; color: #64748b; margin: 0.3rem 0; }
+    .page-footer strong { color: #334155; }
+
+    .back-link { display: inline-block; margin-bottom: 1.5rem; font-size: 0.85rem; color: #0066cc; text-decoration: none; max-width: 1200px; }
+    .back-link:hover { text-decoration: underline; }
+
+    @media (max-width: 768px) { .options-grid { grid-template-columns: 1fr; } body { padding: 1rem; } }
+
+    /* Status grid preview styles */
+    .sg-preview {
+      width: 100%;
+      max-width: 300px;
+      font-family: 'Red Hat Text', sans-serif;
+    }
+
+    .sg-grid-4 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px;
+    }
+
+    .sg-grid-2x1 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px;
+      margin-bottom: 6px;
+    }
+
+    .sg-card {
+      background: #ffffff;
+      border: 1px solid #eaeaea;
+      border-radius: 6px;
+      padding: 8px 10px;
+    }
+
+    .sg-card-label {
+      font-size: 7px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: #6b7280;
+      margin-bottom: 3px;
+    }
+
+    .sg-card-value {
+      font-family: 'Red Hat Display', sans-serif;
+      font-size: 16px;
+      font-weight: 700;
+      color: #1a1a1a;
+    }
+
+    .sg-card-detail {
+      font-size: 8px;
+      color: #6b7280;
+      margin-top: 2px;
+      line-height: 1.4;
+    }
+
+    .sg-card-cta {
+      margin-top: 4px;
+      font-size: 8px;
+      font-weight: 600;
+      color: #0066cc;
+      cursor: pointer;
+    }
+
+    .sg-card.success { border-left: 3px solid #16a34a; }
+    .sg-card.danger { border-left: 3px solid #dc2626; }
+    .sg-card.warning { border-left: 3px solid #d97706; }
+    .sg-card.action { border-left: 3px solid #0066cc; }
+    .sg-card.neutral { border-left: 3px solid #6b7280; }
+
+    .sg-bar {
+      width: 100%;
+      height: 4px;
+      background: #eaeaea;
+      border-radius: 2px;
+      margin-top: 4px;
+      overflow: hidden;
+    }
+
+    .sg-bar-fill { height: 100%; border-radius: 2px; }
+    .sg-bar-fill.green { background: #16a34a; }
+    .sg-bar-fill.red { background: #dc2626; }
+
+    .sg-full-width {
+      grid-column: 1 / -1;
+    }
+
+    .sg-checklist {
+      margin-top: 4px;
+    }
+
+    .sg-check-item {
+      font-size: 8px;
+      color: #475569;
+      padding: 2px 0;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .sg-check-icon { font-size: 9px; }
+    .sg-check-icon.pass { color: #16a34a; }
+    .sg-check-icon.fail { color: #dc2626; }
+    .sg-check-icon.flag { color: #d97706; }
+
+    .sg-sentence {
+      font-size: 9px;
+      color: #475569;
+      line-height: 1.5;
+      padding: 6px 0;
+    }
+
+    .sg-sentence strong {
+      color: #1a1a1a;
+    }
+
+    .sg-single-card {
+      background: #ffffff;
+      border: 1px solid #eaeaea;
+      border-radius: 6px;
+      padding: 10px 12px;
+    }
+
+    .sg-prose-line {
+      font-size: 9px;
+      color: #475569;
+      line-height: 1.6;
+      padding: 3px 0;
+    }
+
+    .sg-prose-line .highlight {
+      font-weight: 600;
+      color: #1a1a1a;
+    }
+
+    .sg-inline-badge {
+      display: inline-block;
+      padding: 1px 5px;
+      border-radius: 3px;
+      font-size: 7px;
+      font-weight: 600;
+    }
+
+    .sg-inline-badge.pass { background: #ecfdf5; color: #047857; }
+    .sg-inline-badge.fail { background: #fef2f2; color: #991b1b; }
+    .sg-inline-badge.flag { background: #fffbeb; color: #92400e; }
+  </style>
+</head>
+<body>
+  <a href="index.html" class="back-link">&larr; All Decisions</a>
+
+  <header>
+    <span class="decision-number">Decision 2 of 5</span>
+    <h1>Status Grid Design</h1>
+    <span class="category-badge visual">Visual / UX</span>
+    <p class="decision-description">
+      Directly below the executive summary, the UI must immediately answer four questions: What did prototype-creator build? What is working? What needs attention? What is the designer's next action? This decision is about how those four answers are visually presented — the card design, information density, and interaction affordances.
+    </p>
+    <p class="instruction">
+      Respond with: <strong>"Option B"</strong> &middot; <strong>"Option A but [change]"</strong> &middot; <strong>"more options"</strong>
+    </p>
+  </header>
+
+  <main class="options-grid">
+    <!-- OPTION A -->
+    <article class="option-card option-a">
+      <div class="card-header">
+        <div class="card-header-top">
+          <span class="option-label">Option A</span>
+          <div class="card-badges">
+            <span class="recommended-badge">Recommended</span>
+            <span class="chosen-badge">Chosen</span>
+          </div>
+        </div>
+        <h2 class="option-title">Four Equal Cards</h2>
+      </div>
+
+      <div class="visual-preview">
+        <div class="sg-preview">
+          <div class="sg-grid-4">
+            <div class="sg-card neutral">
+              <div class="sg-card-label">What was built</div>
+              <div class="sg-card-value">14</div>
+              <div class="sg-card-detail">files across 3 routes</div>
+              <div class="sg-card-cta">View changeset &rarr;</div>
+            </div>
+            <div class="sg-card success">
+              <div class="sg-card-label">What is working</div>
+              <div class="sg-card-value">4/5</div>
+              <div class="sg-card-detail">ACs passing</div>
+              <div class="sg-bar"><div class="sg-bar-fill green" style="width:80%"></div></div>
+            </div>
+            <div class="sg-card danger">
+              <div class="sg-card-label">Needs attention</div>
+              <div class="sg-card-value">1</div>
+              <div class="sg-card-detail">FAIL + 1 FLAGGED</div>
+              <div class="sg-card-cta">Review issues &rarr;</div>
+            </div>
+            <div class="sg-card action">
+              <div class="sg-card-label">Your next action</div>
+              <div class="sg-card-value" style="font-size:11px;line-height:1.3;">Review 1 flagged item</div>
+              <div class="sg-card-cta">Start review &rarr;</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="option-summary">
+        A simple 2x2 grid where each card answers exactly one of the four questions. Each card has a label, a large primary number or short phrase, supporting detail text, and an optional action link. Left-border color indicates severity (green=working, red=attention, blue=action). I recommend this because it's the most direct mapping to the four questions — each card answers one question, no ambiguity.
+      </div>
+
+      <div class="verdict">
+        <div class="pros">
+          <h3>Works well when</h3>
+          <ul>
+            <li>Designer needs to answer one specific question quickly</li>
+            <li>Numbers are the primary signal (4/5 pass, 1 fail)</li>
+            <li>Each card can be a click target that scrolls to detail</li>
+          </ul>
+        </div>
+        <div class="cons">
+          <h3>Watch out for</h3>
+          <ul>
+            <li>Four equal cards can feel dashboard-y rather than report-like</li>
+            <li>Numbers without context may need the detail text to make sense</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="card-footer">
+        <code class="tell-ai">Respond with: "Option A"</code>
+      </div>
+    </article>
+
+    <!-- OPTION B -->
+    <article class="option-card option-b">
+      <div class="card-header">
+        <div class="card-header-top">
+          <span class="option-label">Option B</span>
+          <div class="card-badges">
+            <span class="chosen-badge">Chosen</span>
+          </div>
+        </div>
+        <h2 class="option-title">Verdict Banner + Checklist</h2>
+      </div>
+
+      <div class="visual-preview">
+        <div class="sg-preview">
+          <div class="sg-single-card" style="border-left: 3px solid #d97706;">
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+              <div>
+                <div style="font-family:'Red Hat Display',sans-serif;font-size:12px;font-weight:700;color:#92400e;">Needs Review</div>
+                <div style="font-size:9px;color:#6b7280;margin-top:1px;">4 of 5 ACs pass &middot; 1 flagged for you</div>
+              </div>
+              <div class="sg-inline-badge flag">FLAGGED</div>
+            </div>
+            <div style="margin-top:8px;border-top:1px solid #f5f5f5;padding-top:8px;">
+              <div class="sg-checklist">
+                <div class="sg-check-item"><span class="sg-check-icon pass">&#10003;</span> Built: RBAC table, role selector, permission modal (14 files)</div>
+                <div class="sg-check-item"><span class="sg-check-icon pass">&#10003;</span> Working: AC-1 thru AC-4 pass verification</div>
+                <div class="sg-check-item"><span class="sg-check-icon fail">&#10007;</span> AC-5 FAIL: Permission denied toast not shown</div>
+                <div class="sg-check-item"><span class="sg-check-icon flag">&#9888;</span> AC-3 FLAGGED: Needs human verification of role inheritance</div>
+              </div>
+              <div style="margin-top:8px;">
+                <div class="sg-card-cta">Review flagged items &rarr;</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="option-summary">
+        A single verdict banner that leads with the overall status (pass/needs review/needs fixes), followed by a compact checklist that answers all four questions inline. Each line is prefixed with a pass/fail/flag icon. The "next action" is a CTA button at the bottom. Reads like a structured summary rather than discrete cards.
+      </div>
+
+      <div class="verdict">
+        <div class="pros">
+          <h3>Works well when</h3>
+          <ul>
+            <li>Designer prefers to read rather than parse cards</li>
+            <li>Relationship between items matters (pass/fail story)</li>
+            <li>Fewer visual elements to process</li>
+          </ul>
+        </div>
+        <div class="cons">
+          <h3>Watch out for</h3>
+          <ul>
+            <li>Harder to find one specific answer (no card target)</li>
+            <li>Checklist grows linearly with AC count</li>
+            <li>Less visual hierarchy between the four questions</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="card-footer">
+        <code class="tell-ai">Respond with: "Option B"</code>
+      </div>
+    </article>
+
+    <!-- OPTION C -->
+    <article class="option-card option-c">
+      <div class="card-header">
+        <div class="card-header-top">
+          <span class="option-label">Option C</span>
+          <div class="card-badges">
+            <span class="chosen-badge">Chosen</span>
+          </div>
+        </div>
+        <h2 class="option-title">Prose Summary + Action Bar</h2>
+      </div>
+
+      <div class="visual-preview">
+        <div class="sg-preview">
+          <div class="sg-single-card">
+            <div class="sg-prose-line">
+              prototype-creator built <span class="highlight">3 new routes</span> across 14 files implementing RBAC controls for the model registry.
+            </div>
+            <div class="sg-prose-line">
+              <span class="sg-inline-badge pass">4 PASS</span>
+              <span class="sg-inline-badge fail">1 FAIL</span>
+              <span class="sg-inline-badge flag">1 FLAGGED</span>
+              &mdash; AC-5 (permission denied toast) failed verification. AC-3 (role inheritance) needs your judgment.
+            </div>
+            <div style="margin-top:8px;padding-top:8px;border-top:1px solid #f0f0f0;display:flex;gap:8px;">
+              <div style="background:#0066cc;color:white;padding:3px 8px;border-radius:4px;font-size:8px;font-weight:600;">Review flagged items</div>
+              <div style="background:#f9f9f9;border:1px solid #eaeaea;padding:3px 8px;border-radius:4px;font-size:8px;font-weight:500;color:#475569;">View full AC table</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="option-summary">
+        A natural-language paragraph that weaves all four answers into readable prose, followed by an action bar with primary + secondary CTAs. The status badges are inline within the text rather than separate cards. Reads like a human wrote a brief for you, not a machine outputting metrics.
+      </div>
+
+      <div class="verdict">
+        <div class="pros">
+          <h3>Works well when</h3>
+          <ul>
+            <li>Context and nuance matter more than raw counts</li>
+            <li>Report should feel like a narrative, not a dashboard</li>
+            <li>The "why" is as important as the "what"</li>
+          </ul>
+        </div>
+        <div class="cons">
+          <h3>Watch out for</h3>
+          <ul>
+            <li>Slower to scan than structured cards or checklists</li>
+            <li>Harder to generate consistently — prose varies per eval</li>
+            <li>No visual signal when everything passes vs problems exist</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="card-footer">
+        <code class="tell-ai">Respond with: "Option C"</code>
+      </div>
+    </article>
+
+    <!-- OPTION D -->
+    <article class="option-card option-d">
+      <div class="card-header">
+        <div class="card-header-top">
+          <span class="option-label">Option D</span>
+          <div class="card-badges">
+            <span class="chosen-badge">Chosen</span>
+          </div>
+        </div>
+        <h2 class="option-title">Hero Metric + Expansion Row</h2>
+      </div>
+
+      <div class="visual-preview">
+        <div class="sg-preview">
+          <div class="sg-single-card" style="text-align:center;padding:12px 10px;">
+            <div style="font-family:'Red Hat Display',sans-serif;font-size:28px;font-weight:700;color:#16a34a;">4/5</div>
+            <div style="font-size:9px;color:#6b7280;">acceptance criteria passing</div>
+            <div class="sg-bar" style="margin:8px auto;max-width:160px;"><div class="sg-bar-fill green" style="width:80%"></div></div>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;margin-top:6px;">
+            <div class="sg-card" style="padding:5px 6px;text-align:center;">
+              <div style="font-size:7px;color:#6b7280;text-transform:uppercase;">Built</div>
+              <div style="font-family:'Red Hat Display',sans-serif;font-size:12px;font-weight:700;">14 files</div>
+            </div>
+            <div class="sg-card" style="padding:5px 6px;text-align:center;border-left:2px solid #dc2626;">
+              <div style="font-size:7px;color:#6b7280;text-transform:uppercase;">Attention</div>
+              <div style="font-family:'Red Hat Display',sans-serif;font-size:12px;font-weight:700;color:#dc2626;">2 items</div>
+            </div>
+            <div class="sg-card" style="padding:5px 6px;text-align:center;border-left:2px solid #0066cc;">
+              <div style="font-size:7px;color:#6b7280;text-transform:uppercase;">Next</div>
+              <div style="font-size:9px;font-weight:600;color:#0066cc;">Review</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="option-summary">
+        A single dominant metric (the pass rate) takes center stage with a progress bar. Below it, a compact 3-column row provides the remaining answers (built, attention, next action) as small satellite cards. The visual hierarchy is clear — the big number tells you the overall state in one instant, the details are below if you need them.
+      </div>
+
+      <div class="verdict">
+        <div class="pros">
+          <h3>Works well when</h3>
+          <ul>
+            <li>One number captures the state (pass rate is the key signal)</li>
+            <li>Strong visual hierarchy — glanceable from across the room</li>
+            <li>Works well at all viewport widths</li>
+          </ul>
+        </div>
+        <div class="cons">
+          <h3>Watch out for</h3>
+          <ul>
+            <li>Pass rate alone doesn't capture nuance (flagged ≠ fail)</li>
+            <li>Satellite cards are very small — limited content</li>
+            <li>Feels more like a KPI dashboard than a design review report</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="card-footer">
+        <code class="tell-ai">Respond with: "Option D"</code>
+      </div>
+    </article>
+  </main>
+
+  <!-- COMPARISON TABLE -->
+  <section class="comparison-section">
+    <h2>How They Compare</h2>
+    <div class="comparison-table-wrapper">
+      <table class="comparison-table">
+        <thead>
+          <tr>
+            <th></th>
+            <th class="col-a col-recommended">A: Four Equal Cards</th>
+            <th class="col-b">B: Verdict + Checklist</th>
+            <th class="col-c">C: Prose + Action Bar</th>
+            <th class="col-d">D: Hero Metric + Row</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Scan speed</td>
+            <td class="col-recommended">Fast — numbers pop</td>
+            <td>Medium — sequential read</td>
+            <td>Slow — prose reading</td>
+            <td>Very fast — one big number</td>
+          </tr>
+          <tr>
+            <td>Answers all 4 questions</td>
+            <td class="col-recommended">Yes — one per card</td>
+            <td>Yes — inline in list</td>
+            <td>Yes — woven in prose</td>
+            <td>Partially — satellite cards cramped</td>
+          </tr>
+          <tr>
+            <td>Clickable affordance</td>
+            <td class="col-recommended">Each card is a target</td>
+            <td>One CTA at bottom</td>
+            <td>Action bar CTAs</td>
+            <td>Satellite cards</td>
+          </tr>
+          <tr>
+            <td>Tone / feel</td>
+            <td class="col-recommended">Dashboard-adjacent</td>
+            <td>Clinical, structured</td>
+            <td>Narrative, human</td>
+            <td>KPI-focused</td>
+          </tr>
+          <tr>
+            <td>Vertical footprint</td>
+            <td class="col-recommended">Medium (2 rows)</td>
+            <td>Grows with AC count</td>
+            <td>Compact (one card)</td>
+            <td>Medium (hero + row)</td>
+          </tr>
+          <tr>
+            <td>Report aesthetic match</td>
+            <td class="col-recommended">Good — clean, structured</td>
+            <td>Good — minimal</td>
+            <td>Best — editorial feel</td>
+            <td>Weaker — dashboard feel</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- CUSTOM OPTION -->
+  <section class="comparison-section">
+    <h2>Custom: Hero Metric + Context Checklist</h2>
+    <p style="color:#475569;font-size:0.9rem;margin-bottom:1.5rem;">Combines D's visual hierarchy (dominant metric) with B's contextual detail (specific AC names and explanations).</p>
+    <div style="display:flex;justify-content:center;padding:2rem;background:white;border-radius:12px;box-shadow:0 1px 3px rgba(0,0,0,0.08);">
+      <div class="sg-preview" style="max-width:320px;">
+        <!-- Hero metric -->
+        <div class="sg-single-card" style="text-align:center;padding:14px 12px;border-left:3px solid #16a34a;">
+          <div style="font-family:'Red Hat Display',sans-serif;font-size:28px;font-weight:700;color:#16a34a;">4/5</div>
+          <div style="font-size:9px;color:#6b7280;">acceptance criteria passing</div>
+          <div class="sg-bar" style="margin:8px auto;max-width:180px;"><div class="sg-bar-fill green" style="width:80%"></div></div>
+          <div style="font-size:8px;color:#6b7280;margin-top:4px;">14 files &middot; 3 routes &middot; 2 fix iterations</div>
+        </div>
+
+        <!-- Context checklist (B-style detail) -->
+        <div class="sg-single-card" style="margin-top:6px;padding:10px 12px;">
+          <div style="font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#6b7280;margin-bottom:6px;">Status Detail</div>
+          <div class="sg-checklist">
+            <div class="sg-check-item"><span class="sg-check-icon pass">&#10003;</span> AC-1: Form-based UI for RBAC role creation</div>
+            <div class="sg-check-item"><span class="sg-check-icon pass">&#10003;</span> AC-2: Role selector with inherited permissions</div>
+            <div class="sg-check-item"><span class="sg-check-icon pass">&#10003;</span> AC-3: Permission table with bulk actions</div>
+            <div class="sg-check-item"><span class="sg-check-icon pass">&#10003;</span> AC-4: Audit log shows role changes</div>
+            <div class="sg-check-item"><span class="sg-check-icon fail">&#10007;</span> AC-5: Permission denied toast not shown on unauthorized action</div>
+            <div class="sg-check-item"><span class="sg-check-icon flag">&#9888;</span> AC-3 FLAGGED: Role inheritance logic needs human verification</div>
+          </div>
+        </div>
+
+        <!-- Action CTA -->
+        <div style="margin-top:6px;display:flex;gap:6px;">
+          <div style="flex:1;background:#0066cc;color:white;padding:6px 10px;border-radius:5px;font-size:9px;font-weight:600;text-align:center;">Review 1 flagged item</div>
+          <div style="flex:1;background:#f9f9f9;border:1px solid #eaeaea;padding:6px 10px;border-radius:5px;font-size:9px;font-weight:500;color:#475569;text-align:center;">View evidence</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="page-footer">
+    <p>Does this custom combination work? Respond with <strong>"yes"</strong> to lock it in, or tell me what to adjust.</p>
+    <p>To change a past decision: <strong>"for decision-001 I want Option C instead"</strong></p>
+  </div>
+
+</body>
+</html>

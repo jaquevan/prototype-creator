@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Decision 10: Appendix Tab Redesign — Evaluation Report Redesign</title>
+  <link href="https://fonts.googleapis.com/css2?family=Red+Hat+Display:wght@400;500;700&family=Red+Hat+Text:wght@400;500&family=Red+Hat+Mono&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Red Hat Text', -apple-system, sans-serif; background: #f1f5f9; color: #1a1a2e; min-height: 100vh; padding: 2rem; line-height: 1.6; }
+    header { text-align: center; margin-bottom: 2.5rem; padding-bottom: 1.5rem; border-bottom: 2px solid #e2e8f0; max-width: 1200px; margin-left: auto; margin-right: auto; }
+    .decision-number { font-size: 0.75rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: #64748b; }
+    header h1 { font-family: 'Red Hat Display', sans-serif; font-size: 1.6rem; font-weight: 700; color: #0f172a; letter-spacing: -0.02em; margin-top: 0.25rem; }
+    .category-badge { display: inline-block; padding: 4px 12px; border-radius: 999px; font-size: 0.7rem; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; margin-top: 0.5rem; }
+    .category-badge.ia { background: #ecfdf5; color: #047857; }
+    .decision-description { font-size: 1rem; color: #475569; margin-top: 0.75rem; max-width: 700px; margin-left: auto; margin-right: auto; line-height: 1.7; }
+    .instruction { margin-top: 1rem; font-size: 0.85rem; background: #eff6ff; color: #1d4ed8; padding: 0.6rem 1.25rem; border-radius: 8px; display: inline-block; border: 1px solid #bfdbfe; }
+    .options-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; max-width: 1200px; margin: 0 auto 3rem; }
+    .option-card { background: white; border-radius: 16px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.08), 0 4px 16px rgba(0,0,0,0.04); border: 2px solid #e2e8f0; transition: all 0.2s ease; display: flex; flex-direction: column; }
+    .option-card:hover { border-color: #0066cc; box-shadow: 0 4px 20px rgba(0,102,204,0.12); }
+    .card-header { padding: 1rem 1.25rem 0.75rem; border-bottom: 1px solid #f1f5f9; display: flex; flex-direction: column; gap: 0.2rem; }
+    .card-header-top { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
+    .option-label { font-size: 0.65rem; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; }
+    .option-card.option-a .option-label { color: #7c3aed; }
+    .option-card.option-b .option-label { color: #0891b2; }
+    .option-card.option-c .option-label { color: #059669; }
+    .option-card.option-d .option-label { color: #dc2626; }
+    .option-title { font-family: 'Red Hat Display', sans-serif; font-size: 1.05rem; font-weight: 600; color: #0f172a; }
+    .recommended-badge { background: #f59e0b; color: white; padding: 3px 10px; border-radius: 999px; font-size: 0.65rem; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; white-space: nowrap; }
+    .card-badges { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; flex-shrink: 0; }
+    .chosen-badge { background: #059669; color: white; padding: 3px 10px; border-radius: 999px; font-size: 0.65rem; font-weight: 700; display: none; }
+    .option-card.chosen .chosen-badge { display: inline-block; }
+    .visual-preview { padding: 1.25rem; background: #f8fafc; min-height: 300px; display: flex; align-items: center; justify-content: center; flex: 1; }
+    .option-summary { padding: 1rem 1.25rem; font-size: 0.875rem; color: #334155; line-height: 1.65; border-top: 1px solid #f1f5f9; }
+    .verdict { display: grid; grid-template-columns: 1fr 1fr; border-top: 1px solid #f1f5f9; }
+    .pros, .cons { padding: 1rem 1.25rem; }
+    .pros { border-right: 1px solid #f1f5f9; }
+    .pros h3, .cons h3 { font-size: 0.65rem; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 0.5rem; }
+    .pros h3 { color: #059669; }
+    .cons h3 { color: #e11d48; }
+    .verdict ul { list-style: none; padding: 0; }
+    .verdict li { font-size: 0.8rem; color: #475569; line-height: 1.5; padding: 0.15rem 0; padding-left: 1rem; position: relative; }
+    .pros li::before { content: "\2713 "; color: #059669; font-weight: 700; position: absolute; left: 0; }
+    .cons li::before { content: "! "; color: #e11d48; font-weight: 700; position: absolute; left: 0; }
+    .card-footer { padding: 0.75rem 1.25rem; background: #f8fafc; border-top: 1px solid #f1f5f9; }
+    .tell-ai { font-size: 0.75rem; color: #64748b; background: #f1f5f9; padding: 0.35rem 0.65rem; border-radius: 6px; display: block; font-family: 'Red Hat Mono', monospace; }
+    .page-footer { max-width: 1200px; margin: 0 auto; text-align: center; padding: 1.5rem; background: white; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+    .page-footer p { font-size: 0.85rem; color: #64748b; margin: 0.3rem 0; }
+    .back-link { display: inline-block; margin-bottom: 1.5rem; font-size: 0.85rem; color: #0066cc; text-decoration: none; }
+    .back-link:hover { text-decoration: underline; }
+    @media (max-width: 768px) { .options-grid { grid-template-columns: 1fr; } body { padding: 1rem; } }
+
+    /* Tab preview styles */
+    .tp { width: 100%; max-width: 280px; font-family: 'Red Hat Text', sans-serif; font-size: 8px; }
+    .tp-tabs { display: flex; gap: 2px; border-bottom: 1px solid #eaeaea; margin-bottom: 8px; flex-wrap: wrap; }
+    .tp-tab { padding: 4px 7px; font-size: 7px; font-weight: 600; color: #6b7280; border-bottom: 2px solid transparent; }
+    .tp-tab.active { color: #0066cc; border-bottom-color: #0066cc; }
+    .tp-tab .count { font-size: 6px; background: #f0f0f0; color: #6b7280; padding: 1px 3px; border-radius: 2px; margin-left: 2px; }
+    .tp-section { margin-bottom: 8px; }
+    .tp-section-title { font-size: 7px; font-weight: 700; color: #1a1a1a; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 4px; }
+    .tp-card { background: #f9f9f9; border: 1px solid #eaeaea; border-radius: 4px; padding: 6px 8px; margin-bottom: 4px; }
+    .tp-card-title { font-size: 8px; font-weight: 600; color: #1a1a1a; }
+    .tp-card-meta { font-size: 7px; color: #6b7280; margin-top: 2px; }
+    .tp-timeline { display: flex; flex-direction: column; gap: 0; padding-left: 12px; border-left: 2px solid #eaeaea; }
+    .tp-timeline-item { position: relative; padding: 4px 0 4px 10px; }
+    .tp-timeline-item::before { content: ''; position: absolute; left: -7px; top: 8px; width: 10px; height: 10px; border-radius: 50%; background: #0066cc; border: 2px solid #fff; }
+    .tp-timeline-item.success::before { background: #16a34a; }
+    .tp-timeline-item.warning::before { background: #d97706; }
+    .tp-timeline-label { font-size: 7px; font-weight: 700; color: #1a1a1a; }
+    .tp-timeline-detail { font-size: 7px; color: #6b7280; }
+    .tp-bar { display: flex; align-items: center; gap: 4px; margin: 3px 0; }
+    .tp-bar-track { flex: 1; height: 5px; background: #eaeaea; border-radius: 3px; overflow: hidden; }
+    .tp-bar-fill { height: 100%; border-radius: 3px; }
+    .tp-severity { display: inline-block; padding: 1px 4px; border-radius: 2px; font-size: 6px; font-weight: 700; text-transform: uppercase; }
+    .tp-severity.error { background: #fef2f2; color: #dc2626; }
+    .tp-severity.warning { background: #fffbeb; color: #d97706; }
+    .tp-narrative { font-size: 7.5px; color: #475569; line-height: 1.5; padding: 6px 8px; background: #f9f9f9; border-radius: 4px; border-left: 2px solid #0066cc; margin-bottom: 6px; }
+  </style>
+</head>
+<body>
+  <a href="index.html" class="back-link">&larr; All Decisions</a>
+
+  <header>
+    <span class="decision-number">Decision 10 of 10</span>
+    <h1>Appendix Tab Content Redesign</h1>
+    <span class="category-badge ia">Information Architecture</span>
+    <p class="decision-description">
+      Three tabs have readability issues: "What Changed" (confusing name, overlaps with Consistency), "Iterations" (flat cards instead of a visual timeline), and "Consistency" (duplicates findings shown elsewhere). The question: how do we restructure the content within each tab to be scannable and non-redundant?
+    </p>
+    <p class="instruction">
+      Respond with: <strong>"Option B"</strong> &middot; <strong>"Option A but [change]"</strong> &middot; <strong>"more options"</strong>
+    </p>
+  </header>
+
+  <main class="options-grid">
+    <!-- OPTION A -->
+    <article class="option-card option-a">
+      <div class="card-header">
+        <div class="card-header-top">
+          <span class="option-label">Option A</span>
+          <div class="card-badges">
+            <span class="recommended-badge">Recommended</span>
+            <span class="chosen-badge">Chosen</span>
+          </div>
+        </div>
+        <h2 class="option-title">Rename + Deduplicate + Timeline</h2>
+      </div>
+      <div class="visual-preview">
+        <div class="tp">
+          <div class="tp-tabs">
+            <div class="tp-tab">Journeys</div>
+            <div class="tp-tab">Usability</div>
+            <div class="tp-tab active">Fix History <span class="count">4</span></div>
+            <div class="tp-tab">Design Compliance <span class="count">2</span></div>
+            <div class="tp-tab">Pipeline</div>
+          </div>
+          <div class="tp-narrative">Prototype-creator applied 3 fixes across 2 iterations. AC-5 was fixed on iteration 2 after the permission toast was missing. 1 consistency issue remains.</div>
+          <div class="tp-section-title">Iteration Timeline</div>
+          <div class="tp-timeline">
+            <div class="tp-timeline-item success">
+              <div class="tp-timeline-label">Iteration 1 &rarr; +2 fixes</div>
+              <div class="tp-timeline-detail">AC-3, AC-4 fixed. AC-5 still failing.</div>
+            </div>
+            <div class="tp-timeline-item success">
+              <div class="tp-timeline-label">Iteration 2 &rarr; +1 fix</div>
+              <div class="tp-timeline-detail">AC-5 fixed. All ACs pass.</div>
+            </div>
+          </div>
+          <div style="margin-top:6px;font-size:7px;color:#6b7280;">(Consistency violations moved to Design Compliance tab)</div>
+        </div>
+      </div>
+      <div class="option-summary">
+        <strong>Rename tabs:</strong> "What Changed" → "Fix History", "Consistency" → "Design Compliance", "Iterations" merged into Fix History.<br><br>
+        <strong>Deduplicate:</strong> Consistency violations ONLY in Design Compliance tab (removed from Fix History Outstanding).<br><br>
+        <strong>Fix History:</strong> Narrative summary at top + visual dot timeline (using the existing .iter-timeline CSS) + expandable fix cards below.<br><br>
+        <strong>Design Compliance:</strong> Score bars (checked/passed/violations) + narrative insight + severity-grouped findings.<br><br>
+        <strong>Pipeline tab:</strong> Replaces "Iterations" — shows MR delta and code diffs only (the "what did the MR change" content).
+      </div>
+      <div class="verdict">
+        <div class="pros"><h3>Works well when</h3><ul>
+          <li>Eliminates all naming confusion and duplication</li>
+          <li>Timeline gives visual fix history at a glance</li>
+          <li>Narrative summaries match Decision 9 pattern</li>
+          <li>Each tab has ONE clear purpose</li>
+        </ul></div>
+        <div class="cons"><h3>Watch out for</h3><ul>
+          <li>Merging Iterations into Fix History may lose some detail</li>
+          <li>Tab count stays at 5 (renamed, not reduced)</li>
+        </ul></div>
+      </div>
+      <div class="card-footer"><code class="tell-ai">Respond with: "Option A"</code></div>
+    </article>
+
+    <!-- OPTION B -->
+    <article class="option-card option-b">
+      <div class="card-header">
+        <div class="card-header-top">
+          <span class="option-label">Option B</span>
+          <div class="card-badges"><span class="chosen-badge">Chosen</span></div>
+        </div>
+        <h2 class="option-title">Consolidate to 3 Tabs</h2>
+      </div>
+      <div class="visual-preview">
+        <div class="tp">
+          <div class="tp-tabs">
+            <div class="tp-tab active">Journeys</div>
+            <div class="tp-tab">Usability</div>
+            <div class="tp-tab">Technical Detail</div>
+          </div>
+          <div class="tp-section-title" style="margin-top:6px;">Technical Detail contains:</div>
+          <div class="tp-card">
+            <div class="tp-card-title">Fix History</div>
+            <div class="tp-card-meta">3 fixes applied, 1 outstanding</div>
+          </div>
+          <div class="tp-card">
+            <div class="tp-card-title">Design Compliance</div>
+            <div class="tp-card-meta">2 PatternFly violations</div>
+          </div>
+          <div class="tp-card">
+            <div class="tp-card-title">MR Changes</div>
+            <div class="tp-card-meta">14 files, 3 routes</div>
+          </div>
+          <div class="tp-card">
+            <div class="tp-card-title">Iteration Log</div>
+            <div class="tp-card-meta">2 cycles, 0 regressions</div>
+          </div>
+        </div>
+      </div>
+      <div class="option-summary">
+        Merge What Changed + Iterations + Consistency into one "Technical Detail" tab with sub-sections. Reduces tab count from 5 to 3: Journeys, Usability, Technical Detail. The merged tab uses accordion sub-sections internally. Less cognitive load in the tab bar, but the Technical Detail tab is dense.
+      </div>
+      <div class="verdict">
+        <div class="pros"><h3>Works well when</h3><ul>
+          <li>Fewer tabs = less choice paralysis</li>
+          <li>All "non-persona" detail in one place</li>
+          <li>Designers mainly care about Journeys + Usability</li>
+        </ul></div>
+        <div class="cons"><h3>Watch out for</h3><ul>
+          <li>"Technical Detail" becomes a dumping ground</li>
+          <li>Sub-sections within a tab adds nesting complexity</li>
+          <li>Hard to link directly to a specific sub-section</li>
+        </ul></div>
+      </div>
+      <div class="card-footer"><code class="tell-ai">Respond with: "Option B"</code></div>
+    </article>
+
+    <!-- OPTION C -->
+    <article class="option-card option-c">
+      <div class="card-header">
+        <div class="card-header-top">
+          <span class="option-label">Option C</span>
+          <div class="card-badges"><span class="chosen-badge">Chosen</span></div>
+        </div>
+        <h2 class="option-title">Score Bars Everywhere + Group by Severity</h2>
+      </div>
+      <div class="visual-preview">
+        <div class="tp">
+          <div class="tp-tabs">
+            <div class="tp-tab">Journeys</div>
+            <div class="tp-tab">Usability</div>
+            <div class="tp-tab active">Fixes <span class="count">4</span></div>
+            <div class="tp-tab">Compliance <span class="count">2</span></div>
+            <div class="tp-tab">Iterations <span class="count">2</span></div>
+          </div>
+          <div class="tp-section-title" style="margin-top:4px;">Fixes Applied (3)</div>
+          <div class="tp-bar"><span style="font-size:7px;min-width:50px;">AC-3</span><span class="tp-bar-track"><span class="tp-bar-fill" style="width:100%;background:#16a34a;"></span></span><span style="font-size:7px;color:#16a34a;">Fixed</span></div>
+          <div class="tp-bar"><span style="font-size:7px;min-width:50px;">AC-4</span><span class="tp-bar-track"><span class="tp-bar-fill" style="width:100%;background:#16a34a;"></span></span><span style="font-size:7px;color:#16a34a;">Fixed</span></div>
+          <div class="tp-bar"><span style="font-size:7px;min-width:50px;">AC-5</span><span class="tp-bar-track"><span class="tp-bar-fill" style="width:100%;background:#16a34a;"></span></span><span style="font-size:7px;color:#16a34a;">Fixed</span></div>
+          <div class="tp-section-title" style="margin-top:6px;">Outstanding (1)</div>
+          <div class="tp-bar"><span style="font-size:7px;min-width:50px;">NAV-1</span><span class="tp-bar-track"><span class="tp-bar-fill" style="width:50%;background:#d97706;"></span></span><span style="font-size:7px;color:#d97706;">Deferred</span></div>
+        </div>
+      </div>
+      <div class="option-summary">
+        Keep 5 tabs (just rename them: Fixes, Compliance, Iterations). Apply the Decision 9 pattern mechanically: each tab gets score bars at the top (green = resolved, amber = outstanding, red = critical), a narrative insight, and expandable detail below. Tabs stay focused, pattern is consistent, but doesn't solve the naming or duplication issues.
+      </div>
+      <div class="verdict">
+        <div class="pros"><h3>Works well when</h3><ul>
+          <li>Consistent pattern — same visual language across all tabs</li>
+          <li>Score bars make severity instantly visible</li>
+          <li>Minimal structural change — just restyle content</li>
+        </ul></div>
+        <div class="cons"><h3>Watch out for</h3><ul>
+          <li>Doesn't fix the duplication between Fixes and Compliance</li>
+          <li>Iterations as "score bars" is a stretch (it's a timeline, not scores)</li>
+          <li>5 tabs is still a lot</li>
+        </ul></div>
+      </div>
+      <div class="card-footer"><code class="tell-ai">Respond with: "Option C"</code></div>
+    </article>
+
+    <!-- OPTION D -->
+    <article class="option-card option-d">
+      <div class="card-header">
+        <div class="card-header-top">
+          <span class="option-label">Option D</span>
+          <div class="card-badges"><span class="chosen-badge">Chosen</span></div>
+        </div>
+        <h2 class="option-title">4 Tabs: Rename + Merge Iterations Into Fix History</h2>
+      </div>
+      <div class="visual-preview">
+        <div class="tp">
+          <div class="tp-tabs">
+            <div class="tp-tab active">Journeys</div>
+            <div class="tp-tab">Usability</div>
+            <div class="tp-tab">Fix History <span class="count">4</span></div>
+            <div class="tp-tab">Design Compliance <span class="count">2</span></div>
+          </div>
+          <div class="tp-narrative">The Fix History tab now has the iteration timeline + applied fixes. MR delta moves into the exec summary's "MR Delta" tab. Design Compliance is standalone with score bars + narrative.</div>
+          <div class="tp-section">
+            <div class="tp-section-title">Result</div>
+            <div class="tp-card"><div class="tp-card-meta">4 tabs instead of 5. Each has ONE purpose. MR code changes already live in the Exec Summary "MR Delta" tab. No duplication.</div></div>
+          </div>
+        </div>
+      </div>
+      <div class="option-summary">
+        Reduce to 4 tabs: Journeys, Usability, Fix History, Design Compliance. The old "Iterations" merges into Fix History (timeline + fixes in one place). MR delta code changes live in the Exec Summary's "MR Delta" tab already. Deduplicates consistency from "outstanding" — violations ONLY in Design Compliance.
+      </div>
+      <div class="verdict">
+        <div class="pros"><h3>Works well when</h3><ul>
+          <li>Reduces from 5 to 4 tabs — cleaner tab bar</li>
+          <li>MR changes already covered by exec summary tab</li>
+          <li>Clear separation: persona stuff (Journeys/Usability) vs code stuff (Fix History/Compliance)</li>
+          <li>No duplication anywhere</li>
+        </ul></div>
+        <div class="cons"><h3>Watch out for</h3><ul>
+          <li>Fix History tab becomes longer (timeline + fixes combined)</li>
+          <li>Losing the "Iterations" tab name may confuse existing users</li>
+        </ul></div>
+      </div>
+      <div class="card-footer"><code class="tell-ai">Respond with: "Option D"</code></div>
+    </article>
+  </main>
+
+  <div class="page-footer">
+    <p>Respond with: <strong>"Option A"</strong>, <strong>"Option B but [change]"</strong>, or <strong>"more options"</strong></p>
+  </div>
+</body>
+</html>

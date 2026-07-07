@@ -31,6 +31,7 @@ Phase 2a of the eval pipeline. Classifies each acceptance criterion into a tier 
 | **T2** | Needs external reference to compare | PASS, FAIL, or FLAG | "Align with ACM role creation UI" |
 | **T3** | Needs runtime/backend to fully verify | Split: UI (PASS/FAIL) + backend (FLAG) | "Validate inputs for valid RBAC" |
 | **T4** | Subjective/interpretive | Evidence + FLAG | "Translate K8s terms to user-friendly" |
+| **T5** | Requires headed browser / hardware | Auto-FLAGGED (headless_limitation) | "Microphone button records audio" |
 
 ## Procedure
 
@@ -63,6 +64,12 @@ For each AC in the list, determine its tier:
 - Criteria about readability, user-friendliness, qualitative characteristics
 - Keywords: "user-friendly", "intuitive", "clear", "appropriate"
 - Provide evidence, then FLAG
+
+**Tier 5 — Requires headed browser / hardware:**
+- Criteria that cannot be verified in headless Chromium (hardware APIs, device permissions)
+- Keywords: microphone, camera, webcam, geolocation, file drag-and-drop (not file input), clipboard paste, WebRTC, screen sharing, device APIs, getUserMedia, audio recording, video capture
+- Auto-FLAGGED before journey runs with rationale "Requires headed browser" and human_action "Verify manually in headed browser"
+- Do NOT generate journey steps for T5 ACs — set verdict immediately at classification time
 
 ### Step 3: Handle selective re-classification (`--rerun-only`)
 

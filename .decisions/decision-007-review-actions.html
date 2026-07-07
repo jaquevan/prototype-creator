@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Decision 7: Review Actions & Output — Evaluation Report Redesign</title>
+  <link href="https://fonts.googleapis.com/css2?family=Red+Hat+Display:wght@400;500;700&family=Red+Hat+Text:wght@400;500&family=Red+Hat+Mono&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Red Hat Text', -apple-system, sans-serif; background: #f1f5f9; color: #1a1a2e; min-height: 100vh; padding: 2rem; line-height: 1.6; }
+    header { text-align: center; margin-bottom: 2.5rem; padding-bottom: 1.5rem; border-bottom: 2px solid #e2e8f0; max-width: 1200px; margin-left: auto; margin-right: auto; }
+    .decision-number { font-size: 0.75rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: #64748b; }
+    header h1 { font-family: 'Red Hat Display', sans-serif; font-size: 1.6rem; font-weight: 700; color: #0f172a; letter-spacing: -0.02em; margin-top: 0.25rem; }
+    .category-badge { display: inline-block; padding: 4px 12px; border-radius: 999px; font-size: 0.7rem; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; margin-top: 0.5rem; }
+    .category-badge.interaction { background: #e0f2fe; color: #0369a1; }
+    .decision-description { font-size: 1rem; color: #475569; margin-top: 0.75rem; max-width: 700px; margin-left: auto; margin-right: auto; line-height: 1.7; }
+    .instruction { margin-top: 1rem; font-size: 0.85rem; background: #eff6ff; color: #1d4ed8; padding: 0.6rem 1.25rem; border-radius: 8px; display: inline-block; border: 1px solid #bfdbfe; }
+    .options-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; max-width: 1200px; margin: 0 auto 3rem; }
+    .option-card { background: white; border-radius: 16px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.08), 0 4px 16px rgba(0,0,0,0.04); border: 2px solid #e2e8f0; transition: all 0.2s ease; display: flex; flex-direction: column; }
+    .option-card:hover { border-color: #0066cc; box-shadow: 0 4px 20px rgba(0,102,204,0.12); }
+    .card-header { padding: 1rem 1.25rem 0.75rem; border-bottom: 1px solid #f1f5f9; display: flex; flex-direction: column; gap: 0.2rem; }
+    .card-header-top { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
+    .option-label { font-size: 0.65rem; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; }
+    .option-card.option-a .option-label { color: #7c3aed; }
+    .option-card.option-b .option-label { color: #0891b2; }
+    .option-card.option-c .option-label { color: #059669; }
+    .option-card.option-d .option-label { color: #dc2626; }
+    .option-title { font-family: 'Red Hat Display', sans-serif; font-size: 1.05rem; font-weight: 600; color: #0f172a; }
+    .recommended-badge { background: #f59e0b; color: white; padding: 3px 10px; border-radius: 999px; font-size: 0.65rem; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; white-space: nowrap; }
+    .card-badges { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; flex-shrink: 0; }
+    .chosen-badge { background: #059669; color: white; padding: 3px 10px; border-radius: 999px; font-size: 0.65rem; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; display: none; }
+    .option-card.chosen .chosen-badge { display: inline-block; }
+    .option-card.chosen { border: 3px solid #059669; box-shadow: 0 4px 20px rgba(5,150,105,0.15); }
+    .option-card.not-chosen { opacity: 0.55; filter: grayscale(20%); }
+    .option-card.not-chosen:hover { opacity: 0.8; filter: none; }
+    .visual-preview { padding: 1.25rem; background: #f8fafc; min-height: 240px; display: flex; align-items: center; justify-content: center; flex: 1; }
+    .option-summary { padding: 1rem 1.25rem; font-size: 0.875rem; color: #334155; line-height: 1.65; border-top: 1px solid #f1f5f9; }
+    .verdict { display: grid; grid-template-columns: 1fr 1fr; border-top: 1px solid #f1f5f9; }
+    .pros, .cons { padding: 1rem 1.25rem; }
+    .pros { border-right: 1px solid #f1f5f9; }
+    .pros h3, .cons h3 { font-size: 0.65rem; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 0.5rem; }
+    .pros h3 { color: #059669; }
+    .cons h3 { color: #e11d48; }
+    .verdict ul { list-style: none; padding: 0; }
+    .verdict li { font-size: 0.8rem; color: #475569; line-height: 1.5; padding: 0.15rem 0; padding-left: 1rem; position: relative; }
+    .pros li::before { content: "\2713 "; color: #059669; font-weight: 700; position: absolute; left: 0; }
+    .cons li::before { content: "! "; color: #e11d48; font-weight: 700; position: absolute; left: 0; }
+    .card-footer { padding: 0.75rem 1.25rem; background: #f8fafc; border-top: 1px solid #f1f5f9; }
+    .tell-ai { font-size: 0.75rem; color: #64748b; background: #f1f5f9; padding: 0.35rem 0.65rem; border-radius: 6px; display: block; font-family: 'Red Hat Mono', monospace; }
+    .page-footer { max-width: 1200px; margin: 0 auto; text-align: center; padding: 1.5rem; background: white; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+    .page-footer p { font-size: 0.85rem; color: #64748b; margin: 0.3rem 0; }
+    .page-footer strong { color: #334155; }
+    .back-link { display: inline-block; margin-bottom: 1.5rem; font-size: 0.85rem; color: #0066cc; text-decoration: none; }
+    .back-link:hover { text-decoration: underline; }
+    @media (max-width: 768px) { .options-grid { grid-template-columns: 1fr; } body { padding: 1rem; } }
+
+    /* Action bar preview */
+    .action-preview { width: 100%; max-width: 280px; font-family: 'Red Hat Text', sans-serif; }
+    .ap-panel { background: #fff; border: 1px solid #eaeaea; border-radius: 8px; overflow: hidden; }
+    .ap-header { background: #f9f9f9; padding: 8px 12px; font-size: 9px; font-weight: 700; color: #6b7280; text-transform: uppercase; letter-spacing: 0.05em; border-bottom: 1px solid #eaeaea; }
+    .ap-body { padding: 10px 12px; }
+    .ap-divider { height: 1px; background: #eaeaea; margin: 8px 0; }
+    .ap-btn { display: block; width: 100%; padding: 7px 10px; border-radius: 5px; font-size: 9px; font-weight: 600; text-align: center; margin-bottom: 5px; border: none; cursor: pointer; }
+    .ap-btn.primary { background: #0066cc; color: white; }
+    .ap-btn.secondary { background: #f9f9f9; border: 1px solid #eaeaea; color: #475569; }
+    .ap-btn.danger { background: #fef2f2; border: 1px solid #fecaca; color: #dc2626; }
+    .ap-btn.success { background: #ecfdf5; border: 1px solid #a7f3d0; color: #047857; }
+    .ap-status { font-size: 8px; color: #6b7280; text-align: center; margin-top: 4px; }
+    .ap-item { display: flex; align-items: center; gap: 6px; padding: 5px 0; font-size: 8px; color: #475569; }
+    .ap-check { width: 12px; height: 12px; border-radius: 3px; border: 1.5px solid #d4d4d8; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: 7px; }
+    .ap-check.done { background: #059669; border-color: #059669; color: white; }
+    .ap-toast { background: #059669; color: white; padding: 5px 10px; border-radius: 4px; font-size: 8px; text-align: center; margin-top: 6px; }
+  </style>
+</head>
+<body>
+  <a href="index.html" class="back-link">&larr; All Decisions</a>
+
+  <header>
+    <span class="decision-number">Decision 7 of 7</span>
+    <h1>Review Actions & Output</h1>
+    <span class="category-badge interaction">Interaction</span>
+    <p class="decision-description">
+      At the bottom of the review panel, what action buttons are available? The designer has finished reviewing flagged items, typed notes, and overridden verdicts. Now they need to DO something with that work. The question is what actions are offered and how they behave.
+    </p>
+    <p class="instruction">
+      Respond with: <strong>"Option B"</strong> &middot; <strong>"Option A but [change]"</strong> &middot; <strong>"more options"</strong>
+    </p>
+  </header>
+
+  <main class="options-grid">
+    <!-- OPTION A -->
+    <article class="option-card option-a">
+      <div class="card-header">
+        <div class="card-header-top">
+          <span class="option-label">Option A</span>
+          <div class="card-badges">
+            <span class="recommended-badge">Recommended</span>
+            <span class="chosen-badge">Chosen</span>
+          </div>
+        </div>
+        <h2 class="option-title">Stacked Action Bar</h2>
+      </div>
+      <div class="visual-preview">
+        <div class="action-preview">
+          <div class="ap-panel">
+            <div class="ap-header">Review Progress</div>
+            <div class="ap-body">
+              <div class="ap-item"><span class="ap-check done">&#10003;</span> AC-2: Override → PASS (verified manually)</div>
+              <div class="ap-item"><span class="ap-check done">&#10003;</span> AC-5: Notes added (deferred to next sprint)</div>
+              <div class="ap-item"><span class="ap-check"></span> AC-7: Not reviewed yet</div>
+              <div class="ap-divider"></div>
+              <div class="ap-btn primary">Download Updated CSV</div>
+              <div class="ap-btn secondary">Request Re-iteration</div>
+              <div class="ap-status">CSV includes your notes + verdict overrides</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="option-summary">
+        A progress checklist at the top showing which items are reviewed. Below: two stacked buttons. "Download Updated CSV" generates a CSV with the designer's notes and verdict overrides merged in. "Request Re-iteration" copies a formatted prompt to clipboard that the designer can paste into a new eval-iterate run. I recommend this because it's the simplest path — download is instant, re-iteration is explicit.
+      </div>
+      <div class="verdict">
+        <div class="pros"><h3>Works well when</h3><ul>
+          <li>Clear separation — download is one action, re-run is another</li>
+          <li>Progress checklist gives overview of what's done</li>
+          <li>No ambiguity about what each button does</li>
+        </ul></div>
+        <div class="cons"><h3>Watch out for</h3><ul>
+          <li>"Request Re-iteration" copies to clipboard — not a direct trigger</li>
+          <li>Two buttons may look like a sequence when they're independent</li>
+        </ul></div>
+      </div>
+      <div class="card-footer"><code class="tell-ai">Respond with: "Option A"</code></div>
+    </article>
+
+    <!-- OPTION B -->
+    <article class="option-card option-b">
+      <div class="card-header">
+        <div class="card-header-top">
+          <span class="option-label">Option B</span>
+          <div class="card-badges"><span class="chosen-badge">Chosen</span></div>
+        </div>
+        <h2 class="option-title">Contextual Actions per State</h2>
+      </div>
+      <div class="visual-preview">
+        <div class="action-preview">
+          <div class="ap-panel">
+            <div class="ap-header">1 of 3 reviewed</div>
+            <div class="ap-body">
+              <div class="ap-btn secondary">Save progress (localStorage)</div>
+              <div class="ap-btn secondary">Download CSV (partial)</div>
+            </div>
+          </div>
+          <div style="text-align:center;font-size:10px;color:#6b7280;padding:6px 0;">&#8595; After all items reviewed &#8595;</div>
+          <div class="ap-panel">
+            <div class="ap-header">All 3 items reviewed &#10003;</div>
+            <div class="ap-body">
+              <div class="ap-btn primary">Download Final CSV</div>
+              <div class="ap-btn success">Request New Iteration</div>
+              <div class="ap-btn secondary">Close Review Panel</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="option-summary">
+        The action bar changes based on review state. Mid-review: only "Save progress" and "Download CSV (partial)". Once all items are reviewed: the full action set appears — "Download Final CSV", "Request New Iteration" (prominent green), and "Close Panel". Creates a sense of completion and gates the re-iteration behind finishing all reviews.
+      </div>
+      <div class="verdict">
+        <div class="pros"><h3>Works well when</h3><ul>
+          <li>Prevents accidental re-run before review is complete</li>
+          <li>Clear progression: review → complete → act</li>
+          <li>Auto-save means no lost work</li>
+        </ul></div>
+        <div class="cons"><h3>Watch out for</h3><ul>
+          <li>Gating actions may frustrate if user wants to re-run after 1 review</li>
+          <li>More complex state management</li>
+        </ul></div>
+      </div>
+      <div class="card-footer"><code class="tell-ai">Respond with: "Option B"</code></div>
+    </article>
+
+    <!-- OPTION C -->
+    <article class="option-card option-c">
+      <div class="card-header">
+        <div class="card-header-top">
+          <span class="option-label">Option C</span>
+          <div class="card-badges"><span class="chosen-badge">Chosen</span></div>
+        </div>
+        <h2 class="option-title">Single Smart Button</h2>
+      </div>
+      <div class="visual-preview">
+        <div class="action-preview">
+          <div class="ap-panel">
+            <div class="ap-header">Review Complete</div>
+            <div class="ap-body">
+              <div class="ap-btn primary" style="font-size:11px;padding:10px;">Done — Download &amp; Re-run &#8594;</div>
+              <div class="ap-status">Downloads CSV with your annotations, then copies re-iteration prompt to clipboard</div>
+              <div class="ap-divider"></div>
+              <div style="display:flex;gap:4px;">
+                <div class="ap-btn secondary" style="flex:1;">Just download</div>
+                <div class="ap-btn secondary" style="flex:1;">Just re-run</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="option-summary">
+        One large primary button that does both: downloads the updated CSV AND copies the re-iteration prompt. The default "happy path" is one click. Below it, smaller buttons for "just download" or "just re-run" if the designer wants only one action. Optimized for the common case where you want both.
+      </div>
+      <div class="verdict">
+        <div class="pros"><h3>Works well when</h3><ul>
+          <li>One-click happy path — most designers want both</li>
+          <li>Still offers individual actions as escape hatches</li>
+          <li>Feels decisive — "I'm done, let's go"</li>
+        </ul></div>
+        <div class="cons"><h3>Watch out for</h3><ul>
+          <li>Combining two actions in one button can be confusing</li>
+          <li>What if they don't want a re-run?</li>
+        </ul></div>
+      </div>
+      <div class="card-footer"><code class="tell-ai">Respond with: "Option C"</code></div>
+    </article>
+
+    <!-- OPTION D -->
+    <article class="option-card option-d">
+      <div class="card-header">
+        <div class="card-header-top">
+          <span class="option-label">Option D</span>
+          <div class="card-badges"><span class="chosen-badge">Chosen</span></div>
+        </div>
+        <h2 class="option-title">Toast + Persistent Footer</h2>
+      </div>
+      <div class="visual-preview">
+        <div class="action-preview">
+          <div class="ap-panel">
+            <div class="ap-body">
+              <div class="ap-item"><span class="ap-check done">&#10003;</span> AC-2 reviewed — PASS override</div>
+              <div class="ap-toast">&#10003; Saved. CSV will include this override.</div>
+              <div class="ap-divider"></div>
+              <div style="font-size:8px;color:#6b7280;margin-bottom:4px;">Always visible at bottom:</div>
+              <div style="display:flex;gap:4px;">
+                <div class="ap-btn primary" style="flex:1;">Download CSV</div>
+                <div class="ap-btn danger" style="flex:1;">Re-run Eval</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="option-summary">
+        Every individual save triggers a toast confirmation ("Saved. CSV will include this override."). The action buttons are always visible at the bottom of the panel regardless of review progress — no gating. Download is blue (neutral), re-run is red-tinted (destructive, triggers a new eval cycle). Each action is independent and always available.
+      </div>
+      <div class="verdict">
+        <div class="pros"><h3>Works well when</h3><ul>
+          <li>Designer wants to re-run after reviewing just one item</li>
+          <li>No forced workflow — maximum flexibility</li>
+          <li>Toast feedback confirms each save immediately</li>
+        </ul></div>
+        <div class="cons"><h3>Watch out for</h3><ul>
+          <li>Red "Re-run" button might trigger accidental re-runs</li>
+          <li>No completion state — panel never says "you're done"</li>
+        </ul></div>
+      </div>
+      <div class="card-footer"><code class="tell-ai">Respond with: "Option D"</code></div>
+    </article>
+  </main>
+
+  <div class="page-footer">
+    <p>Respond with: <strong>"Option A"</strong>, <strong>"Option B but [change]"</strong>, or <strong>"more options"</strong></p>
+    <p>To change a past decision: <strong>"for decision-006 I want Option C instead"</strong></p>
+  </div>
+</body>
+</html>
