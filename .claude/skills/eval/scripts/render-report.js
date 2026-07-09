@@ -14,7 +14,7 @@ if (!artifactsDir) {
 
 const absArtifacts = path.resolve(artifactsDir);
 const projectRoot = require('./resolve-root').resolveProjectRoot();
-const templatePath = path.join(projectRoot, 'templates', 'evaluation-report.html');
+const templatePath = path.join(__dirname, '..', 'templates', 'evaluation-report.html');
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -114,7 +114,7 @@ function normalizeDelta(raw) {
 // Parse CSV
 // ---------------------------------------------------------------------------
 
-// CSV schema: config/csv-schema.yaml — column names and order are enforced there
+// CSV schema: .claude/skills/eval/config/csv-schema.yaml — column names and order are enforced there
 function parseCsv(raw) {
   if (!raw) return [];
   const lines = raw.trim().split('\n');

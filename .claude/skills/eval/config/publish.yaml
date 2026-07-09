@@ -1,5 +1,5 @@
 # Report hosting configuration
-# Used by .claude/skills/eval/scripts/publish-report.sh
+# Used by scripts/publish-report.sh
 
 # Eval reports repo on internal GitLab (dedicated Pages site)
 gitlab_pages_repo: "git@gitlab.cee.redhat.com:ejaquez/scout-evals.git"

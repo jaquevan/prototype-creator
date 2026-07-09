@@ -46,13 +46,6 @@ defaults:
   workspace: null
   max_refinement_cycles: 3
 
-# --- Design System ---
-design_system:
-  name: PatternFly
-  version: "6"
-  docs_url: https://www.patternfly.org/
-  context_path: .context/design-system/
-
 # --- Decision Kit Integration ---
 decision_kit:
   repo: https://github.com/jnemargut/decision-kit
@@ -61,21 +54,6 @@ decision_kit:
     - strategize
     - shape
     - product-design
-
-# --- Usability Testing Integration ---
-usability_testing:
-  repo: https://gitlab.cee.redhat.com/zbodnar/automated-usability-testing
-  context_path: .context/usability-testing/
-  personas_dir: personas/
-  rubric: prompts/evaluate-flow.md
-  dimensions:
-    - workflow_continuity
-    - cross_persona_handoffs
-    - scalability_complexity
-    - system_status_trust
-    - technical_abstraction
-    - mental_model_fidelity
-    - accessibility_inclusion
 
 # --- Decision Depth ---
 # Controls how many decisions are surfaced in --mode=decide.

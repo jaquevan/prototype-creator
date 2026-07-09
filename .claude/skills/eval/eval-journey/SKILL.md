@@ -78,10 +78,12 @@ When `--mode=informed`, skip Steps 3 and 3b below (hint fallback logic is unnece
 ### Step 1: Setup Playwright
 
 ```bash
+EVAL_SKILL_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." 2>/dev/null && pwd || echo ".claude/skills/eval")"
 if ! npx playwright --version >/dev/null 2>&1; then
-  npm init -y 2>/dev/null
-  npm install --save-dev @playwright/test
+  cd "$EVAL_SKILL_ROOT"
+  npm install
   npx playwright install chromium firefox
+  cd -
 else
   echo "Playwright already installed, skipping setup"
 fi

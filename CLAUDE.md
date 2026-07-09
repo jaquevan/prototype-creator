@@ -87,7 +87,7 @@ After CI finishes, humans use `/prototype.pull` to switch a prototype into local
 prototype-creator/
 ├── .claude/
 │   ├── skills/                        # Claude Code skills (pipeline steps)
-│   │   ├── eval/                      # Eval pipeline (see .claude/skills/eval/README.md)
+│   │   ├── eval/                      # Eval pipeline (self-contained, see .claude/skills/eval/README.md)
 │   │   │   ├── eval-iterate/          # Pipeline orchestrator (two-phase)
 │   │   │   ├── eval-extract/          # Pull Jira context, ACs, personas
 │   │   │   ├── eval-classify/         # Classify ACs into eval tiers
@@ -97,7 +97,14 @@ prototype-creator/
 │   │   │   ├── eval-usability/        # Phase B persona scoring
 │   │   │   ├── eval-consistency/      # PatternFly guideline checks
 │   │   │   ├── eval-report/           # Render HTML report
-│   │   │   └── eval-review/           # Conversational review entry point
+│   │   │   ├── eval-review/           # Conversational review entry point
+│   │   │   ├── scripts/               # Node/Python/Bash scripts
+│   │   │   ├── config/                # Eval-specific config (csv-schema, publish, overlay)
+│   │   │   ├── templates/             # HTML report templates
+│   │   │   ├── references/            # Additional documentation
+│   │   │   ├── gitlab-pages/          # GitLab Pages deployment config
+│   │   │   ├── tests/fixtures/        # Test fixtures for Playwright journeys
+│   │   │   └── package.json           # Node dependencies (Playwright, googleapis)
 │   │   ├── prototype-create/          # Generate prototype from RFE
 │   │   ├── prototype-refine/          # Iterate on existing prototype
 │   │   ├── prototype-review/          # Score against UX rubric
@@ -128,18 +135,17 @@ prototype-creator/
 │   ├── submissions.md                 # Cross-ID submission manifest
 │   └── pipeline-complete.json         # CI completion signal
 ├── scripts/                           # Python scripts
-├── config/                            # Pipeline and rubric configuration
+├── config/                            # Prototype-pipeline configuration
 ├── templates/                         # HTML layout and component templates
 │   ├── layouts/                       # Base page layouts
-│   ├── components/                    # Reusable component snippets
 │   └── decision-pages/               # Decision artifact templates
 ├── .context/                          # Fetched at runtime (gitignored)
 │   ├── design-system/                 # PatternFly component docs + tokens
 │   ├── research-context/              # UX research (personas, JTBD, top tasks)
 │   ├── decision-kit/                  # Vendored decision-kit thinking skills
 │   └── usability-testing/             # Vendored personas + rubric from automated-usability-testing
-├── docs/                              # Documentation
-├── tests/                             # Test suite
+├── docs/                              # Prototype-pipeline documentation
+├── tests/                             # Python test suite
 ├── pyproject.toml
 ├── Makefile
 └── CLAUDE.md                          # This file

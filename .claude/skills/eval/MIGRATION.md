@@ -4,8 +4,10 @@ How to copy the eval pipeline to another repository (e.g., UXD AI helpers).
 
 ## What Travels
 
+The eval skill is fully self-contained. Copy the entire `.claude/skills/eval/` directory:
+
 ```
-.claude/skills/eval/              # All skills + scripts + README
+.claude/skills/eval/
   ├── eval-iterate/SKILL.md
   ├── eval-extract/SKILL.md
   ├── eval-classify/SKILL.md
@@ -26,34 +28,40 @@ How to copy the eval pipeline to another repository (e.g., UXD AI helpers).
   │   ├── compare-runs.js
   │   ├── bootstrap-consistency-checker.sh
   │   └── bootstrap-usability-testing.sh
+  ├── config/
+  │   ├── csv-schema.yaml
+  │   ├── eval-settings.yaml
+  │   ├── product-overlay.yaml
+  │   ├── publish.yaml
+  │   └── report-style.yaml
+  ├── templates/
+  │   ├── evaluation-report.html
+  │   └── report-index.html
+  ├── references/
+  │   ├── phase-a-cli-workflow.md
+  │   └── skill-overlays.md
+  ├── gitlab-pages/
+  │   ├── .gitlab-ci.yml
+  │   ├── README.md
+  │   └── public/evals/.gitkeep
+  ├── tests/
+  │   └── fixtures/
+  │       ├── manifest.json
+  │       ├── audio/
+  │       ├── documents/
+  │       ├── images/
+  │       └── text/
+  ├── package.json
   ├── README.md
   └── MIGRATION.md (this file)
-
-templates/
-  ├── evaluation-report.html
-  └── report-index.html
-
-config/
-  ├── csv-schema.yaml
-  ├── publish.yaml
-  └── report-style.yaml
 ```
 
 ## Dependencies
 
-Add to `package.json` in the target repo:
+The eval skill includes its own `package.json`. In the target repo, install from the eval directory:
 
-```json
-{
-  "dependencies": {
-    "@playwright/test": "^1.61.0",
-    "googleapis": "^173.0.0"
-  }
-}
-```
-
-Then run:
 ```bash
+cd .claude/skills/eval
 npm install
 npx playwright install chromium
 ```
@@ -73,7 +81,7 @@ These clone external repos into `.context/usability-testing/` and `.context/cons
 
 ### Product Overlay
 
-Edit `config/product-overlay.yaml` to match the target product:
+Edit `config/product-overlay.yaml` (relative to the eval skill root) to match the target product:
 - Jira project key prefix (e.g., `RHAISTRAT` -> your project)
 - Prototype repo URL
 - MR numbering scheme
@@ -81,7 +89,7 @@ Edit `config/product-overlay.yaml` to match the target product:
 
 ### Publish Configuration
 
-Edit `config/publish.yaml`:
+Edit `config/publish.yaml` (relative to the eval skill root):
 - `gitlab_pages_repo` — your GitLab Pages repo URL
 - `pages_base_url` — your Pages domain
 - `jira_base_url` — your Jira instance

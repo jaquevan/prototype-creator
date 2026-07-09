@@ -4,7 +4,7 @@
 const fs = require('fs');
 const path = require('path');
 
-const PROJECT_ROOT = path.resolve(__dirname, '../../../..');
+const PROJECT_ROOT = require('./resolve-root').resolveProjectRoot();
 const RUNS_DIR = path.join(PROJECT_ROOT, '.artifacts', 'runs');
 const OUTPUT_PATH = path.join(PROJECT_ROOT, '.artifacts', 'pain-leaderboard.html');
 

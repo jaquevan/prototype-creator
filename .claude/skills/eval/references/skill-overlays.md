@@ -19,7 +19,7 @@ The evaluator should work for any product team at Red Hat — not just OpenShift
 
 1. Copy `config/product-overlay.yaml` to `config/product-overlay-<yourproduct>.yaml`
 2. Update all values to match your product's conventions
-3. Pass `--overlay=config/product-overlay-<yourproduct>.yaml` when running the eval
+3. Pass `--overlay=config/product-overlay-<yourproduct>.yaml` when running the eval (path relative to the eval skill root)
 
 ## What the Overlay Controls
 

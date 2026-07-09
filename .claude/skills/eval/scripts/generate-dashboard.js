@@ -5,8 +5,8 @@ const fs = require('fs');
 const path = require('path');
 
 const SCRIPT_DIR = __dirname;
-const PROJECT_ROOT = path.resolve(SCRIPT_DIR, '../../../..');
-const TEMPLATE_PATH = path.join(PROJECT_ROOT, 'templates', 'report-index.html');
+const SKILL_ROOT = path.resolve(SCRIPT_DIR, '..');
+const TEMPLATE_PATH = path.join(SKILL_ROOT, 'templates', 'report-index.html');
 
 const evalsDir = process.argv[2];
 if (!evalsDir) {

@@ -113,6 +113,7 @@ prototype-creator/
 ├── .claude/
 │   ├── settings.json                      # Permissions and tool allowlist
 │   ├── skills/                            # Claude Code skills (pipeline steps)
+│   │   ├── eval/                          # Eval pipeline (self-contained, see MIGRATION.md)
 │   │   ├── prototype-create/              # Generate prototype from RFE
 │   │   ├── prototype-refine/              # Iterate on existing prototype
 │   │   ├── prototype-review/              # Score against UX rubric
@@ -128,10 +129,10 @@ prototype-creator/
 ├── config/
 │   ├── pipeline-settings.yaml             # Jira JQL, thresholds, defaults
 │   ├── ux-rubric.yaml                     # Four-dimension scoring rubric
+│   ├── decision-points.yaml               # Decision category reference
 │   └── fidelity-profiles.yaml             # Low/medium/high profiles
 ├── templates/                             # HTML layout and component templates
 │   ├── layouts/                           # Base page layouts per fidelity
-│   ├── components/                        # Reusable component snippets
 │   └── decision-pages/                    # Decision artifact templates
 ├── scripts/                               # Python scripts
 │   ├── fetch-design-system-context.sh     # Fetch PatternFly docs
@@ -151,8 +152,8 @@ prototype-creator/
 │   ├── prototypes/                        # Generated prototypes
 │   ├── prototype-reviews/                 # Review scores
 │   └── decisions/                         # Decision artifacts
-├── docs/                                  # Documentation
-├── tests/                                 # Test suite
+├── docs/                                  # Prototype-pipeline documentation
+├── tests/                                 # Python test suite
 ├── CLAUDE.md                              # Project instructions for AI agents
 ├── README.md                              # This file
 ├── pyproject.toml                         # Python project config

@@ -31,7 +31,7 @@ build/
 *.swo
 
 # Test fixtures — oversized files (>20MB) excluded from git
-tests/fixtures/images/oversized-test.png
+.claude/skills/eval/tests/fixtures/images/oversized-test.png
 
 # Presentation drafts and personal notes
 docs/drafts/

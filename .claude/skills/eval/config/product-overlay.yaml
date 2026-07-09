@@ -3,7 +3,7 @@
 # To use this evaluator with a different product, create a new overlay file
 # (e.g., product-overlay-rails.yaml) with your product's values and pass it via --overlay flag.
 #
-# See docs/skill-overlays.md for the overlay pattern and how to create your own.
+# See references/skill-overlays.md for the overlay pattern and how to create your own.
 
 product:
   name: "Red Hat OpenShift AI"
