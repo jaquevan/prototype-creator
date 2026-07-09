@@ -1,0 +1,30 @@
+# Report hosting configuration
+# Used by scripts/publish-report.sh
+
+# Eval reports repo on internal GitLab (dedicated Pages site)
+gitlab_pages_repo: "git@gitlab.cee.redhat.com:ejaquez/scout-evals.git"
+
+# Base URL for GitLab Pages.
+# Reports are served at <base>/evals/<KEY>/
+# Internal-only: requires Red Hat VPN + GitLab auth.
+pages_base_url: "https://ejaquez-scout-evals-7ebc0e.pages.redhat.com"
+
+# Default branch of the pages repo
+pages_branch: "main"
+
+# Directory in the repo where reports live (served directly by Pages)
+reports_dir: "public/evals"
+
+# Jira base URL for linking from the index page
+jira_base_url: "https://issues.redhat.com/browse"
+
+# Publish mode: "pages" (GitLab Pages) or "branch" (raw file on reports branch)
+default_mode: "pages"
+
+# Git identity for commits to the pages repo
+git_user_name: "Evan Jaquez"
+git_user_email: "ejaquez@redhat.com"
+
+# For branch mode: which remote and branch to push reports to
+branch_remote: "origin"
+branch_name: "reports"

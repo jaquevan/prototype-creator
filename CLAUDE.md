@@ -87,6 +87,24 @@ After CI finishes, humans use `/prototype.pull` to switch a prototype into local
 prototype-creator/
 ├── .claude/
 │   ├── skills/                        # Claude Code skills (pipeline steps)
+│   │   ├── eval/                      # Eval pipeline (self-contained, see .claude/skills/eval/README.md)
+│   │   │   ├── eval-iterate/          # Pipeline orchestrator (two-phase)
+│   │   │   ├── eval-extract/          # Pull Jira context, ACs, personas
+│   │   │   ├── eval-classify/         # Classify ACs into eval tiers
+│   │   │   ├── eval-hint/             # Extract navigation hints from source
+│   │   │   ├── eval-journey/          # Playwright walkthroughs (informed/blind)
+│   │   │   ├── eval-fix/              # Apply fixes from suggestions
+│   │   │   ├── eval-usability/        # Phase B persona scoring
+│   │   │   ├── eval-consistency/      # PatternFly guideline checks
+│   │   │   ├── eval-report/           # Render HTML report
+│   │   │   ├── eval-review/           # Conversational review entry point
+│   │   │   ├── scripts/               # Node/Python/Bash scripts
+│   │   │   ├── config/                # Eval-specific config (csv-schema, publish, overlay)
+│   │   │   ├── templates/             # HTML report templates
+│   │   │   ├── references/            # Additional documentation
+│   │   │   ├── gitlab-pages/          # GitLab Pages deployment config
+│   │   │   ├── tests/fixtures/        # Test fixtures for Playwright journeys
+│   │   │   └── package.json           # Node dependencies (Playwright, googleapis)
 │   │   ├── prototype-create/          # Generate prototype from RFE
 │   │   ├── prototype-refine/          # Iterate on existing prototype
 │   │   ├── prototype-review/          # Score against UX rubric
@@ -117,17 +135,17 @@ prototype-creator/
 │   ├── submissions.md                 # Cross-ID submission manifest
 │   └── pipeline-complete.json         # CI completion signal
 ├── scripts/                           # Python scripts
-├── config/                            # Pipeline and rubric configuration
+├── config/                            # Prototype-pipeline configuration
 ├── templates/                         # HTML layout and component templates
 │   ├── layouts/                       # Base page layouts
-│   ├── components/                    # Reusable component snippets
 │   └── decision-pages/               # Decision artifact templates
 ├── .context/                          # Fetched at runtime (gitignored)
 │   ├── design-system/                 # PatternFly component docs + tokens
 │   ├── research-context/              # UX research (personas, JTBD, top tasks)
-│   └── decision-kit/                  # Vendored decision-kit thinking skills
-├── docs/                              # Documentation
-├── tests/                             # Test suite
+│   ├── decision-kit/                  # Vendored decision-kit thinking skills
+│   └── usability-testing/             # Vendored personas + rubric from automated-usability-testing
+├── docs/                              # Prototype-pipeline documentation
+├── tests/                             # Python test suite
 ├── pyproject.toml
 ├── Makefile
 └── CLAUDE.md                          # This file
@@ -138,6 +156,7 @@ prototype-creator/
 - [rfe-creator](https://github.com/jwforres/rfe-creator) — Phase 1: RFE creation and assessment (upstream input)
 - [strat-creator](https://github.com/ederign/strat-creator) — Phase 3: Strategy creation from approved RFEs (downstream consumer)
 - [decision-kit](https://github.com/jnemargut/decision-kit) — Decision Driven Development toolkit (integrated for human-in-the-loop decisions)
+- [automated-usability-testing](https://gitlab.cee.redhat.com/zbodnar/automated-usability-testing) — Persona-based usability evaluation with 7-dimension rubric (integrated for prototype evaluation)
 - [assess-rfe](https://github.com/n1hility/assess-rfe) — RFE quality scoring rubric (pattern reference)
 
 ## Development
@@ -156,12 +175,26 @@ make test
 
 ### Fetching Context
 
-```bash
-# Fetch design system docs (PatternFly)
-bash scripts/fetch-design-system-context.sh
+**Required before running eval-iterate.** These bootstrap external repos into `.context/` for usability scoring and design consistency checking. Requires VPN for GitLab repos.
 
-# Bootstrap decision-kit skills into .context/
-bash scripts/bootstrap-decision-kit.sh
+See `.claude/skills/eval/README.md` for full eval pipeline documentation including flags (`--no-fix`, `--max-iterations`, `--usability`, `--no-iterate`) and designer workflow.
+
+```bash
+# All at once:
+make context
+
+# Or individually:
+bash scripts/fetch-design-system-context.sh          # PatternFly component docs + tokens
+bash scripts/bootstrap-decision-kit.sh               # Decision-kit thinking skills
+bash .claude/skills/eval/scripts/bootstrap-usability-testing.sh           # Personas + 7-dimension rubric (Zack Bodnar)
+bash .claude/skills/eval/scripts/bootstrap-consistency-checker.sh         # PatternFly design guidelines (Beau Morley)
 ```
+
+| Directory | Source | Used by |
+|-----------|--------|---------|
+| `.context/design-system/` | PatternFly docs | prototype-create |
+| `.context/decision-kit/` | [decision-kit](https://github.com/jnemargut/decision-kit) | prototype-create |
+| `.context/usability-testing/` | [automated-usability-testing](https://gitlab.cee.redhat.com/zbodnar/automated-usability-testing) | eval-usability |
+| `.context/consistency-checker/` | [consistency-checker](https://gitlab.cee.redhat.com/bmorley/consistency-checker) | eval-consistency |
 
 $ARGUMENTS

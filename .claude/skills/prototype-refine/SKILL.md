@@ -126,6 +126,14 @@ If `--headless` is set and the limit is reached, exit cleanly without prompting.
 
 For each issue category from the review, create a refinement plan:
 
+**Suggestion priority order** (when `refinement-suggestions.json` exists from the eval pipeline):
+
+1. **Consistency violations** (`type: "consistency"`) — deterministic fixes with explicit file paths and line numbers. Apply directly without searching. These are guaranteed correct (PatternFly docs are the reference) and reduce noise in subsequent screenshots.
+2. **FAIL criteria** (`type: "ac_failure"`) — code changes to make failing acceptance criteria pass. These require reading the AC verdict rationale and fixing the gap.
+3. **Usability gaps** (`type: "usability"`, score 0-1) — design improvements from persona-based scoring. High-confidence suggestions are applied directly; medium-confidence ones are flagged in the commit message; low-confidence ones are logged but NOT applied.
+
+After applying consistency fixes, re-read the remaining suggestions for FAIL and usability items.
+
 **Completeness gaps:**
 - Identify which screens, flows, or states are missing
 - Determine minimal additions to address each gap
