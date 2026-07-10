@@ -1,13 +1,13 @@
 ---
 name: eval-iterate
-description: "Orchestrate the two-phase eval pipeline: Phase A validates acceptance criteria with an x-ray evaluator (fix loop). Phase B runs blind per-persona Playwright walkthroughs for usability scoring."
+description: "Orchestrate the two-phase eval pipeline: Phase A validates acceptance criteria with an x-ray evaluator (fix loop). Phase B runs discovery-based per-persona Playwright walkthroughs for usability scoring."
 user-invocable: true
 allowed-tools: Read, Write, Edit, Glob, Grep, Bash, AskUserQuestion, mcp__atlassian__getJiraIssue, mcp__atlassian__searchJiraIssuesUsingJql, mcp__atlassian__addCommentToJiraIssue
 ---
 
 # eval-iterate
 
-Two-phase eval pipeline orchestrator. Phase A (x-ray) validates acceptance criteria with an x-ray evaluator that has full code access, fixing until all ACs pass. Phase B (blind) runs per-persona Playwright walkthroughs to score usability on a known-good prototype.
+Two-phase eval pipeline orchestrator. Phase A (x-ray) validates acceptance criteria with an x-ray evaluator that has full code access, fixing until all ACs pass. Phase B (discovery) runs per-persona Playwright walkthroughs to score usability on a known-good prototype.
 
 ## Prerequisites
 
@@ -43,10 +43,10 @@ Ensure `.context/usability-testing/`, `.context/consistency-checker/` are bootst
 
 ```
 PHASE A (X-Ray — Informed AC Validation Loop):
-  eval-extract → eval-consistency (once) → eval-classify → eval-journey (informed)
-                                                              ↓
-                                                      Exit condition met? → Phase B (ALWAYS)
-                                                      FAIL + cycle ≤ max → eval-fix → loop from eval-classify
+  eval-extract (--phase=core) → eval-consistency (--mode=source) → eval-classify → eval-journey (informed)
+                                                                                     ↓
+                                                                             Exit condition met? → Phase B (ALWAYS)
+                                                                             FAIL + cycle ≤ max → eval-fix → loop from eval-classify
 
   Exit conditions (any triggers Phase B):
     all_pass          — 0 FAIL, 0 FLAGGED (clean pass)
@@ -55,7 +55,12 @@ PHASE A (X-Ray — Informed AC Validation Loop):
     regression        — fix loop broke a previously-passing AC (degraded)
     no_fix/no_iterate — user flag or single-run mode
 
-PHASE B (Blind — Per-Persona Usability Walkthroughs) — ALWAYS FIRES:
+POST-PHASE-A (deferred context gathering):
+  eval-consistency (--mode=visual) — screenshots now exist
+  eval-extract (--phase=enrichment) — Outcome, tasks_to_be_done, breadcrumb
+  eval-hint — navigation hints for discovery personas (reflects post-fix workspace state)
+
+PHASE B (Discovery — Per-Persona Usability Walkthroughs) — ALWAYS FIRES:
   eval-usability (per-persona Playwright, think-aloud, 7-dimension scoring) → eval-report
   Note: Phase B runs on whatever prototype state exists after Phase A exits.
   When exit_reason != all_pass, usability scores may reflect missing features.
@@ -82,24 +87,18 @@ if --fresh:
   rm -rf .artifacts/<KEY>/
   echo "Cleared .artifacts/<KEY>/ (--fresh)"
 
-# ── Staleness detection ────────────────────────────────────────────
-# If prior artifacts exist, check if the Jira ticket was updated since last extract.
-if .artifacts/<KEY>/extract-state.json exists AND NOT --fresh:
-  Read .artifacts/<KEY>/extract-state.json for extracted_at field
-  if extracted_at exists:
-    Call getJiraIssue(<KEY>, fields: [updated]) to get ticket_updated timestamp
-    if ticket_updated > extracted_at:
-      echo "Warning: Jira ticket updated since last extract ($(extracted_at)). Clearing stale artifacts."
-      rm .artifacts/<KEY>/extract-state.json
-      rm .artifacts/<KEY>/evaluation-report.csv 2>/dev/null
-      rm .artifacts/<KEY>/iteration-log.json 2>/dev/null
-    else:
-      echo "extract-state.json is current (fetched $(extracted_at))"
+# ── Staleness detection (content-based) ────────────────────────────
+# eval-extract Step 0 handles cache validation using a content hash of the
+# ticket description. The orchestrator no longer compares timestamps, which
+# avoids false invalidation when eval-iterate itself adds comments to the ticket.
+# If --fresh is set, artifacts are already cleared above. Otherwise, let
+# eval-extract's own cache check (content hash) decide whether to re-fetch.
 
 # Initialize persistent state (survives context compression)
 python3 .claude/skills/eval/scripts/eval_state.py init .artifacts/<KEY>/eval-state.yaml \
   iteration=0 max_iterations=$max_iterations exit_reason=pending \
-  phase=a ac_pass=false key=<KEY> url=<URL> workspace=<workspace>
+  phase=a ac_pass=false key=<KEY> url=<URL> workspace=<workspace> \
+  pipeline_start=$(python3 .claude/skills/eval/scripts/eval_state.py timestamp)
 
 # ═══════════════════════════════════════════════════════════════════
 # PHASE A: X-Ray AC Validation Loop
@@ -151,17 +150,27 @@ if workspace provided:
 
 # ── Setup (runs once) ──────────────────────────────────────────────
 
-Read .claude/skills/eval/eval-extract/SKILL.md and execute it
-# Produces: extract-state.json, mr-delta.json, outcome-context.json
+# ── Per-skill timing ──────────────────────────────────────────────
+# Record start/end timestamps for each skill to measure optimization impact.
 
-if workspace provided:
-  Read .claude/skills/eval/eval-hint/SKILL.md and execute it
-  # Reads mr-delta.json, scans workspace source for routes/selectors/nav hierarchy
-  # Produces: navigation-hints.json (consumed by eval-journey and eval-usability as fallback)
+python3 .claude/skills/eval/scripts/eval_state.py set .artifacts/<KEY>/eval-state.yaml \
+  extract_core_start=$(python3 .claude/skills/eval/scripts/eval_state.py timestamp)
 
-Read .claude/skills/eval/eval-consistency/SKILL.md and execute it
-# Runs ONCE. Produces: consistency-report.json, appends to refinement-suggestions.json
-# PatternFly violations don't change between AC fix iterations.
+Read .claude/skills/eval/eval-extract/SKILL.md and execute it with --phase=core
+# Produces: extract-state.json, mr-delta.json
+# Defers: outcome-context.json, tasks_to_be_done, breadcrumb (run before Phase B)
+
+python3 .claude/skills/eval/scripts/eval_state.py set .artifacts/<KEY>/eval-state.yaml \
+  extract_core_end=$(python3 .claude/skills/eval/scripts/eval_state.py timestamp) \
+  consistency_source_start=$(python3 .claude/skills/eval/scripts/eval_state.py timestamp)
+
+Read .claude/skills/eval/eval-consistency/SKILL.md and execute it with --mode=source
+# Runs ONCE (source-mode only). Produces: consistency-report.json, appends to refinement-suggestions.json
+# Visual-mode deferred to after eval-journey when screenshots exist.
+# Uses analyze.py bash commands for deterministic checks (no report generation).
+
+python3 .claude/skills/eval/scripts/eval_state.py set .artifacts/<KEY>/eval-state.yaml \
+  consistency_source_end=$(python3 .claude/skills/eval/scripts/eval_state.py timestamp)
 
 # ── AC Fix Loop ────────────────────────────────────────────────────
 
@@ -178,7 +187,7 @@ LOOP:
 
   # ── Journey (x-ray mode) ────────────────────────────────────
   # The x-ray evaluator uses workspace source directly for navigation.
-  # No blind-first pretense — goal is fast AC verification.
+  # No discovery-first pretense — goal is fast AC verification.
   if iteration == 1:
     Read .claude/skills/eval/eval-journey/SKILL.md and execute it with:
       --mode=informed
@@ -317,9 +326,55 @@ if iteration > 1:
     sleep 5
 
 # ═══════════════════════════════════════════════════════════════════
-# PHASE B: Blind Persona Walkthroughs
+# POST-JOURNEY: Visual Consistency Check (deferred from setup)
+# Now that screenshots exist, run visual-mode consistency checks.
+# ═══════════════════════════════════════════════════════════════════
+
+python3 .claude/skills/eval/scripts/eval_state.py set .artifacts/<KEY>/eval-state.yaml \
+  consistency_visual_start=$(python3 .claude/skills/eval/scripts/eval_state.py timestamp)
+
+Read .claude/skills/eval/eval-consistency/SKILL.md and execute it with --mode=visual
+# Uses journey screenshots + DOM for visual guideline checks.
+# Appends visual findings to consistency-report.json and refinement-suggestions.json.
+# These findings are informational for the report — they do NOT re-trigger the fix loop.
+
+python3 .claude/skills/eval/scripts/eval_state.py set .artifacts/<KEY>/eval-state.yaml \
+  consistency_visual_end=$(python3 .claude/skills/eval/scripts/eval_state.py timestamp)
+
+# ═══════════════════════════════════════════════════════════════════
+# PRE-PHASE-B: Deferred Context Enrichment
+# Gather data needed only by Phase B (Outcome, tasks, hints).
+# This was deferred from setup to keep Phase A fast.
+# ═══════════════════════════════════════════════════════════════════
+
+python3 .claude/skills/eval/scripts/eval_state.py set .artifacts/<KEY>/eval-state.yaml \
+  extract_enrichment_start=$(python3 .claude/skills/eval/scripts/eval_state.py timestamp)
+
+Read .claude/skills/eval/eval-extract/SKILL.md and execute it with --phase=enrichment
+# Produces: outcome-context.json, tasks_to_be_done, breadcrumb
+# Uses Outcome ticket for better persona task generation.
+# Falls back to journey titles if Outcome is not discoverable.
+
+python3 .claude/skills/eval/scripts/eval_state.py set .artifacts/<KEY>/eval-state.yaml \
+  extract_enrichment_end=$(python3 .claude/skills/eval/scripts/eval_state.py timestamp)
+
+if workspace provided:
+  python3 .claude/skills/eval/scripts/eval_state.py set .artifacts/<KEY>/eval-state.yaml \
+    hint_start=$(python3 .claude/skills/eval/scripts/eval_state.py timestamp)
+
+  Read .claude/skills/eval/eval-hint/SKILL.md and execute it
+  # Reads mr-delta.json, scans workspace source for routes and nav hierarchy.
+  # Produces: navigation-hints.json (nav_sections + routes only).
+  # Consumed by eval-usability as fallback for stuck-persona navigation.
+  # Runs here (post-fix) so hints reflect the final workspace state.
+
+  python3 .claude/skills/eval/scripts/eval_state.py set .artifacts/<KEY>/eval-state.yaml \
+    hint_end=$(python3 .claude/skills/eval/scripts/eval_state.py timestamp)
+
+# ═══════════════════════════════════════════════════════════════════
+# PHASE B: Discovery Persona Walkthroughs
 # Question: "Can real users actually use this?"
-# Method: Per-persona Playwright, blind navigation, think-aloud scoring
+# Method: Per-persona Playwright, discovery navigation, think-aloud scoring
 # ═══════════════════════════════════════════════════════════════════
 
 python3 .claude/skills/eval/scripts/eval_state.py set .artifacts/<KEY>/eval-state.yaml phase=b
@@ -367,6 +422,9 @@ Read .claude/skills/eval/eval-report/SKILL.md and execute it with:
 # NOTIFY (open report + present summary)
 # ═══════════════════════════════════════════════════════════════════
 
+python3 .claude/skills/eval/scripts/eval_state.py set .artifacts/<KEY>/eval-state.yaml \
+  pipeline_end=$(python3 .claude/skills/eval/scripts/eval_state.py timestamp)
+
 # Open the report for the designer
 open .artifacts/<KEY>/evaluation-report.html
 
@@ -397,9 +455,10 @@ node .claude/skills/eval/scripts/build-leaderboard.js
 On re-iterations, only re-evaluate criteria that FAILED or were FLAGGED:
 
 1. Parse previous `evaluation-report.csv` for FAIL/FLAGGED IDs
-2. Pass `--rerun-only=AC-3,AC-5` to eval-classify and eval-journey
-3. Those skills carry forward PASS verdicts and only re-run the failures
+2. Pass `--rerun-only=AC-3,AC-5` to eval-journey
+3. eval-journey carries forward PASS verdicts and only re-runs the failures
 4. Screenshots from PASS journeys are preserved
+5. eval-classify is NOT re-run (tiers are structural and don't change between iterations)
 
 This reduces Playwright execution proportionally to passing criteria count.
 

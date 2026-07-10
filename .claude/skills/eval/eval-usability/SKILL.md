@@ -7,7 +7,7 @@ allowed-tools: Read, Write, Bash, Glob, Grep
 
 # eval-usability
 
-Phase B of the eval pipeline. Runs blind per-persona Playwright walkthroughs against a known-good prototype (ACs already validated in Phase A), then scores 7 usability dimensions using persona constraints and think-aloud narration.
+Phase B of the eval pipeline. Runs discovery-based per-persona Playwright walkthroughs against a known-good prototype (ACs already validated in Phase A), then scores 7 usability dimensions using persona constraints and think-aloud narration.
 
 Each persona navigates at their own competence level — an experienced user explores differently than a junior one. Navigation behavior is driven by the persona YAML fields: `exploration_tendency`, `experience_level`, `domain_knowledge`, and `constraints[]`.
 
@@ -542,9 +542,9 @@ Example: If a task covers `["AC-1", "AC-4", "AC-6"]` and step 3 shows the person
 
 This file is what renders in the report's Personas tab. If it doesn't exist, the tab shows degraded content. The file must cover EVERY journey step with the persona's reaction — not a summary, but a step-by-step trace.
 
-**Discoverability Summary (write after all persona walkthroughs):**
+**Discoverability Summary (optional — not yet consumed by render-report.js):**
 
-After all persona-task traces are complete, produce `.artifacts/<KEY>/discoverability-matrix.json`:
+After all persona-task traces are complete, optionally produce `.artifacts/<KEY>/discoverability-matrix.json`. This artifact is not yet wired into the report renderer but provides useful cross-reference data for future reporting:
 
 ```json
 {

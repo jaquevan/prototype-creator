@@ -92,7 +92,7 @@ prototype-creator/
 │   │   │   ├── eval-extract/          # Pull Jira context, ACs, personas
 │   │   │   ├── eval-classify/         # Classify ACs into eval tiers
 │   │   │   ├── eval-hint/             # Extract navigation hints from source
-│   │   │   ├── eval-journey/          # Playwright walkthroughs (informed/blind)
+│   │   │   ├── eval-journey/          # Playwright walkthroughs (informed/discovery)
 │   │   │   ├── eval-fix/              # Apply fixes from suggestions
 │   │   │   ├── eval-usability/        # Phase B persona scoring
 │   │   │   ├── eval-consistency/      # PatternFly guideline checks

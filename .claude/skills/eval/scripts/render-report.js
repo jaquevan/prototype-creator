@@ -2030,7 +2030,28 @@ function buildTabbedExecSummary() {
   let summaryInner = '';
   summaryInner += `<p class="exec-detail"><strong>Acceptance criteria:</strong> ${acCount}</p>`;
   if (rfeKey) summaryInner += `<p class="exec-detail"><strong>Linked RFE:</strong> ${escapeHtml(rfeKey)}</p>`;
-  if (outcomeContext && outcomeContext.problem_statement) {
+
+  // Feature context — background, problem statement, user stories, UI enhancements
+  const featureCtx = extractState && extractState.feature_context;
+  if (featureCtx) {
+    if (featureCtx.problem_statement) {
+      summaryInner += `<div class="exec-detail exec-problem" style="margin:0.5rem 0;padding:0.5rem 0.75rem;background:rgba(0,102,204,0.04);border-left:3px solid var(--accent);border-radius:0.25rem"><strong>Problem:</strong> ${escapeHtml(featureCtx.problem_statement)}</div>`;
+    }
+    if (featureCtx.background) {
+      summaryInner += `<p class="exec-detail small muted" style="margin-top:0.25rem"><strong>Background:</strong> ${escapeHtml(featureCtx.background)}</p>`;
+    }
+    if (featureCtx.ui_enhancements) {
+      summaryInner += `<p class="exec-detail small" style="margin-top:0.25rem"><strong>UI changes:</strong> ${escapeHtml(featureCtx.ui_enhancements.substring(0, 500))}${featureCtx.ui_enhancements.length > 500 ? '...' : ''}</p>`;
+    }
+    if (Array.isArray(featureCtx.user_stories) && featureCtx.user_stories.length) {
+      summaryInner += `<div class="exec-detail small" style="margin-top:0.25rem"><strong>User stories:</strong><ul style="margin:0.25rem 0 0 1rem;padding:0">`;
+      for (const story of featureCtx.user_stories.slice(0, 6)) {
+        summaryInner += `<li style="margin-bottom:0.15rem">${escapeHtml(story)}</li>`;
+      }
+      if (featureCtx.user_stories.length > 6) summaryInner += `<li class="muted">+${featureCtx.user_stories.length - 6} more</li>`;
+      summaryInner += `</ul></div>`;
+    }
+  } else if (outcomeContext && outcomeContext.problem_statement) {
     summaryInner += `<p class="exec-detail exec-problem">${escapeHtml(outcomeContext.problem_statement)}</p>`;
   }
 

@@ -1,6 +1,6 @@
 # Phase A CLI — Designer Iteration Loop
 
-A lightweight "inner loop" mode where designers run just the x-ray AC validation cycle without blind persona walkthroughs. Gives designers fast, actionable feedback they can verify and fix themselves before optionally sending for full usability testing.
+A lightweight "inner loop" mode where designers run just the x-ray AC validation cycle without discovery persona walkthroughs. Gives designers fast, actionable feedback they can verify and fix themselves before optionally sending for full usability testing.
 
 ## Workflow Diagram
 

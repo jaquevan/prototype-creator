@@ -43,7 +43,7 @@ The x-ray evaluator has full workspace access and uses it for speed. The goal is
 - Read workspace source files directly for selectors, routes, and page structure
 - Use `page.goto` freely for navigation (speed over realism)
 - Use CSS selectors from source code to locate elements
-- No brute-force expansion, no blind-first pretense
+- No brute-force expansion, no discovery-first pretense
 - No persona simulation, no exploration phase
 - Screenshots are evidence of PASS/FAIL only
 - Produces: verdicts, refinement-suggestions, screenshots
@@ -112,7 +112,7 @@ On re-iterations with `--rerun-only`, only clear screenshots for re-run journeys
 
 If `.artifacts/<KEY>/navigation-hints.json` exists (produced by eval-hint), it is available as a **fallback safety net** — NOT pre-loaded knowledge.
 
-**How hints work (try blind first, consult only when stuck):**
+**How hints work (try discovery first, consult only when stuck):**
 
 The generated Playwright script navigates using ONLY visible UI elements first. Hints are consulted ONLY after an unassisted attempt fails:
 
@@ -154,7 +154,7 @@ For each journey from `extract-state.json > journey_definitions`:
 
 PatternFly/RHOAI prototypes use collapsible nav sections. A link inside a collapsed section IS reachable — it just requires expanding the parent first. This is normal click-first navigation, NOT a failure.
 
-**The generated Playwright script MUST include this nav expansion logic (blind first, hints as fallback):**
+**The generated Playwright script MUST include this nav expansion logic (discovery first, hints as fallback):**
 
 ```javascript
 // navHints loaded ONLY for fallback use
@@ -168,7 +168,7 @@ async function navigateViaSidebar(page, targetText) {
     return { success: true, method: 'direct', assisted: false };
   }
 
-  // Strategy 2: Brute-force — try all visible expandable nav buttons (blind)
+  // Strategy 2: Brute-force — try all visible expandable nav buttons (discovery)
   const navButtons = page.locator('nav button');
   const btnCount = await navButtons.count();
   for (let i = 0; i < btnCount; i++) {
@@ -212,7 +212,7 @@ async function navigateViaSidebar(page, targetText) {
 }
 ```
 
-**Strategy order: blind first (1, 2), then hint fallback (3).**
+**Strategy order: discovery first (1, 2), then hint fallback (3).**
 
 - `method: 'direct'` — link was visible, no expansion needed (best case)
 - `method: 'brute_expand'` — persona found it by exploring sections (acceptable)
@@ -288,7 +288,7 @@ If an AC describes a disabled/alternative state (e.g., "when Kueue is not enable
 - This is NOT a PASS — the prototype cannot demonstrate this state. It needs human confirmation or a separate test environment.
 
 **T1 Visual Evidence Rule (BLOCKING):**
-For Tier 1 criteria, a PASS verdict requires AT LEAST ONE screenshot showing the feature working as described. Source-code-only verification for T1 criteria MUST produce FLAGGED, never PASS. The only exception is when the AC explicitly describes behavior that cannot be demonstrated in a prototype (e.g., "within 5 seconds" timing, backend RBAC enforcement) — those are T3 criteria by definition.
+For Tier 1 criteria, a PASS verdict requires AT LEAST ONE screenshot showing the feature working as described. Source-code-only verification for T1 criteria MUST produce FLAGGED, never PASS.
 
 Extra exploration (checking adjacent pages, testing edge cases) goes in the `exploration[]` section, NOT in the journey steps. Journey steps are the minimum path to verify the AC.
 
@@ -396,7 +396,7 @@ async function runJourney1(page) {
 
 After all journeys complete, assign verdicts for EVERY AC in the CSV.
 
-**T5 criteria (headless limitation):** Skip journey generation for T5 ACs entirely. They are pre-assigned verdict=FLAGGED with rationale="Requires headed browser" and human_action="Verify manually in headed browser" at classify time. Do not attempt Playwright verification.
+**T3 criteria (backend-only):** These are pre-assigned verdict=PASS at classify time with a note. Do not generate journey steps for T3 ACs — they have no UI surface to test.
 
 **Journey verdict is determined by AC-critical steps only:**
 
@@ -414,11 +414,12 @@ A journey can have steps that directly verify the AC requirement AND extra steps
 
 **Tier 3 split verdict rule (prototypes are NOT backends):**
 
-These are PROTOTYPES — they demonstrate UI flows, not backend logic. Tier 3 ACs have both a UI part and a backend/runtime part. The eval only judges the UI:
+These are PROTOTYPES — they demonstrate UI flows, not backend logic. Under the updated tier system, most ACs that mention backend concepts are classified as **T1** (because their observable effect is a UI change). True T3 ACs are backend-only with zero UI surface and are pre-assigned PASS at classify time.
 
-- If the UI part of a T3 AC passes (button exists, form validates, visual feedback present): verdict = **PASS** with a note: "UI component verified. Backend portion noted but not evaluable from prototype."
-- If the UI part fails (no validation UI, no feedback element): verdict = **FAIL**
-- Backend-ONLY ACs with NO UI component at all (e.g., "BFF accepts 50MB bodies", "catalog YAML schema"): verdict = **PASS (N/A)** with rationale "No UI component — backend-only requirement, noted for engineering."
+If an AC was classified T1 despite mentioning backend concepts, evaluate it by its UI manifestation:
+- If the UI demonstrates the feature (button exists, status renders, validation message shows): verdict = **PASS**
+- If the UI portion is missing or broken: verdict = **FAIL**
+- The backend portion is noted but irrelevant to the verdict — the prototype's job is to demonstrate UX
 
 **NEVER FLAGGED for prototype limitations that have a UI demonstration.** These are PASS with notes:
 - "updates within 5 seconds without page refresh" → PASS (UI re-renders from state; WebSocket is backend)
@@ -435,10 +436,10 @@ Do NOT flag or fail ACs solely because their backend portion cannot be verified.
 | UI feature exists and works visually (T1) | PASS | Screenshot proves it |
 | UI feature missing or broken (T1) | FAIL | Screenshot shows absence |
 | Needs external reference, ref unavailable (T2) | FLAGGED | Can't compare without ref |
-| Backend-only requirement, UI demonstrates flow (T3) | PASS (with note) | Prototype shows UX; backend is engineering |
-| Conditional rendering can't be toggled in prototype | FLAGGED | Genuinely can't demonstrate; needs human verification |
+| Backend-only requirement, no UI surface (T3) | PASS (pre-assigned) | Prototype demonstrates UX; backend is engineering |
 | Subjective quality judgment (T4) | FLAGGED | Human call |
 | Source code confirms feature but screenshot shows nothing | FAIL | Visual truth wins |
+| Hardware API (mic, camera, etc.) | PASS (noted) | Code exists; hardware demo not possible in headless |
 
 **Verdict rules:**
 - Simulated/placeholder responses in prototypes = PASS (UI flow works)
@@ -535,8 +536,9 @@ After writing journey-log.json, verify every AC has been tested:
 
 **If `untested_acs` is not empty:**
 - For each untested AC, check its tier from the CSV:
-  - **Tier 1 untested:** assign verdict FAIL with rationale "No journey tested this criterion — coverage gap"
-  - **Tier 3/4 untested:** assign verdict FLAGGED with rationale "Tier 3/4: requires backend/subjective verification, no UI journey applicable"
+  - **T1 untested:** assign verdict FAIL with rationale "No journey tested this criterion -- coverage gap"
+  - **T3 untested:** should already have PASS from classify (pre-assigned). If not, assign PASS with note "Backend-only, no UI journey applicable"
+  - **T4 untested:** assign verdict FLAGGED with rationale "Subjective criterion -- needs human judgment, no automated journey applicable"
 - Log a WARNING: `"AC coverage incomplete: {untested_acs} had no journey"`
 - Update `evaluation-report.csv` with these verdicts
 
