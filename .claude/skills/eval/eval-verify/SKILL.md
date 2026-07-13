@@ -134,17 +134,28 @@ Determine the primary page from `extract-state.json > journey_definitions` — f
 const journeys = extractState.journey_definitions || [];
 const firstSteps = journeys.map(j => (j.expected_path || [])[0]).filter(Boolean);
 // Note: component-map.json may not exist yet on iteration 1. If not, infer the
-// primary route from journey_definitions expected_path.
+// primary route from journey_definitions expected_path or from the Jira ticket's
+// feature context (e.g., "Model Deployments Overview" → /ai-hub/models/deployments).
 const primaryRoute = componentMap ? componentMap.target_page : inferPrimaryRoute(firstSteps);
 
 const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
 const page = await context.newPage();
+
+// Navigate to the primary feature page (NOT the homepage)
 await page.goto(`${baseUrl}${primaryRoute || ''}`);
+await page.waitForLoadState('domcontentloaded');
+
+// Ensure "All projects" is selected (prototypes default to empty project)
+await ensureAllProjects(page);
+
+// Wait for actual page content to render
 await page.waitForSelector('tbody tr', { timeout: 8000 }).catch(() => null);
 await page.waitForTimeout(2000);
 await page.screenshot({ path: '.artifacts/<KEY>/screenshots/baseline-before.png', fullPage: false });
 await context.close();
 ```
+
+**If the page is still empty after ensureAllProjects + content wait**, capture it anyway — it may indicate a build issue that the report should show.
 
 This baseline captures the prototype's main feature page before eval-fix applies any changes. It's used in the report's Fix History tab and Summary section for before/after comparison.
 
@@ -317,24 +328,38 @@ Never use `page.evaluate()` or `.textContent()` alone as proof — PatternFly's 
 
 **Screenshot budget:** `baseline-before.png` + 1 per AC = typically 8-10 total screenshots for eval-verify. This is significantly fewer than the 15+ persona screenshots from eval-discover.
 
-### Step 5: Write verdicts to CSV
+### Step 5: Determine final verdicts and write to BOTH CSV and journey-log
 
-After all journeys complete, assign verdicts for EVERY AC in the CSV.
+**CRITICAL: The CSV is the source of truth for the report.** The report renders verdicts from the CSV, not the journey-log. If the CSV says FAIL but journey-log says PASS, the report shows FAIL.
 
-**AC verdict precedence:**
-1. Journey AC-critical steps ALL passed → **PASS**
-2. Any AC-critical step FAILED → **FAIL**
+**Verdict determination flow (do NOT write to CSV until all judgment is complete):**
+
+1. Run Playwright script → collect raw results (element found/not found, visible/invisible)
+2. Apply ALL verdict rules to the raw results:
+   - Visual Truth Rule (screenshots show it working → PASS)
+   - Default-state ACs (visible state matches AC description → PASS)
+   - Source analysis (component-map confirms feature exists → informs verdict)
+   - Error/RBAC detection (no errors on page → PASS for graceful degradation ACs)
+3. Produce a FINAL verdict per AC — this is the verdict AFTER judgment, not the raw Playwright result
+4. Write the FINAL verdict to BOTH:
+   - `evaluation-report.csv` Section 1 (verdicts, rationale, evidence columns)
+   - `journey-log.json` journey verdict fields
+5. **Both files MUST have identical verdicts for every AC.** If you write PASS to journey-log, you MUST also write PASS to the CSV.
+
+**NEVER write raw Playwright results to the CSV.** The CSV gets the final judged verdict only. If Playwright selectors timed out but screenshots show the feature working, the verdict is PASS (Visual Truth Rule) — and PASS goes to both files.
+
+**AC verdict precedence (applied AFTER all judgment rules):**
+1. Journey AC-critical steps ALL passed (visually confirmed) → **PASS**
+2. Any AC-critical step FAILED (visually confirmed missing/broken) → **FAIL**
 3. No journey tested this AC → **FAIL** ("coverage gap")
 
-Update `evaluation-report.csv` Section 1 with verdicts, rationale, evidence, fix_action, fix_file.
-
-**BLOCKING CROSS-CHECK:** Before writing the CSV, verify journey-log.json and CSV verdicts are consistent. Run:
+**BLOCKING CROSS-CHECK:** After writing both files, verify they are consistent:
 
 ```bash
 node .claude/skills/eval/scripts/validate-verdicts.js .artifacts/<KEY>/
 ```
 
-If violations found, fix the CSV before proceeding.
+If violations found (any AC has different verdicts in CSV vs journey-log), fix BOTH files to match before proceeding.
 
 ### Step 6: Verify AC Coverage (BLOCKING)
 
