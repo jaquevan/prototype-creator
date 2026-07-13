@@ -7,7 +7,7 @@ allowed-tools: Read, Write, Bash, Glob, Grep
 
 # eval-hint
 
-Pre-journey intelligence gathering. Reads the workspace source files listed in `mr-delta.json` and extracts concrete information that helps eval-journey generate precise Playwright scripts. This skill is the "hinter" — it has full code access. The persona walker (eval-journey) stays blind to paths.
+Pre-journey intelligence gathering. Reads the workspace source files listed in `mr-delta.json` and extracts concrete information that helps eval-journey generate precise Playwright scripts. This skill is the "hinter" — it has full code access. The persona walker (eval-usability) discovers paths on its own.
 
 ## Inputs
 
@@ -25,16 +25,20 @@ Pre-journey intelligence gathering. Reads the workspace source files listed in `
 
 ## What the hints are used for (and what they are NOT)
 
-**Used for:**
-- Targeted CSS selectors in the generated Playwright script (replaces generic guessing)
+**Used for (by eval-usability in Phase B):**
 - Diagnostic fallback URLs after click-first fails (to distinguish orphaned from missing)
 - Nav section hierarchy (which parent button to expand for which child link)
-- Fix suggestions (file paths where issues live)
 
 **NOT used for:**
 - Telling the persona where to click (defeats usability test)
 - Auto-navigating to pages (hides discoverability issues)
 - Scoring or verdicts (those come from what the walker actually experiences)
+- Phase A eval-journey (x-ray mode reads source directly, does not consume hints)
+
+**NOT produced (removed — unused downstream):**
+- CSS selectors for specific elements (discovery personas should not have these)
+- Page structure booleans (has_textarea, has_file_input, etc.)
+- Feature flag lists (not consumed by any downstream skill)
 
 ## Procedure
 
@@ -82,34 +86,7 @@ cat src/app/AppLayout/AppLayout.tsx | grep -A 2 "NavItem\|nav__link\|expandable"
 
 Build the nav section map: which parent button expands to reveal which child links. This directly tells eval-journey which section to expand for each target page.
 
-### Step 4: Extract component selectors from changed files
-
-For each file in the MR delta, read it and extract:
-- `data-testid` attributes
-- `aria-label` values on buttons/inputs
-- CSS class names on interactive elements (buttons, inputs, textareas, selects)
-- `id` attributes on forms and controls
-
-```bash
-cd <workspace>
-for f in <new_files + modified_files>; do
-  grep -n "data-testid\|aria-label\|className.*pf-\|id=\"" "$f" 2>/dev/null
-done
-```
-
-Also scan the TARGET pages (components rendered at routes from Step 2):
-- If route `/gen-ai-studio/playground` renders `PlaygroundPage.tsx`, read that file too
-- Extract all interactive element selectors from it
-
-### Step 5: Determine page structure
-
-For each route/page identified, summarize what interactive elements exist:
-- Does it have a `<textarea>`? (chat input)
-- Does it have `<input type="file">`? (file upload)
-- Does it have `<select>` or model selector components? (model choice)
-- Does it have buttons with specific aria-labels? (send, attach, microphone)
-
-### Step 6: Write navigation-hints.json
+### Step 4: Write navigation-hints.json
 
 ```json
 {
@@ -123,22 +100,6 @@ For each route/page identified, summarize what interactive elements exist:
       "component": "PlaygroundPage"
     }
   ],
-  "selectors": {
-    "attach_button": ".pf-chatbot__message-bar-attach",
-    "chat_input": "textarea.pf-chatbot__message-bar-input",
-    "model_select": "select.pf-v6-c-form-control",
-    "send_button": "button[aria-label=\"Send\"]",
-    "microphone_button": "button[aria-label=\"Microphone\"]"
-  },
-  "page_structure": {
-    "/gen-ai-studio/playground": {
-      "has_textarea": true,
-      "has_file_input": true,
-      "has_model_selector": true,
-      "form_elements": ["textarea", "select", "input[type=file]"],
-      "buttons": ["Send", "Attach", "Microphone"]
-    }
-  },
   "nav_sections": {
     "Gen AI studio": {
       "children": ["AI asset endpoints", "Playground", "Prompt management", "API keys"],
@@ -148,10 +109,6 @@ For each route/page identified, summarize what interactive elements exist:
       "children": ["Models", "MCP servers"],
       "selector": "button:has-text(\"AI hub\")"
     }
-  },
-  "feature_flags": {
-    "enabled": ["enableMultimodalCapabilities", "enableMultimodalInput", "enableMultimodalOutput"],
-    "file": "src/app/utils/FeatureFlagsContext.tsx"
   }
 }
 ```
@@ -159,7 +116,8 @@ For each route/page identified, summarize what interactive elements exist:
 ## Rules
 
 - Read ONLY files in the workspace. Do not fetch external URLs.
-- Extract selectors from the ACTUAL source code, not guessed patterns.
 - If a file in mr-delta.json doesn't exist (deleted), skip it.
 - The nav_sections map must reflect the ACTUAL sidebar hierarchy, not assumptions.
-- This skill runs ONCE per evaluation (not per iteration). Hints are static — the workspace structure doesn't change between eval-fix cycles (only file contents do).
+- Use `config/product-overlay.yaml > navigation` for file paths (sidebar_file, routes_file) instead of hardcoding paths.
+- This skill runs ONCE per evaluation, deferred to just before Phase B. It runs after the Phase A fix loop, so hints reflect the final workspace state.
+- Output only `routes` and `nav_sections`. Do NOT extract selectors, page_structure, or feature_flags — these are either unused downstream or would compromise discovery persona testing.

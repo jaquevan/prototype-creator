@@ -34,15 +34,17 @@ The pipeline has two phases:
 **Phase A — AC Validation (X-Ray)**
 An x-ray evaluator with full source access verifies each acceptance criterion from the Jira ticket using Playwright. If criteria fail, it applies fixes and re-runs (up to N iterations) until all pass or max iterations are reached.
 
-**Phase B — Usability Testing (Blind)**
+**Phase B — Usability Testing (Discovery)**
 Per-persona Playwright walkthroughs where simulated users navigate the prototype at their own competence level. Produces think-aloud traces and scores 7 usability dimensions.
 
 ```
-Phase A: eval-extract → eval-consistency → eval-classify → eval-journey (informed)
-                                                             ↓
-                                                     All PASS? → Phase B
-                                                     FAIL? → eval-fix → loop
-                                                     
+Phase A: eval-extract (core) → eval-consistency (source) → eval-classify → eval-journey (informed)
+                                                                             ↓
+                                                                     All PASS? → Phase B
+                                                                     FAIL? → eval-fix → loop
+
+Post-A:  eval-consistency (visual) → eval-extract (enrichment) → eval-hint
+
 Phase B: eval-usability (per-persona Playwright) → eval-report → open + summarize
 ```
 
