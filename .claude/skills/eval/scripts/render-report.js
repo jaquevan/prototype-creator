@@ -3254,6 +3254,22 @@ function main() {
   console.log(`✓ Report written to ${outPath}`);
   console.log(`  Size: ${(Buffer.byteLength(template) / 1024).toFixed(0)} KB`);
 
+  // Sanity check: verify hero stat in HTML matches CSV verdicts
+  const csvRaw = readFileOr(path.join(absArtifacts, 'evaluation-report.csv'), '');
+  const csvLines = csvRaw.split('\n').filter(l => l && !l.startsWith('#') && !l.startsWith('criterion_id') && !l.startsWith('dimension_id') && !l.startsWith('metric') && !l.startsWith('persona'));
+  const csvPassCount = csvLines.filter(l => l.includes(',PASS,')).length;
+  const csvFailCount = csvLines.filter(l => l.includes(',FAIL,')).length;
+  const csvFlaggedCount = csvLines.filter(l => l.includes(',FLAGGED,')).length;
+  const csvTotal = csvPassCount + csvFailCount + csvFlaggedCount;
+  const heroMatch = template.match(/(\d+)\/(\d+)/);
+  if (heroMatch && csvTotal > 0) {
+    const htmlPass = parseInt(heroMatch[1], 10);
+    const htmlTotal = parseInt(heroMatch[2], 10);
+    if (htmlPass !== csvPassCount || htmlTotal !== csvTotal) {
+      console.error(`  ⚠ SANITY CHECK: HTML hero shows ${htmlPass}/${htmlTotal} but CSV has ${csvPassCount}/${csvTotal} (${csvPassCount}P/${csvFailCount}F/${csvFlaggedCount}FL)`);
+    }
+  }
+
   // Generate per-iteration snapshot reports (shortened versions for intermediates)
   generateIterationReports();
 

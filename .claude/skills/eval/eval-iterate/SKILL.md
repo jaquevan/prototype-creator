@@ -198,31 +198,40 @@ LOOP:
     # Only runs Playwright for journeys testing failing criteria
     # Carries forward PASS verdicts from previous iteration
 
-  # ── Verdict cross-check (automated) ─────────────────────────────
+  # ── Verdict cross-check (BLOCKING — bidirectional) ──────────────
   node .claude/skills/eval/scripts/validate-verdicts.js .artifacts/<KEY>/
-  # If violations found (exit 1): fix CSV verdicts to FLAGGED for contradicted ACs before continuing.
-  # A journey FAIL + CSV PASS is never acceptable unless journey-log is corrected with visual evidence.
+  # Checks BOTH directions:
+  #   - Journey FAIL + CSV PASS → violation (CSV must be FAIL/FLAGGED)
+  #   - Journey PASS + CSV FAIL → violation (CSV must be updated to PASS)
+  # If exit code 1: FIX the CSV to match journey-log verdicts before continuing.
+  # The CSV is the source of truth for the report — if it has wrong verdicts,
+  # the report will show wrong results even if the pipeline thinks everything passed.
 
   # ── Archive this iteration ─────────────────────────────────────
   cp .artifacts/<KEY>/evaluation-report.csv → .artifacts/<KEY>/evaluation-report-iter-<iteration>.csv
   cp -r .artifacts/<KEY>/screenshots/ → .artifacts/<KEY>/screenshots-iter-<iteration>/
 
   # ── Compute counts FROM the CSV (source of truth) ──────────────
+  # CRITICAL: Read the CSV FILE, not journey-log.json, not agent memory.
+  # The CSV is what the report renders. If you use different counts,
+  # the pipeline will report "7/7 PASS" while the report shows "0/7".
   Read .artifacts/<KEY>/evaluation-report.csv Section 1 (ACCEPTANCE CRITERIA)
   Parse using proper CSV quoting (fields may contain commas):
     pass_count = count rows where verdict column == "PASS"
     fail_count = count rows where verdict column == "FAIL"
     flagged_count = count rows where verdict column == "FLAGGED"
 
-  NEVER manually estimate these counts. Always compute from the CSV file.
+  NEVER use journey-log verdicts for these counts. NEVER manually estimate.
+  Always compute from the CSV file — it is the ONLY source of truth.
 
   # ── Write iteration entry to iteration-log.json ────────────────
-  # Use the append-iteration-log.js script for rich, consistent entries:
+  # ALWAYS use the script — NEVER write iteration-log.json directly.
+  # The script reads the CSV (source of truth) for pass/fail/flagged counts.
   node .claude/skills/eval/scripts/append-iteration-log.js .artifacts/<KEY>/ <iteration> a
 
   # This script reads CSV, journey-log, fix-log, refinement-suggestions, and
   # consistency-report to produce a complete iteration entry including:
-  #   - pass/fail/flagged counts (from CSV)
+  #   - pass/fail/flagged counts (from CSV — NOT from journey-log)
   #   - per-AC verdict details (from CSV)
   #   - journey coverage mapping (from journey-log)
   #   - changes_applied (from fix-log.json, if fix loop ran)
