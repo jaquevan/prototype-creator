@@ -65,8 +65,8 @@ function main() {
     const extractStatePath = path.join(dir, 'extract-state.json');
     if (fs.existsSync(extractStatePath)) {
       const es = readJsonOr(extractStatePath, null);
-      if (es && (es.ticket_summary || es.story_title || es.title)) {
-        title = es.ticket_summary || es.story_title || es.title;
+      if (es && (es.title || es.ticket_summary || es.story_title)) {
+        title = es.title || es.ticket_summary || es.story_title;
       }
     }
     if (title === key) {

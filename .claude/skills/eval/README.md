@@ -38,14 +38,14 @@ An x-ray evaluator with full source access verifies each acceptance criterion fr
 Per-persona Playwright walkthroughs where simulated users navigate the prototype at their own competence level. Produces think-aloud traces and scores 7 usability dimensions.
 
 ```
-Phase A: eval-extract (core) → eval-consistency (source) → eval-classify → eval-journey (informed)
+Phase A: eval-extract (core) → eval-consistency (source) → eval-classify → eval-verify (x-ray)
                                                                              ↓
                                                                      All PASS? → Phase B
                                                                      FAIL? → eval-fix → loop
 
-Post-A:  eval-consistency (visual) → eval-extract (enrichment) → eval-hint
+Post-A:  eval-consistency (visual) → eval-extract (enrichment) → eval-nav-context  [ALL PARALLEL]
 
-Phase B: eval-usability (per-persona Playwright) → eval-report → open + summarize
+Phase B: eval-discover (per-persona Playwright) → eval-report → open + summarize
 ```
 
 ## Flags
@@ -74,6 +74,10 @@ All output goes to `.artifacts/<KEY>/` (gitignored):
 | `usability-thinkaloud-<persona>.md` | Per-persona think-aloud traces |
 | `consistency-report.json` | PatternFly design guideline violations |
 | `iteration-log.json` | Per-iteration pass/fail counts |
+| `component-map.json` | AC-to-DOM element mapping from source pre-scan |
+| `navigation-hints.json` | Routes and nav hierarchy for persona fallback |
+| `persona-results.json` | Structured trace data for persona walkthroughs |
+| `fix-log.json` | Record of fixes applied by eval-fix |
 
 ## Designer Workflow
 
@@ -94,10 +98,10 @@ To review results from a previous run:
 | `eval-iterate` | Orchestrator — runs the full pipeline |
 | `eval-extract` | Pulls Jira context, ACs, personas, MR delta |
 | `eval-classify` | Classifies ACs into evaluation tiers |
-| `eval-hint` | Extracts navigation hints from workspace source |
-| `eval-journey` | Runs Playwright walkthroughs (x-ray mode for Phase A) |
+| `eval-nav-context` | Extracts navigation context (routes, nav hierarchy) from workspace source |
+| `eval-verify` | Runs Playwright walkthroughs (x-ray mode for Phase A) |
 | `eval-fix` | Applies fixes from refinement-suggestions.json |
-| `eval-usability` | Phase B persona walkthroughs + 7-dimension scoring |
+| `eval-discover` | Phase B persona walkthroughs + 7-dimension scoring |
 | `eval-consistency` | PatternFly design guideline compliance check |
 | `eval-report` | Renders the HTML report from artifacts |
 | `eval-review` | Conversational entry point for reviewing results |

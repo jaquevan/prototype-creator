@@ -43,7 +43,7 @@ Ensure `.context/usability-testing/`, `.context/consistency-checker/` are bootst
 
 ```
 PHASE A (X-Ray — Informed AC Validation Loop):
-  eval-extract (--phase=core) → eval-consistency (--mode=source) → eval-classify → eval-journey (informed)
+  eval-extract (--phase=core) → eval-consistency (--mode=source) → eval-classify → eval-verify (informed)
                                                                                      ↓
                                                                              Exit condition met? → Phase B (ALWAYS)
                                                                              FAIL + cycle ≤ max → eval-fix → loop from eval-classify
@@ -55,13 +55,13 @@ PHASE A (X-Ray — Informed AC Validation Loop):
     regression        — fix loop broke a previously-passing AC (degraded)
     no_fix/no_iterate — user flag or single-run mode
 
-POST-PHASE-A (deferred context gathering):
+POST-PHASE-A (deferred context gathering — ALL THREE RUN IN PARALLEL):
   eval-consistency (--mode=visual) — screenshots now exist
   eval-extract (--phase=enrichment) — Outcome, tasks_to_be_done, breadcrumb
-  eval-hint — navigation hints for discovery personas (reflects post-fix workspace state)
+  eval-nav-context — navigation hints for discovery personas (reflects post-fix workspace state)
 
-PHASE B (Discovery — Per-Persona Usability Walkthroughs) — ALWAYS FIRES:
-  eval-usability (per-persona Playwright, think-aloud, 7-dimension scoring) → eval-report
+PHASE B (Discovery — Per-Persona Usability Walkthroughs) — FIRES IF .context/usability-testing/ EXISTS:
+  eval-discover (per-persona Playwright, think-aloud, 7-dimension scoring) → eval-report
   Note: Phase B runs on whatever prototype state exists after Phase A exits.
   When exit_reason != all_pass, usability scores may reflect missing features.
 ```
@@ -166,7 +166,7 @@ python3 .claude/skills/eval/scripts/eval_state.py set .artifacts/<KEY>/eval-stat
 
 Read .claude/skills/eval/eval-consistency/SKILL.md and execute it with --mode=source
 # Runs ONCE (source-mode only). Produces: consistency-report.json, appends to refinement-suggestions.json
-# Visual-mode deferred to after eval-journey when screenshots exist.
+# Visual-mode deferred to after eval-verify when screenshots exist.
 # Uses analyze.py bash commands for deterministic checks (no report generation).
 
 python3 .claude/skills/eval/scripts/eval_state.py set .artifacts/<KEY>/eval-state.yaml \
@@ -189,11 +189,11 @@ LOOP:
   # The x-ray evaluator uses workspace source directly for navigation.
   # No discovery-first pretense — goal is fast AC verification.
   if iteration == 1:
-    Read .claude/skills/eval/eval-journey/SKILL.md and execute it with:
+    Read .claude/skills/eval/eval-verify/SKILL.md and execute it with:
       --mode=informed
     # Uses workspace source for selectors/routes. Verifies ACs quickly.
   else:
-    Read .claude/skills/eval/eval-journey/SKILL.md and execute it with:
+    Read .claude/skills/eval/eval-verify/SKILL.md and execute it with:
       --mode=informed --rerun-only=<FAIL+FLAGGED AC IDs from previous CSV>
     # Only runs Playwright for journeys testing failing criteria
     # Carries forward PASS verdicts from previous iteration
@@ -309,9 +309,9 @@ if iteration > 1:
   # Archive the current screenshots as the last iteration's evidence
   # (they may be from a selective rerun, not a full re-capture)
 
-  # Re-run eval-journey in screenshot-only mode: full journey set, no verdict changes
+  # Re-run eval-verify in screenshot-only mode: full journey set, no verdict changes
   # This captures final-state screenshots that reflect all applied fixes
-  Read .claude/skills/eval/eval-journey/SKILL.md and execute in capture-only mode:
+  Read .claude/skills/eval/eval-verify/SKILL.md and execute in capture-only mode:
     --mode=informed --capture-only --all-journeys
   # This re-walks ALL journeys (not just the re-run set) and captures fresh screenshots
   # to .artifacts/<KEY>/screenshots/ — overwriting the partial captures from fix iterations.
@@ -326,50 +326,38 @@ if iteration > 1:
     sleep 5
 
 # ═══════════════════════════════════════════════════════════════════
-# POST-JOURNEY: Visual Consistency Check (deferred from setup)
-# Now that screenshots exist, run visual-mode consistency checks.
+# PRE-PHASE-B: Deferred Context (PARALLEL)
+# Three independent skills run in parallel — none depends on
+# another's output. All three feed Phase B or the report.
 # ═══════════════════════════════════════════════════════════════════
 
 python3 .claude/skills/eval/scripts/eval_state.py set .artifacts/<KEY>/eval-state.yaml \
-  consistency_visual_start=$(python3 .claude/skills/eval/scripts/eval_state.py timestamp)
+  bridge_start=$(python3 .claude/skills/eval/scripts/eval_state.py timestamp)
 
-Read .claude/skills/eval/eval-consistency/SKILL.md and execute it with --mode=visual
-# Uses journey screenshots + DOM for visual guideline checks.
-# Appends visual findings to consistency-report.json and refinement-suggestions.json.
-# These findings are informational for the report — they do NOT re-trigger the fix loop.
+# Launch all three in parallel using Task tool with run_in_background=true:
+#
+# TASK 1: eval-consistency --mode=visual
+#   Uses journey screenshots for visual guideline checks.
+#   Appends visual findings to consistency-report.json.
+#   Informational for report — does NOT re-trigger fix loop.
+#   ERROR HANDLING: If fails, consistency-report.json keeps visual_mode.ran=false. Non-blocking.
+#
+# TASK 2: eval-extract --phase=enrichment
+#   Produces: outcome-context.json, tasks_to_be_done, breadcrumb.
+#   Uses cached raw_parent and raw_issuelinks from extract-state.json (saved during core phase).
+#   ERROR HANDLING: If Outcome not found, falls back to deriving tasks from journey titles.
+#   If entire enrichment fails, Phase B runs with tasks derived from journey titles.
+#
+# TASK 3: eval-nav-context (if workspace provided)
+#   Produces: navigation-hints.json (nav_sections + routes only).
+#   Consumed by eval-discover as fallback for stuck-persona navigation.
+#   Runs post-fix so hints reflect final workspace state.
+#   ERROR HANDLING: If fails, eval-discover runs without hints (discovery only, no fallback).
+
+# Wait for all three to complete before proceeding to Phase B.
 
 python3 .claude/skills/eval/scripts/eval_state.py set .artifacts/<KEY>/eval-state.yaml \
-  consistency_visual_end=$(python3 .claude/skills/eval/scripts/eval_state.py timestamp)
-
-# ═══════════════════════════════════════════════════════════════════
-# PRE-PHASE-B: Deferred Context Enrichment
-# Gather data needed only by Phase B (Outcome, tasks, hints).
-# This was deferred from setup to keep Phase A fast.
-# ═══════════════════════════════════════════════════════════════════
-
-python3 .claude/skills/eval/scripts/eval_state.py set .artifacts/<KEY>/eval-state.yaml \
-  extract_enrichment_start=$(python3 .claude/skills/eval/scripts/eval_state.py timestamp)
-
-Read .claude/skills/eval/eval-extract/SKILL.md and execute it with --phase=enrichment
-# Produces: outcome-context.json, tasks_to_be_done, breadcrumb
-# Uses Outcome ticket for better persona task generation.
-# Falls back to journey titles if Outcome is not discoverable.
-
-python3 .claude/skills/eval/scripts/eval_state.py set .artifacts/<KEY>/eval-state.yaml \
-  extract_enrichment_end=$(python3 .claude/skills/eval/scripts/eval_state.py timestamp)
-
-if workspace provided:
-  python3 .claude/skills/eval/scripts/eval_state.py set .artifacts/<KEY>/eval-state.yaml \
-    hint_start=$(python3 .claude/skills/eval/scripts/eval_state.py timestamp)
-
-  Read .claude/skills/eval/eval-hint/SKILL.md and execute it
-  # Reads mr-delta.json, scans workspace source for routes and nav hierarchy.
-  # Produces: navigation-hints.json (nav_sections + routes only).
-  # Consumed by eval-usability as fallback for stuck-persona navigation.
-  # Runs here (post-fix) so hints reflect the final workspace state.
-
-  python3 .claude/skills/eval/scripts/eval_state.py set .artifacts/<KEY>/eval-state.yaml \
-    hint_end=$(python3 .claude/skills/eval/scripts/eval_state.py timestamp)
+  bridge_end=$(python3 .claude/skills/eval/scripts/eval_state.py timestamp)
 
 # ═══════════════════════════════════════════════════════════════════
 # PHASE B: Discovery Persona Walkthroughs
@@ -381,30 +369,31 @@ python3 .claude/skills/eval/scripts/eval_state.py set .artifacts/<KEY>/eval-stat
 
 # Phase B always runs at full depth — the prototype is known-good (or best-effort).
 # No degraded/inference-only mode. Personas run their own Playwright walkthroughs.
+# If .context/usability-testing/ does not exist, skip Phase B and proceed directly to eval-report.
 #
 # CRITICAL: Phase B REQUIRES separate Playwright browser sessions for each persona.
 # The prototype URL must be navigated by each persona independently.
 # Phase B is NOT inference-only scoring — it MUST produce new screenshots.
 # Do NOT skip the Playwright walkthroughs and score from Phase A evidence alone.
 
-Read .claude/skills/eval/eval-usability/SKILL.md and execute it
+Read .claude/skills/eval/eval-discover/SKILL.md and execute it
 # Use Task tool with run_in_background=true for each persona-task pair when possible.
 # Produces: per-persona screenshots, think-aloud traces, 7-dimension scores,
 #           usability suggestions for human review
 
-# VERIFY: Per-persona screenshots must exist after eval-usability completes.
+# VERIFY: Per-persona screenshots must exist after eval-discover completes.
 # Check: ls .artifacts/<KEY>/screenshots/persona-*.png
 # If no persona screenshots exist, Phase B did not run correctly.
-# Go back and re-run eval-usability — ensure Step 1d actually launches Playwright.
+# Go back and re-run eval-discover — ensure Step 1d actually launches Playwright.
 
 # VALIDATE: Verify persona-results.json has non-empty trace[] arrays.
 # If any persona-task entry has empty trace[], the walkthrough failed to write live data.
-# In that case, re-run eval-usability for the affected persona (do NOT hydrate post-hoc).
+# In that case, re-run eval-discover for the affected persona (do NOT hydrate post-hoc).
 # The hydrate-persona-results.js script is DEPRECATED — trace data must be written during Step 1d.
 Read .artifacts/<KEY>/persona-results.json
 if any entry has trace == [] (empty array):
-  echo "WARNING: persona-results.json has empty trace[] — re-running eval-usability"
-  Read .claude/skills/eval/eval-usability/SKILL.md and execute it
+  echo "WARNING: persona-results.json has empty trace[] — re-running eval-discover"
+  Read .claude/skills/eval/eval-discover/SKILL.md and execute it
   # This should not happen if Step 1d synchronous writing is followed correctly
 
 # Update iteration log with usability results
@@ -455,8 +444,8 @@ node .claude/skills/eval/scripts/build-leaderboard.js
 On re-iterations, only re-evaluate criteria that FAILED or were FLAGGED:
 
 1. Parse previous `evaluation-report.csv` for FAIL/FLAGGED IDs
-2. Pass `--rerun-only=AC-3,AC-5` to eval-journey
-3. eval-journey carries forward PASS verdicts and only re-runs the failures
+2. Pass `--rerun-only=AC-3,AC-5` to eval-verify
+3. eval-verify carries forward PASS verdicts and only re-runs the failures
 4. Screenshots from PASS journeys are preserved
 5. eval-classify is NOT re-run (tiers are structural and don't change between iterations)
 

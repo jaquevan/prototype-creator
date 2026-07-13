@@ -118,7 +118,12 @@ function main() {
     'journey-log.json',
     'mr-delta.json',
     'evaluation-report.html',
-    'evaluation-report.md'
+    'evaluation-report.md',
+    'iteration-log.json',
+    'consistency-report.json',
+    'navigation-hints.json',
+    'component-map.json',
+    'persona-results.json'
   ];
 
   for (const f of filesToArchive) {

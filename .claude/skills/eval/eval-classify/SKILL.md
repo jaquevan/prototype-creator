@@ -93,14 +93,14 @@ AC-3,jira,T3,"BFF validates request body size",,Backend-only -- no UI component 
 AC-4,jira,T4,"User-friendly terminology for scheduling states",,,,,,Assess whether status labels use appropriate plain language
 ```
 
-All 10 columns are required per `config/csv-schema.yaml`. Leave `verdict`, `rationale`, `evidence`, `fix_action`, `fix_file`, `human_action` empty for T1 and T2 — eval-journey fills those in. For T3 (backend-only), set verdict to PASS immediately with a rationale note. For T4, leave verdict empty but populate `human_action` with what the designer should assess.
+All 10 columns are required per `config/csv-schema.yaml`. Leave `verdict`, `rationale`, `evidence`, `fix_action`, `fix_file`, `human_action` empty for T1 and T2 — eval-verify fills those in. For T3 (backend-only), set verdict to PASS immediately with a rationale note. For T4, leave verdict empty but populate `human_action` with what the designer should assess.
 
 ## Rules
 
 - Classification is deterministic given the same inputs. Same AC text + same references + same feature_context = same tier.
 - **Default to T1.** Only use T2/T3/T4 when there is a clear, specific reason the AC cannot be evaluated from the prototype UI.
 - T3 ACs get their verdict assigned at classification time (PASS with note). They do NOT enter the journey loop.
-- T4 ACs get FLAGGED after eval-journey provides evidence. They are the only tier expected to produce FLAGGEDs.
+- T4 ACs get FLAGGED after eval-verify provides evidence. They are the only tier expected to produce FLAGGEDs.
 - Never generate journey steps for T3 ACs (backend-only, no UI to test).
 - Every criterion gets a tier. No criterion is skipped.
 - The CSV schema is strict — all 10 columns must be present, even if empty.

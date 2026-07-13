@@ -91,10 +91,10 @@ prototype-creator/
 │   │   │   ├── eval-iterate/          # Pipeline orchestrator (two-phase)
 │   │   │   ├── eval-extract/          # Pull Jira context, ACs, personas
 │   │   │   ├── eval-classify/         # Classify ACs into eval tiers
-│   │   │   ├── eval-hint/             # Extract navigation hints from source
-│   │   │   ├── eval-journey/          # Playwright walkthroughs (informed/discovery)
+│   │   │   ├── eval-nav-context/       # Extract navigation context (routes, nav hierarchy)
+│   │   │   ├── eval-verify/           # Playwright walkthroughs (x-ray AC verification)
 │   │   │   ├── eval-fix/              # Apply fixes from suggestions
-│   │   │   ├── eval-usability/        # Phase B persona scoring
+│   │   │   ├── eval-discover/          # Phase B persona discovery walkthroughs
 │   │   │   ├── eval-consistency/      # PatternFly guideline checks
 │   │   │   ├── eval-report/           # Render HTML report
 │   │   │   ├── eval-review/           # Conversational review entry point
@@ -194,7 +194,7 @@ bash .claude/skills/eval/scripts/bootstrap-consistency-checker.sh         # Patt
 |-----------|--------|---------|
 | `.context/design-system/` | PatternFly docs | prototype-create |
 | `.context/decision-kit/` | [decision-kit](https://github.com/jnemargut/decision-kit) | prototype-create |
-| `.context/usability-testing/` | [automated-usability-testing](https://gitlab.cee.redhat.com/zbodnar/automated-usability-testing) | eval-usability |
+| `.context/usability-testing/` | [automated-usability-testing](https://gitlab.cee.redhat.com/zbodnar/automated-usability-testing) | eval-discover |
 | `.context/consistency-checker/` | [consistency-checker](https://gitlab.cee.redhat.com/bmorley/consistency-checker) | eval-consistency |
 
 $ARGUMENTS

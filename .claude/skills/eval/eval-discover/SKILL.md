@@ -1,13 +1,13 @@
 ---
-name: eval-usability
+name: eval-discover
 description: "Phase B of the eval pipeline. Runs per-persona Playwright walkthroughs, scores 7 usability dimensions, and produces think-aloud traces. Only fires after Phase A AC validation passes."
 user-invocable: false
 allowed-tools: Read, Write, Bash, Glob, Grep
 ---
 
-# eval-usability
+# eval-discover
 
-Phase B of the eval pipeline. Runs discovery-based per-persona Playwright walkthroughs against a known-good prototype (ACs already validated in Phase A), then scores 7 usability dimensions using persona constraints and think-aloud narration.
+Phase B of the eval pipeline. Runs discovery-based per-persona Playwright walkthroughs against the prototype in its current state (after Phase A validation and any fixes applied), then scores 7 usability dimensions using persona constraints and think-aloud narration.
 
 Each persona navigates at their own competence level — an experienced user explores differently than a junior one. Navigation behavior is driven by the persona YAML fields: `exploration_tendency`, `experience_level`, `domain_knowledge`, and `constraints[]`.
 
@@ -192,7 +192,26 @@ async function runTask1(page, persona) {
 - Feature exploration: 4-8 steps (find feature, try it, observe feedback, try edge case)
 
 ```javascript
-// CORRECT structure:
+import { firefox } from 'playwright';
+// MANDATORY: 1440x900 viewport in every context. Default 800x600 truncates tables.
+const browser = await firefox.launch({ headless: true });
+
+// Standard setup: ensure "All projects" is selected if a project filter exists
+async function ensureAllProjects(page) {
+  const dropdown = page.locator('.pf-v6-c-menu-toggle, [data-testid="project-selector"]').first();
+  if (await dropdown.isVisible({ timeout: 2000 }).catch(() => false)) {
+    const currentText = await dropdown.textContent().catch(() => '');
+    if (!currentText.includes('All projects')) {
+      await dropdown.click();
+      const allOpt = page.locator('text=All projects').first();
+      if (await allOpt.isVisible({ timeout: 2000 }).catch(() => false)) {
+        await allOpt.click();
+        await page.waitForTimeout(1000);
+      }
+    }
+  }
+}
+
 async function runTask1(page, persona) { /* navigate to deployments, expand pending row */ }
 async function runTask2(page, persona) { /* navigate to settings/feature-flags */ }
 async function runTask3(page, persona) { /* navigate to deployments, filter/scroll to unmanaged */ }
@@ -200,7 +219,7 @@ async function runTask3(page, persona) { /* navigate to deployments, filter/scro
 async function main() {
   for (const persona of personas) {
     for (let i = 0; i < tasks.length; i++) {
-      const ctx = await browser.newContext(...);
+      const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
       const page = await ctx.newPage();
       if (i === 0) await runTask1(page, persona);
       else if (i === 1) await runTask2(page, persona);
@@ -209,6 +228,12 @@ async function main() {
     }
   }
 }
+```
+
+**Viewport validation:** After generating `persona-walkthrough.mjs`, verify before running:
+```bash
+grep -q "viewport" .artifacts/<KEY>/persona-walkthrough.mjs || { echo "FATAL: Missing viewport. Regenerate."; exit 1; }
+```
 ```
 
 **How persona fields drive navigation AND interaction:**
@@ -256,6 +281,11 @@ patience, and constraints define exactly how you navigate.
 Navigate to <prototype-base-url> (the application homepage).
 You see the application's left navigation sidebar — just as a real user would when
 they first open the application. You have NOT been told where to go.
+
+IMPORTANT: If you land on a page with an empty table or "No items found", check for a
+project filter/dropdown at the top of the page. Many prototypes default to a specific
+project that has no data. Switch to "All projects" before concluding the page is empty.
+This is normal user behavior, not a workaround.
 
 Your task: <task from tasks_to_be_done[N].task>
 (Example: "Find out why your model deployment is queued and when it will be ready")
@@ -337,28 +367,32 @@ For each selected persona, at least ONE file matching `persona-<persona-id>-task
 
 **Screenshot uniqueness validation (FATAL — will block Phase B):**
 
-Different tasks MUST produce visually different screenshots (they test different features/flows). After capture, verify:
+Different tasks MUST produce visually different screenshots (they test different features/flows). After capture, verify dynamically based on the actual task count from `extract-state.json > tasks_to_be_done`:
 
 ```bash
-md5sum .artifacts/<KEY>/screenshots/persona-*-task-1-step-2.png .artifacts/<KEY>/screenshots/persona-*-task-2-step-2.png .artifacts/<KEY>/screenshots/persona-*-task-3-step-2.png
-md5sum .artifacts/<KEY>/screenshots/persona-*-task-1-step-3.png .artifacts/<KEY>/screenshots/persona-*-task-2-step-3.png .artifacts/<KEY>/screenshots/persona-*-task-3-step-3.png
+# Loop over actual tasks (do NOT hardcode task-1, task-2, task-3)
+TASK_COUNT=$(node -e "const d=require('.artifacts/<KEY>/extract-state.json'); console.log(d.tasks_to_be_done.length)")
+for persona in <selected personas>; do
+  for i in $(seq 1 $TASK_COUNT); do
+    for j in $(seq $((i+1)) $TASK_COUNT); do
+      md5sum .artifacts/<KEY>/screenshots/persona-${persona}-task-${i}-step-2.png .artifacts/<KEY>/screenshots/persona-${persona}-task-${j}-step-2.png 2>/dev/null
+    done
+  done
+done
 ```
 
-Compare step-2 AND step-3 across tasks for each persona. Tasks on the same page that differ by interaction may have identical step-2 (same page load) but MUST differ by step-3 (after the distinguishing interaction).
+Compare step-2+ across tasks for each persona. Tasks on the same page may have identical step-1 (same entry) but MUST differ by step-2+ (after the distinguishing interaction).
 
-**If ANY two tasks share the same MD5 hash for BOTH step-2 AND step-3:**
+**If ANY two tasks for the same persona share the same MD5 hash for step-2 AND step-3:**
 
-1. **DELETE** `persona-walkthrough.mjs` and ALL `persona-*.png` screenshots
-2. **Re-read** the task-to-route mapping from Step 1c-routes
-3. **Verify** the mapping has distinct interactions per task (not just different routes). If not, revise the mapping first.
-4. **Regenerate** `persona-walkthrough.mjs` with per-task functions that produce different visual states
-5. **Re-run** Playwright
-6. **Re-check** MD5 hashes
+1. **Diagnose the cause** before retrying:
+   - Both screenshots show empty table / "No items found" → **project filter issue** (persona didn't select "All projects"). Fix: ensure `ensureAllProjects()` ran.
+   - Both screenshots show homepage / Projects page → **navigation failure** (persona never left the landing page). Fix: check task-to-route mapping.
+   - Both screenshots show same data page with same scroll position → **interaction failure** (task functions didn't produce different visual states). Fix: revise task function to include a distinguishing interaction.
+2. **Re-run ONLY the colliding persona-task pair** (not the entire script)
+3. If still identical after one retry, log as `"screenshot_uniqueness_failed": true` with the diagnosed cause and continue
 
-If screenshots are STILL identical after one regeneration attempt:
-- FAIL Phase B with note: "Tasks converge on same view despite distinct route mapping. tasks_to_be_done may need redesign or prototype lacks distinct pages for these flows."
-- Continue to report generation (Phase B scores will be absent/incomplete)
-- Log this in `iteration-log.json` phase_b as `"screenshot_uniqueness_failed": true`
+**Cross-persona check:** For the same task, different personas SHOULD produce different screenshots (different navigation paths, scroll positions, or interaction states based on experience level). If two personas have identical step-2+ screenshots for the same task, log a warning — the persona differentiation may not be working. This is a quality warning, not a blocking failure.
 
 **If persona screenshots do NOT exist:**
 - Step 1d was NOT completed — the persona walkthroughs did not actually run
@@ -466,103 +500,41 @@ values — if one persona scores 2 and another scores 3, write `2.5` not `2`. Do
 
 The `persona_scores` column stores individual scores as a JSON object for attribution.
 
-### Step 5: Phase 2 Evaluator Append
+### Step 5: Annotate traces and write think-aloud files
 
-This step ONLY appends the Phase 2 Evaluator section to existing think-aloud markdown files.
-It NEVER rewrites or replaces Phase 1 Actor steps (those were written synchronously during Step 1d walkthroughs).
+For each persona-task trace, do two things:
 
-**If the think-aloud markdown file does NOT already contain Phase 1 steps:**
-Stop. The walkthrough did not produce trace data. Go back and re-run Step 1d for this persona — do NOT generate retrospective narration from screenshots alone.
+**5a. AC evidence attribution:** For each step in the persona's trace, set `evidence_for_acs: string[]` — the AC IDs this step provides evidence for. Cross-reference `covers_acs` from the task definition with what was actually observed. Steps with no AC relevance get `[]`.
 
-For each persona-task markdown file that already has Phase 1 Actor content, APPEND the Phase 2 Evaluator section:
-
-**Phase 2 — The Evaluator:** Switch to Senior UX Researcher. Score all 7 dimensions using the Phase 1 trace (already written above) as evidence. Map findings to JTBD.
-
-**REQUIRED: Write a standalone .md file for EACH evaluated persona PER TASK:**
-
-File: `.artifacts/<KEY>/usability-thinkaloud-<persona-id>-task-<N>.md`
-
-Always use per-task naming even when there is only one task. This ensures consistent behavior
-in the report renderer regardless of task count.
-
-The file MUST contain (minimum 3000 characters — shorter means too shallow):
+**5b. Write think-aloud markdown:** Write `.artifacts/<KEY>/usability-thinkaloud-<persona-id>-task-<N>.md` with Phase 1 Actor steps (already captured during Step 1d) plus a brief key insight:
 
 ```markdown
 # Think-Aloud Trace: <Persona Name>
-## Feature: <ticket title>
-## Task: <primary goal from journey definition>
-
----
-
-### Phase 1: The Actor
+## Task: <task description>
 
 STEP 1:
-- What I see: [describe from screenshot/journey evidence — what the persona sees on screen]
-- What I'm thinking: [first person, in-character internal monologue]
-- What I'll try: [action and why]
+- What I see: [from screenshot evidence]
+- What I'm thinking: [in-character]
+- What I'll try: [action]
 - Confidence: [high/low/none]
-- Patience: [X% — track as depleting resource]
+- Patience: [X%]
 
 STEP 2:
 ...
 
 NAVIGATION COMPLETE:
-- Outcome: [Completed / Completed with low confidence / Abandoned]
+- Outcome: [Completed / Abandoned]
 - Final patience: [X%]
-- CLI escapes: [count]
 - Confusion events: [count]
 
 ---
 
-### Phase 2: The Evaluator
-
-Target Audience Alignment: [is this persona a plausible user?]
-
-Dimension 1: Workflow Continuity — Score: X/3
-  Confidence: [High/Medium/Low]
-  Evidence: [cite STEP numbers]
-  Finding: [one sentence]
-
-Dimension 2: Cross-Persona Handoffs — Score: X/3
-  ...
-
-[all 7 dimensions]
-
-Overall: X/21
-Key insight: [most actionable finding]
+Key insight: [1-2 sentences — the most actionable finding from this persona's experience]
 ```
 
-**After scoring all 7 dimensions**, the evaluator must annotate each trace step with AC attribution:
+Use per-task naming (`-task-<N>.md`) even for single-task runs. Phase 1 steps are the primary content — the report's Personas tab renders these via `parseTaSteps`.
 
-For each step in the persona's trace, add `evidence_for_acs: string[]` — the AC IDs for which that step provides observable evidence (positive or negative). The evaluator determines evidence by cross-referencing the task's `covers_acs` (from `extract-state.json > tasks_to_be_done[]`) with what was actually observed or attempted at that step. Only steps where the persona interacted with UI directly related to a criterion get tagged. Steps with no AC relevance (e.g., initial navigation, waiting for page load) get an empty array `[]`.
-
-Example: If a task covers `["AC-1", "AC-4", "AC-6"]` and step 3 shows the persona expanding a deployment row that demonstrates AC-4's queue status visibility, then step 3 gets `evidence_for_acs: ["AC-4"]`. A step where the persona merely clicks a nav link to reach the page gets `evidence_for_acs: []`.
-
-> **REQUIRED:** The `evidence_for_acs` field is REQUIRED on every trace step. If a step has no AC relevance, use an empty array `[]`. This enables the discoverability matrix — cross-referencing Phase A PASS verdicts with Phase B persona navigation success.
-
-This file is what renders in the report's Personas tab. If it doesn't exist, the tab shows degraded content. The file must cover EVERY journey step with the persona's reaction — not a summary, but a step-by-step trace.
-
-**Discoverability Summary (optional — not yet consumed by render-report.js):**
-
-After all persona-task traces are complete, optionally produce `.artifacts/<KEY>/discoverability-matrix.json`. This artifact is not yet wired into the report renderer but provides useful cross-reference data for future reporting:
-
-```json
-{
-  "generated_at": "<ISO timestamp>",
-  "acs": [
-    { "criterion_id": "AC-1", "phase_a_verdict": "PASS", "persona_discovered": true, "discovery_method": "independent" },
-    { "criterion_id": "AC-4", "phase_a_verdict": "PASS", "persona_discovered": true, "discovery_method": "assisted" },
-    { "criterion_id": "AC-6", "phase_a_verdict": "PASS", "persona_discovered": false, "discovery_method": "not_reached" }
-  ],
-  "discoverability_rate": 0.67,
-  "summary": "4/6 passed ACs were independently discoverable by personas"
-}
-```
-
-For each AC that passed Phase A, check whether ANY persona trace step has `evidence_for_acs` containing that AC ID:
-- `"independent"` — persona found it without hints
-- `"assisted"` — persona found it via navigation-hints.json (assisted step)
-- `"not_reached"` — no persona trace step references this AC
+**Note:** Dimension scoring is handled in Step 3, not here. Do NOT re-score dimensions in the markdown — that was duplicate work the renderer never consumed.
 
 ### Step 6: Write persona-results.json
 
@@ -630,6 +602,26 @@ Rules:
 - Do NOT suggest fixes for FLAGGED criteria
 - `confidence: "low"` items are logged but NOT auto-applied by eval-fix
 
+### Step 7b: Capture final-state screenshot
+
+After all persona walkthroughs complete, capture a screenshot of the **primary page being tested** (the same page eval-verify captured for `baseline-before.png`):
+
+```javascript
+// Navigate to the same primary route used for baseline-before.png
+// Read from component-map.json or extract-state.json journey definitions
+const primaryRoute = componentMap ? componentMap.target_page : inferPrimaryRoute(extractState);
+
+const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+const page = await ctx.newPage();
+await page.goto(`${baseUrl}${primaryRoute || ''}`);
+await page.waitForSelector('tbody tr', { timeout: 8000 }).catch(() => null);
+await page.waitForTimeout(2000);
+await page.screenshot({ path: '.artifacts/<KEY>/screenshots/baseline-after.png', fullPage: false });
+await ctx.close();
+```
+
+This pairs with `baseline-before.png` to show how the prototype changed during evaluation. Both screenshots must capture the same page for a meaningful comparison.
+
 ### Step 8: Write usability_dimensions to journey-log.json
 
 **BLOCKING FORMAT REQUIREMENTS — render-report.js will produce broken output without these exact fields:**
@@ -689,7 +681,7 @@ Also in Step 6 (`persona-results.json`): output MUST be an **array** of objects,
           ],
           "missing_feedback": [],
           "dimension_scores": { "workflow_continuity": { "score": 3, "confidence": "High" } },
-          "narration_summary": "First-person narrative of what the persona experienced..."
+          "narration_summary": "1-2 sentence summary of the persona's experience and key friction point."
         }
       ]
     }
