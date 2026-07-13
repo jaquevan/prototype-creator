@@ -25,8 +25,17 @@ function normalizeUsabilityDimensions(ud) {
   if (!ud.personas_evaluated && ud.persona_selection && ud.persona_selection.selected) {
     ud.personas_evaluated = ud.persona_selection.selected;
   }
+
+  const dimIdAliases = {
+    'scalability_complexity': 'scalability_progressive_complexity',
+    'system_status': 'system_status_trust',
+    'system_status_visibility': 'system_status_trust',
+    'technical_abstraction_level': 'technical_abstraction',
+  };
+
   if (ud.dimensions) {
     for (const dim of ud.dimensions) {
+      if (dim.id && dimIdAliases[dim.id]) dim.id = dimIdAliases[dim.id];
       if (dim.score !== undefined && dim.composite_score === undefined) dim.composite_score = dim.score;
       if (dim.scores && !dim.persona_scores) dim.persona_scores = dim.scores;
     }
@@ -37,7 +46,47 @@ function normalizeUsabilityDimensions(ud) {
       if (overlay.persona && !overlay.persona_id) overlay.persona_id = overlay.persona;
     }
   }
+  if (ud.think_aloud && ud.think_aloud.traces) {
+    for (const trace of ud.think_aloud.traces) {
+      if (trace.dimension_scores) {
+        for (const [key, val] of Object.entries(trace.dimension_scores)) {
+          const normalizedKey = dimIdAliases[key] || key;
+          if (normalizedKey !== key) {
+            trace.dimension_scores[normalizedKey] = val;
+            delete trace.dimension_scores[key];
+          }
+          if (typeof trace.dimension_scores[normalizedKey] === 'number') {
+            trace.dimension_scores[normalizedKey] = { score: trace.dimension_scores[normalizedKey], confidence: 'medium' };
+          }
+        }
+      }
+    }
+  }
   return ud;
+}
+
+function normalizeJourneyLog(jl, artifactsDir) {
+  if (!jl) return jl;
+  if (!jl.depth) jl.depth = 'deep';
+  if (!jl.evaluated_at) jl.evaluated_at = new Date().toISOString();
+  if (Array.isArray(jl.journeys)) {
+    for (const j of jl.journeys) {
+      if (j.steps_expected == null && Array.isArray(j.steps)) j.steps_expected = j.steps.length;
+      if (j.steps_completed == null && Array.isArray(j.steps)) j.steps_completed = j.steps.filter(s => s.result === 'success').length;
+      if (!j.persona) j.persona = 'Evaluator';
+      if (!j.source) j.source = j.ac_ids ? `Testing ${j.ac_ids.join(', ')}` : '';
+      if (Array.isArray(j.steps)) {
+        for (const s of j.steps) {
+          if (s.screenshot && s.screenshot.startsWith('/') && artifactsDir) {
+            const rel = path.relative(artifactsDir, s.screenshot);
+            if (!rel.startsWith('..')) s.screenshot = rel;
+          }
+          if (!s.narration && s.result) s.narration = s.target || s.action || '';
+        }
+      }
+    }
+  }
+  return jl;
 }
 
 function readFileOr(filePath, fallback) {
@@ -48,6 +97,23 @@ function readJsonOr(filePath, fallback) {
   const raw = readFileOr(filePath, null);
   if (!raw) return fallback;
   try { return JSON.parse(raw); } catch { return fallback; }
+}
+
+let _knownMRsCache;
+function readKnownMRs() {
+  if (_knownMRsCache) return _knownMRsCache;
+  const overlayPath = path.join(projectRoot, '.claude', 'skills', 'eval', 'config', 'product-overlay.yaml');
+  const raw = readFileOr(overlayPath, '');
+  const mrs = {};
+  const match = raw.match(/known_mrs:\n((?:\s+\S+.*\n)*)/);
+  if (match) {
+    for (const line of match[1].split('\n')) {
+      const m = line.match(/\s+(\S+):\s*(\d+)/);
+      if (m) mrs[m[1]] = parseInt(m[2], 10);
+    }
+  }
+  _knownMRsCache = mrs;
+  return mrs;
 }
 
 function escapeHtml(str) {
@@ -274,75 +340,6 @@ function parseCSVLine(line) {
 // Parse markdown sections
 // ---------------------------------------------------------------------------
 
-function extractMdSection(md, heading) {
-  if (!md) return '';
-  const regex = new RegExp(`^(#{1,3})\\s+${heading.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*$`, 'im');
-  const match = md.match(regex);
-  if (!match) return '';
-  const headingLevel = match[1].length;
-  const start = match.index + match[0].length;
-  const sameOrHigher = new RegExp(`^#{1,${headingLevel}}\\s`, 'm');
-  const nextHeading = md.slice(start).search(sameOrHigher);
-  const section = nextHeading === -1 ? md.slice(start) : md.slice(start, start + nextHeading);
-  return section.trim();
-}
-
-function mdToHtml(text) {
-  if (!text) return '';
-  let html = text;
-
-  // Convert markdown tables to HTML tables
-  html = html.replace(/^(\|.+\|)\n(\|[\s:|-]+\|)\n((?:\|.+\|\n?)+)/gm, (match, header, sep, body) => {
-    const ths = header.split('|').filter(c => c.trim()).map(c => `<th>${c.trim()}</th>`).join('');
-    const rows = body.trim().split('\n').map(row => {
-      const tds = row.split('|').filter(c => c.trim()).map(c => `<td>${c.trim()}</td>`).join('');
-      return `<tr>${tds}</tr>`;
-    }).join('');
-    return `<table class="tbl"><thead><tr>${ths}</tr></thead><tbody>${rows}</tbody></table>`;
-  });
-
-  // Convert ### headings to h4 (inside cards they're subsections)
-  html = html.replace(/^### (.+)$/gm, '</p><h4>$1</h4><p>');
-
-  // Convert numbered lists
-  html = html.replace(/^\d+\.\s+(.+)$/gm, '<li>$1</li>');
-  html = html.replace(/(<li>.*<\/li>\n?)+/gs, m => `<ol>${m}</ol>`);
-
-  // Inline formatting
-  html = html
-    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-    .replace(/\*(.+?)\*/g, '<em>$1</em>')
-    .replace(/`([^`]+)`/g, '<code>$1</code>')
-    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank">$1</a>');
-
-  // Bullet lists
-  html = html.replace(/^- (.+)$/gm, '<li>$1</li>');
-  html = html.replace(/(<li>(?:(?!<\/ol>).)*<\/li>\n?)+/gs, m => {
-    if (m.includes('<ol>')) return m;
-    return `<ul>${m}</ul>`;
-  });
-
-  // Paragraphs
-  html = html
-    .replace(/\n{2,}/g, '</p><p>')
-    .replace(/\n/g, '<br>')
-    .replace(/^/, '<p>')
-    .replace(/$/, '</p>');
-
-  // Clean up empty/nested tags
-  html = html
-    .replace(/<p><\/p>/g, '')
-    .replace(/<p>(<ul>)/g, '$1')
-    .replace(/(<\/ul>)<\/p>/g, '$1')
-    .replace(/<p>(<ol>)/g, '$1')
-    .replace(/(<\/ol>)<\/p>/g, '$1')
-    .replace(/<p>(<table)/g, '$1')
-    .replace(/(<\/table>)<\/p>/g, '$1')
-    .replace(/<p>(<h4>)/g, '$1')
-    .replace(/(<\/h4>)<\/p>/g, '$1');
-
-  return html;
-}
 
 // ---------------------------------------------------------------------------
 // Encode screenshots
@@ -393,8 +390,7 @@ function buildDeltaHtml() {
   const modIcon = '<span class="delta-modified" title="Modified">~</span>';
 
   const protoId = extractPrototypeId();
-  const knownMRs = { 'RHAISTRAT-1527':168,'RHAISTRAT-133':169,'RHAISTRAT-1492':170,'RHAISTRAT-1267':167,'RHAISTRAT-1536':171,'RHAISTRAT-1535':172,'RHAISTRAT-1745':176,'RHAISTRAT-1474':173,'RHAISTRAT-1740':175,'RHAISTRAT-432':174,'RHAISTRAT-1521':177,'RHAISTRAT-1433':178,'RHAISTRAT-1762':180,'RHAISTRAT-1761':183,'RHAISTRAT-1758':181,'RHAISTRAT-1744':182,'RHAISTRAT-1742':184,'RHAISTRAT-1741':179 };
-  const mrNum = delta.mr_number || knownMRs[protoId];
+  const mrNum = delta.mr_number || readKnownMRs()[protoId];
   const mrDiffUrl = mrNum ? `https://gitlab.cee.redhat.com/uxd/prototypes/rhoai/-/merge_requests/${mrNum}/diffs` : '';
 
   let html = `<p class="small"><strong>${delta.stats?.files_changed || delta.total_files_changed || 0} files changed</strong> against <code>${escapeHtml(delta.base_branch || '?')}</code>`;
@@ -639,12 +635,10 @@ function buildPersonaWalkthroughsHtml() {
   return html;
 }
 
-function buildPersonaWalkthroughData() {
-  const screenshotsDir = path.join(absArtifacts, 'screenshots');
+function loadPersonaData(absArtifacts, screenshotsDir) {
   const journeyLog = readJsonOr(path.join(absArtifacts, 'journey-log.json'), null);
   const extractState = readJsonOr(path.join(absArtifacts, 'extract-state.json'), null);
   let personaResults = readJsonOr(path.join(absArtifacts, 'persona-results.json'), null);
-  // Normalize: if dict {pid: [tasks]}, convert to expected array format
   if (personaResults && !Array.isArray(personaResults)) {
     const arr = [];
     for (const [pid, tasks] of Object.entries(personaResults)) {
@@ -659,7 +653,7 @@ function buildPersonaWalkthroughData() {
             patience_start: task.patience_start || 100,
             patience_end: task.patience_end || 100,
             confusion_events: task.confusion_events || 0,
-            outcome: task.outcome || task.completed ? 'completed' : 'incomplete'
+            outcome: task.outcome || (task.completed ? 'completed' : 'incomplete')
           });
         }
       }
@@ -667,13 +661,26 @@ function buildPersonaWalkthroughData() {
     personaResults = arr;
   }
   const ud = journeyLog ? normalizeUsabilityDimensions(journeyLog.usability_dimensions) : null;
+  const tasksDefined = extractState ? (extractState.tasks_to_be_done || []) : [];
+  const screenshotsByPersona = {};
+  if (ud && ud.personas_evaluated && fs.existsSync(screenshotsDir)) {
+    const allFiles = fs.readdirSync(screenshotsDir).filter(f => f.endsWith('.png')).sort();
+    for (const pid of ud.personas_evaluated) {
+      screenshotsByPersona[pid] = allFiles.filter(f => f.startsWith(`persona-${pid}-`));
+    }
+  }
+  return { personaResults, ud, tasksDefined, screenshotsByPersona, journeyLog };
+}
+
+function buildPersonaWalkthroughData() {
+  const screenshotsDir = path.join(absArtifacts, 'screenshots');
+  const { personaResults, ud, tasksDefined, screenshotsByPersona, journeyLog } = loadPersonaData(absArtifacts, screenshotsDir);
   const consistencyReport = readJsonOr(path.join(absArtifacts, 'consistency-report.json'), null);
 
   if (!ud || !ud.personas_evaluated) return '{}';
 
   const overlays = ud.persona_overlays || [];
   const traces = (ud.think_aloud || {}).traces || [];
-  const tasksDefined = extractState ? (extractState.tasks_to_be_done || []) : [];
   const data = {};
 
   for (const pid of ud.personas_evaluated) {
@@ -681,13 +688,9 @@ function buildPersonaWalkthroughData() {
     const trace = traces.find(t => t.persona === pid) || {};
     const confusionEvents = overlay.confusion_events || [];
 
-    // Primary path: use persona-results.json if available for this persona
     const personaEntries = personaResults ? personaResults.filter(r => r.persona === pid) : [];
 
-    // Detect multi-task screenshots: persona-<id>-task-<N>-step-<M>.png
-    const allPersonaScreenshots = fs.existsSync(screenshotsDir)
-      ? fs.readdirSync(screenshotsDir).filter(f => f.startsWith(`persona-${pid}-`) && f.endsWith('.png')).sort()
-      : [];
+    const allPersonaScreenshots = screenshotsByPersona[pid] || [];
 
     const hasMultiTask = allPersonaScreenshots.some(f => f.match(/task-\d+-step/));
 
@@ -876,36 +879,9 @@ function getPersonaMetadata(pid) {
 
 function buildEvidenceViewerData() {
   const screenshotsDir = path.join(absArtifacts, 'screenshots');
-  const journeyLog = readJsonOr(path.join(absArtifacts, 'journey-log.json'), null);
-  const extractState = readJsonOr(path.join(absArtifacts, 'extract-state.json'), null);
+  const { personaResults, ud, tasksDefined, screenshotsByPersona } = loadPersonaData(absArtifacts, screenshotsDir);
   const csvRaw = readFileOr(path.join(absArtifacts, 'evaluation-report.csv'), '');
   const csvRows = parseCsv(csvRaw);
-  let personaResults = readJsonOr(path.join(absArtifacts, 'persona-results.json'), null);
-
-  if (personaResults && !Array.isArray(personaResults)) {
-    const arr = [];
-    for (const [pid, tasks] of Object.entries(personaResults)) {
-      if (Array.isArray(tasks)) {
-        for (const task of tasks) {
-          arr.push({
-            persona: pid,
-            task_index: task.task_index || 1,
-            task: task.task_name || task.task || '',
-            trace: task.steps || task.trace || [],
-            screenshots: task.screenshots || [],
-            patience_start: task.patience_start || 100,
-            patience_end: task.patience_end || 100,
-            confusion_events: task.confusion_events || 0,
-            outcome: task.outcome || (task.completed ? 'completed' : 'incomplete')
-          });
-        }
-      }
-    }
-    personaResults = arr;
-  }
-
-  const ud = journeyLog ? normalizeUsabilityDimensions(journeyLog.usability_dimensions) : null;
-  const tasksDefined = extractState ? (extractState.tasks_to_be_done || []) : [];
 
   // --- personas ---
   const personas = {};
@@ -918,9 +894,7 @@ function buildEvidenceViewerData() {
       const confusionEvents = overlay.confusion_events || [];
       const personaEntries = personaResults ? personaResults.filter(r => r.persona === pid) : [];
 
-      const allPersonaScreenshots = fs.existsSync(screenshotsDir)
-        ? fs.readdirSync(screenshotsDir).filter(f => f.startsWith(`persona-${pid}-`) && f.endsWith('.png')).sort()
-        : [];
+      const allPersonaScreenshots = screenshotsByPersona[pid] || [];
 
       const displayName = pid.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
       const tasks = [];
@@ -1115,8 +1089,7 @@ function buildCodeDeltasHtml() {
   if (!delta) return '<p class="muted small">No MR delta data. Run with --workspace to enable code delta analysis.</p>';
 
   const protoId = extractPrototypeId();
-  const knownMRs = { 'RHAISTRAT-1527':168,'RHAISTRAT-133':169,'RHAISTRAT-1492':170,'RHAISTRAT-1267':167,'RHAISTRAT-1536':171,'RHAISTRAT-1535':172,'RHAISTRAT-1745':176,'RHAISTRAT-1474':173,'RHAISTRAT-1740':175,'RHAISTRAT-432':174,'RHAISTRAT-1521':177,'RHAISTRAT-1433':178,'RHAISTRAT-1762':180,'RHAISTRAT-1761':183,'RHAISTRAT-1758':181,'RHAISTRAT-1744':182,'RHAISTRAT-1742':184,'RHAISTRAT-1741':179 };
-  const mrNum = delta.mr_number || knownMRs[protoId];
+  const mrNum = delta.mr_number || readKnownMRs()[protoId];
   const baseUrl = 'https://gitlab.cee.redhat.com/uxd/prototypes/rhoai/-/merge_requests';
 
   const workspaceDir = delta.workspace || path.join(absArtifacts, 'workspace');
@@ -1171,7 +1144,7 @@ function buildCodeDeltasHtml() {
       return { tier: 4, severity: 'low', label: 'Modified Page', reason: null };
     if (boilerplate.test(f))
       return { tier: 9, severity: 'skip', label: 'Boilerplate', reason: null };
-    return { tier: 5, severity: 'low', label: 'Support', reason: null };
+    return { tier: 4, severity: 'low', label: 'Support', reason: null };
   }
 
   const classified = allFiles
@@ -1648,6 +1621,21 @@ function buildReviewItemsHtml(csvRows, journeyLog, screenshots) {
   return html;
 }
 
+function buildBaselineComparison() {
+  const beforePath = path.join(absArtifacts, 'screenshots', 'baseline-before.png');
+  const afterPath = path.join(absArtifacts, 'screenshots', 'baseline-after.png');
+  if (!fs.existsSync(beforePath) || !fs.existsSync(afterPath)) return '';
+  const beforeB64 = fs.readFileSync(beforePath).toString('base64');
+  const afterB64 = fs.readFileSync(afterPath).toString('base64');
+  let html = `<div style="margin-bottom:1rem;padding:0.75rem;background:var(--bg2);border-radius:0.5rem">`;
+  html += `<strong class="small" style="color:var(--text);display:block;margin-bottom:0.5rem">Before / After Comparison</strong>`;
+  html += `<div style="display:grid;grid-template-columns:1fr 1fr;gap:0.75rem">`;
+  html += `<div style="text-align:center"><span class="small muted" style="display:block;margin-bottom:0.25rem">Before (pre-evaluation)</span><img src="data:image/png;base64,${beforeB64}" style="width:100%;border-radius:0.375rem;border:1px solid var(--border);cursor:pointer" onclick="openImageLightbox(this.src)"></div>`;
+  html += `<div style="text-align:center"><span class="small muted" style="display:block;margin-bottom:0.25rem">After (post-evaluation)</span><img src="data:image/png;base64,${afterB64}" style="width:100%;border-radius:0.375rem;border:1px solid var(--border);cursor:pointer" onclick="openImageLightbox(this.src)"></div>`;
+  html += `</div></div>`;
+  return html;
+}
+
 function buildFixesAppliedHtml() {
   const fixLog = readJsonOr(path.join(absArtifacts, 'fix-log.json'), null);
   const journeyLog = readJsonOr(path.join(absArtifacts, 'journey-log.json'), null);
@@ -1663,10 +1651,11 @@ function buildFixesAppliedHtml() {
     } else if (hasFail) {
       return '<p class="muted small">Fix loop was not triggered. Some criteria still failing — review refinement suggestions.</p>';
     }
-    return '<p class="muted small">All acceptance criteria passed without modification.</p>';
+    return '<p class="muted small">All acceptance criteria passed without modification.</p>' + buildBaselineComparison();
   }
 
-  let html = `<div style="display:flex;flex-direction:column;gap:1rem">`;
+  let html = buildBaselineComparison();
+  html += `<div style="display:flex;flex-direction:column;gap:1rem">`;
 
   for (const fix of appliedFixes) {
     const iteration = fix.iteration || 1;
@@ -1731,76 +1720,6 @@ function buildFixesAppliedHtml() {
   return html;
 }
 
-function buildFixesOutstandingHtml() {
-  const suggestions = readJsonOr(path.join(absArtifacts, 'refinement-suggestions.json'), null);
-  const consistencyReport = readJsonOr(path.join(absArtifacts, 'consistency-report.json'), null);
-  const fixLog = readJsonOr(path.join(absArtifacts, 'fix-log.json'), null);
-
-  const allSuggestions = suggestions ? (Array.isArray(suggestions) ? suggestions : []) : [];
-  const consistencyViols = consistencyReport ? (consistencyReport.source_mode?.violations || []) : [];
-  const appliedIds = new Set();
-  if (fixLog) {
-    const applied = Array.isArray(fixLog) ? fixLog : fixLog.applied || [];
-    for (const f of applied) {
-      if (f.guideline_id) appliedIds.add(f.guideline_id);
-      if (f.criterion_id) appliedIds.add(f.criterion_id);
-      if (f.criterion) {
-        for (const cid of f.criterion.split(',')) appliedIds.add(cid.trim());
-      }
-    }
-  }
-
-  // Filter: exclude consistency-type (shown in Compliance tab) and already-applied fixes
-  const outstandingSuggestions = allSuggestions.filter(s =>
-    s.type !== 'consistency' && !s.applied && !appliedIds.has(s.criterion_id)
-  );
-
-  // Add consistency violations as outstanding items (not auto-fixed)
-  const outstandingConsistency = consistencyViols.filter(v => !appliedIds.has(v.guideline_id));
-
-  const findings = [...outstandingSuggestions, ...outstandingConsistency];
-
-  if (!findings.length) {
-    return '<p class="muted small">No outstanding issues. Everything identified was either auto-fixed or is acceptable.</p>';
-  }
-
-  let html = `<div style="display:flex;flex-direction:column;gap:0.75rem">`;
-
-  for (const f of findings) {
-    const guideline = f.guideline_id || f.criterion_id || f.dimension || '';
-    const severity = f.severity || 'warning';
-    const sevColor = severity === 'error' ? 'var(--status-danger)' : 'var(--status-warning)';
-    const file = f.file || f.fix_file || '';
-    const line = f.line || (Array.isArray(f.lines) ? f.lines[0] : '') || '';
-    const description = f.description || f.message || f.rationale || f.current || f.problem || '';
-    const suggestion = f.suggestion || f.fix || f.suggested_fix || f.fix_action || '';
-
-    html += `<div class="card card-compact card-warning">`;
-    html += `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.5rem">`;
-    html += `<span style="font-weight:600;font-size:0.875rem">${escapeHtml(guideline)}</span>`;
-    html += `<span class="small" style="color:${sevColor};font-weight:500;text-transform:uppercase">${escapeHtml(severity)}</span>`;
-    html += `</div>`;
-
-    if (description) {
-      html += `<p style="margin:0 0 0.5rem;font-size:0.875rem;line-height:1.5">${escapeHtml(description)}</p>`;
-    }
-
-    if (file) {
-      html += `<code class="small" style="display:block;margin:0.25rem 0;color:var(--accent)">${escapeHtml(file)}${line ? ':' + line : ''}</code>`;
-    }
-
-    if (suggestion) html += `<div style="margin:0.25rem 0;padding:0.25rem 0.5rem;background:var(--bg2);border-radius:3px;font-family:var(--font-mono);font-size:0.75rem;color:var(--status-success)">Suggested: ${escapeHtml(suggestion)}</div>`;
-
-    if (f.pf_doc_url || f.guideline_title) {
-      const why = f.guideline_title || `PatternFly guideline: ${guideline}`;
-      html += `<p class="small muted" style="margin:0.5rem 0 0;font-style:italic">Why: ${escapeHtml(why)}</p>`;
-    }
-
-    html += `</div>`;
-  }
-  html += `</div>`;
-  return html;
-}
 
 function findJourneyForAC(journeyLog, acId) {
   if (!journeyLog || !journeyLog.journeys) return null;
@@ -1818,28 +1737,6 @@ function findScreenshotForJourney(dir, journeyIdx) {
   return fs.existsSync(filePath) ? filePath : null;
 }
 
-function findScreenshotForFile(screenshotsDir, file, journeyLog) {
-  if (!fs.existsSync(screenshotsDir) || !journeyLog || !journeyLog.journeys) return null;
-  const shortFile = file.replace('src/app/', '').replace('src/', '').toLowerCase();
-  for (const j of journeyLog.journeys) {
-    const target = (j.title || '').toLowerCase();
-    if (shortFile.includes('deployment') && target.includes('deployment')) {
-      const ssPath = path.join(screenshotsDir, `journey-${journeyLog.journeys.indexOf(j) + 1}-step-1.png`);
-      if (fs.existsSync(ssPath)) return ssPath;
-    }
-    if (j.steps) {
-      for (const s of j.steps) {
-        if (s.screenshot) {
-          const ssPath = path.join(path.dirname(screenshotsDir), s.screenshot);
-          if (fs.existsSync(ssPath)) return ssPath;
-        }
-      }
-    }
-  }
-  const files = fs.readdirSync(screenshotsDir).filter(f => f.startsWith('journey-') && f.endsWith('.png')).sort();
-  if (files.length) return path.join(screenshotsDir, files[0]);
-  return null;
-}
 
 function buildConsistencyHtml() {
   const report = readJsonOr(path.join(absArtifacts, 'consistency-report.json'), null);
@@ -2041,12 +1938,22 @@ function buildTabbedExecSummary() {
       summaryInner += `<p class="exec-detail small muted" style="margin-top:0.25rem"><strong>Background:</strong> ${escapeHtml(featureCtx.background)}</p>`;
     }
     if (featureCtx.ui_enhancements) {
-      summaryInner += `<p class="exec-detail small" style="margin-top:0.25rem"><strong>UI changes:</strong> ${escapeHtml(featureCtx.ui_enhancements.substring(0, 500))}${featureCtx.ui_enhancements.length > 500 ? '...' : ''}</p>`;
+      const uiSections = featureCtx.ui_enhancements
+        .split(/(?=New Columns|Status Indicators|Detailed View|Queue Position|Autoscale|Resource Allocation)/i)
+        .map(s => s.trim()).filter(Boolean);
+      summaryInner += `<div class="exec-detail small" style="margin-top:0.5rem"><strong>UI changes:</strong>`;
+      summaryInner += `<ul style="margin:0.25rem 0 0 1rem;padding:0;line-height:1.5">`;
+      for (const section of uiSections.slice(0, 8)) {
+        summaryInner += `<li style="margin-bottom:0.3rem">${escapeHtml(section)}</li>`;
+      }
+      if (uiSections.length > 8) summaryInner += `<li class="muted">+${uiSections.length - 8} more</li>`;
+      summaryInner += `</ul></div>`;
     }
     if (Array.isArray(featureCtx.user_stories) && featureCtx.user_stories.length) {
-      summaryInner += `<div class="exec-detail small" style="margin-top:0.25rem"><strong>User stories:</strong><ul style="margin:0.25rem 0 0 1rem;padding:0">`;
+      summaryInner += `<div class="exec-detail small" style="margin-top:0.5rem"><strong>User stories:</strong>`;
+      summaryInner += `<ul style="margin:0.25rem 0 0 1rem;padding:0;line-height:1.6">`;
       for (const story of featureCtx.user_stories.slice(0, 6)) {
-        summaryInner += `<li style="margin-bottom:0.15rem">${escapeHtml(story)}</li>`;
+        summaryInner += `<li style="margin-bottom:0.3rem">${escapeHtml(story)}</li>`;
       }
       if (featureCtx.user_stories.length > 6) summaryInner += `<li class="muted">+${featureCtx.user_stories.length - 6} more</li>`;
       summaryInner += `</ul></div>`;
@@ -2055,50 +1962,31 @@ function buildTabbedExecSummary() {
     summaryInner += `<p class="exec-detail exec-problem">${escapeHtml(outcomeContext.problem_statement)}</p>`;
   }
 
-  // === MR Delta panel ===
-  let deltaInner = '';
-  if (mrDelta) {
-    const filesChanged = mrDelta.total_files_changed || 0;
-    deltaInner += `<p class="exec-detail"><strong>Files changed:</strong> ${filesChanged}</p>`;
-    const routes = mrDelta.new_routes || [];
-    if (routes.length) {
-      deltaInner += `<p class="exec-detail"><strong>Routes affected:</strong> ${routes.map(r => '<code>' + escapeHtml(r) + '</code>').join(', ')}</p>`;
-    } else if (mrDelta.route_changes) {
-      deltaInner += `<p class="exec-detail"><strong>Routes:</strong> modified</p>`;
-    }
-    if (mrDelta.summary) {
-      deltaInner += `<p class="exec-detail">${escapeHtml(mrDelta.summary)}</p>`;
-    }
-    const allChanged = mrDelta.changed_files || [];
-    if (allChanged.length) {
-      const shortFiles = allChanged.slice(0, 5).map(f => f.replace('src/app/', '').replace('src/', ''));
-      deltaInner += `<p class="exec-detail muted small">${shortFiles.join(', ')}${allChanged.length > 5 ? ' +' + (allChanged.length - 5) + ' more' : ''}</p>`;
-    }
-  } else {
-    deltaInner = `<p class="exec-detail muted">Standalone prototype &mdash; no workspace diff available.</p>`;
-  }
-
-  // === Pipeline panel ===
-  let pipelineInner = '';
-  if (pipelineConfig) {
-    if (pipelineConfig.fidelity) pipelineInner += `<p class="exec-detail"><strong>Fidelity:</strong> ${escapeHtml(pipelineConfig.fidelity)}</p>`;
-    if (pipelineConfig.mode) pipelineInner += `<p class="exec-detail"><strong>Mode:</strong> ${escapeHtml(pipelineConfig.mode)}</p>`;
-    if (pipelineConfig.depth) pipelineInner += `<p class="exec-detail"><strong>Depth:</strong> ${escapeHtml(pipelineConfig.depth)}</p>`;
-  }
+  // Inline pipeline stats (replaces the separate Pipeline tab)
   if (iterationLog) {
-    const iters = iterationLog.iterations || [];
-    const iterCount = iters.length;
-    const totalFixed = iterationLog.total_criteria_fixed || 0;
-    const consistencyFixes = iters.reduce((sum, i) => sum + (i.consistency_fixes || 0), 0);
-    pipelineInner += `<p class="exec-detail"><strong>Iterations:</strong> ${iterCount}</p>`;
-    if (totalFixed > 0) pipelineInner += `<p class="exec-detail"><strong>Criteria fixed:</strong> ${totalFixed}</p>`;
-    if (consistencyFixes > 0) pipelineInner += `<p class="exec-detail"><strong>Consistency fixes:</strong> ${consistencyFixes}</p>`;
-    if (iterationLog.exit_reason) pipelineInner += `<p class="exec-detail"><strong>Exit reason:</strong> ${escapeHtml(iterationLog.exit_reason)}</p>`;
-  } else {
-    pipelineInner += `<p class="exec-detail muted">Single pass &mdash; no iteration history.</p>`;
+    const iters = (iterationLog.iterations || []).length;
+    const exitReason = iterationLog.exit_reason || 'pending';
+    summaryInner += `<p class="exec-detail small muted" style="margin-top:0.5rem;border-top:1px solid var(--border);padding-top:0.5rem">`;
+    summaryInner += `<strong>Pipeline:</strong> ${iters} iteration${iters !== 1 ? 's' : ''} &middot; Exit: ${escapeHtml(exitReason)}`;
+    if (mrDelta) summaryInner += ` &middot; ${mrDelta.total_files_changed || 0} files changed`;
+    summaryInner += `</p>`;
   }
 
-  // === Assemble ===
+  // Before/after baseline comparison
+  const beforePath = path.join(absArtifacts, 'screenshots', 'baseline-before.png');
+  const afterPath = path.join(absArtifacts, 'screenshots', 'baseline-after.png');
+  if (fs.existsSync(beforePath) && fs.existsSync(afterPath)) {
+    const beforeB64 = fs.readFileSync(beforePath).toString('base64');
+    const afterB64 = fs.readFileSync(afterPath).toString('base64');
+    summaryInner += `<div style="margin-top:0.75rem;border-top:1px solid var(--border);padding-top:0.75rem">`;
+    summaryInner += `<strong class="small" style="color:var(--text)">Before / After</strong>`;
+    summaryInner += `<div style="display:grid;grid-template-columns:1fr 1fr;gap:0.5rem;margin-top:0.5rem">`;
+    summaryInner += `<div style="text-align:center"><span class="small muted" style="display:block;margin-bottom:0.25rem">Before (initial state)</span><img src="data:image/png;base64,${beforeB64}" style="width:100%;border-radius:0.375rem;border:1px solid var(--border)" onclick="openImageLightbox(this.src)"></div>`;
+    summaryInner += `<div style="text-align:center"><span class="small muted" style="display:block;margin-bottom:0.25rem">After (post-evaluation)</span><img src="data:image/png;base64,${afterB64}" style="width:100%;border-radius:0.375rem;border:1px solid var(--border)" onclick="openImageLightbox(this.src)"></div>`;
+    summaryInner += `</div></div>`;
+  }
+
+  // === Assemble (single panel, no tabs) ===
   let html = `<section class="exec-summary" data-tour="context">`;
 
   html += `<div class="exec-header">`;
@@ -2106,17 +1994,7 @@ function buildTabbedExecSummary() {
   html += `<h2 class="exec-title">${escapeHtml(title)}</h2>`;
   html += `</div>`;
 
-  html += `<div class="exec-tabs">`;
-  html += `<button class="exec-tab active" onclick="switchExecTab('summary')">Summary</button>`;
-  html += `<button class="exec-tab" onclick="switchExecTab('mr-delta')">MR Delta</button>`;
-  html += `<button class="exec-tab" onclick="switchExecTab('pipeline')">Pipeline</button>`;
-  html += `</div>`;
-
-  html += `<div class="exec-panels">`;
-  html += `<div class="exec-panel active" id="exec-panel-summary">${summaryInner}</div>`;
-  html += `<div class="exec-panel" id="exec-panel-mr-delta">${deltaInner}</div>`;
-  html += `<div class="exec-panel" id="exec-panel-pipeline">${pipelineInner}</div>`;
-  html += `</div>`;
+  html += `<div style="padding:0.5rem 0">${summaryInner}</div>`;
 
   html += `</section>`;
 
@@ -3019,16 +2897,7 @@ function buildTokens(opts = {}) {
     ? journeyLog.breadcrumb.prototype.url
     : `${protoRepoBase}/-/tree/3.5`;
 
-  // MR detection — known mapping from prototype evaluator spreadsheet
-  const knownMRs = {
-    'RHAISTRAT-1527': 168, 'RHAISTRAT-133': 169, 'RHAISTRAT-1492': 170,
-    'RHAISTRAT-1267': 167, 'RHAISTRAT-1536': 171, 'RHAISTRAT-1535': 172,
-    'RHAISTRAT-1745': 176, 'RHAISTRAT-1474': 173, 'RHAISTRAT-1740': 175,
-    'RHAISTRAT-432': 174, 'RHAISTRAT-1521': 177, 'RHAISTRAT-1433': 178,
-    'RHAISTRAT-1762': 180, 'RHAISTRAT-1761': 183, 'RHAISTRAT-1758': 181,
-    'RHAISTRAT-1744': 182, 'RHAISTRAT-1742': 184, 'RHAISTRAT-1741': 179
-  };
-  const mrNumber = knownMRs[protoId];
+  const mrNumber = readKnownMRs()[protoId];
   const mrUrl = mrNumber
     ? `${protoRepoBase}/-/merge_requests/${mrNumber}`
     : `${protoRepoBase}/-/merge_requests`;
@@ -3364,6 +3233,17 @@ function main() {
   if (!fs.existsSync(templatePath)) {
     console.error(`Template not found: ${templatePath}`);
     process.exit(1);
+  }
+
+  // Pre-normalize journey-log.json in place to fix common schema drift
+  const jlPath = path.join(absArtifacts, 'journey-log.json');
+  const jlRaw = readJsonOr(jlPath, null);
+  if (jlRaw) {
+    const normalized = normalizeJourneyLog(jlRaw, absArtifacts);
+    if (normalized.usability_dimensions) {
+      normalizeUsabilityDimensions(normalized.usability_dimensions);
+    }
+    fs.writeFileSync(jlPath, JSON.stringify(normalized, null, 2), 'utf8');
   }
 
   const tokens = buildTokens();

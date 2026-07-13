@@ -134,22 +134,33 @@ const csv1Path = path.join(runsBase, r1.prototype_id, r1.run_id, 'evaluation-rep
 const csv2Path = path.join(runsBase, r2.prototype_id, r2.run_id, 'evaluation-report.csv');
 
 if (fs.existsSync(csv1Path) && fs.existsSync(csv2Path)) {
-  const csv1 = fs.readFileSync(csv1Path, 'utf8').trim().split('\n').slice(1);
-  const csv2 = fs.readFileSync(csv2Path, 'utf8').trim().split('\n').slice(1);
+  const csv1Raw = fs.readFileSync(csv1Path, 'utf8').trim().split('\n');
+  const csv2Raw = fs.readFileSync(csv2Path, 'utf8').trim().split('\n');
+
+  const csv1Headers = parseCsvLine(csv1Raw[0]);
+  const csv2Headers = parseCsvLine(csv2Raw[0]);
+
+  const csv1CriterionIdx = csv1Headers.indexOf('criterion_id');
+  const csv1VerdictIdx = csv1Headers.indexOf('verdict');
+  const csv2CriterionIdx = csv2Headers.indexOf('criterion_id');
+  const csv2VerdictIdx = csv2Headers.indexOf('verdict');
+
+  const csv1 = csv1Raw.slice(1);
+  const csv2 = csv2Raw.slice(1);
 
   const verdicts1 = {};
   const verdicts2 = {};
 
   for (const line of csv1) {
     const parts = parseCsvLine(line);
-    const id = parts[3]; // criterion_id
-    const verdict = parts[6]; // verdict
+    const id = parts[csv1CriterionIdx];
+    const verdict = parts[csv1VerdictIdx];
     if (id) verdicts1[id] = verdict;
   }
   for (const line of csv2) {
     const parts = parseCsvLine(line);
-    const id = parts[3];
-    const verdict = parts[6];
+    const id = parts[csv2CriterionIdx];
+    const verdict = parts[csv2VerdictIdx];
     if (id) verdicts2[id] = verdict;
   }
 

@@ -73,8 +73,8 @@ sections:
         examples:
           - workflow_continuity
           - cross_persona_handoffs
-          - scalability_complexity
-          - system_status
+          - scalability_progressive_complexity
+          - system_status_trust
           - technical_abstraction
           - mental_model_fidelity
           - accessibility_inclusion

@@ -11,10 +11,10 @@ The eval skill is fully self-contained. Copy the entire `.claude/skills/eval/` d
   ├── eval-iterate/SKILL.md
   ├── eval-extract/SKILL.md
   ├── eval-classify/SKILL.md
-  ├── eval-journey/SKILL.md
-  ├── eval-usability/SKILL.md
+  ├── eval-verify/SKILL.md
+  ├── eval-discover/SKILL.md
+  ├── eval-nav-context/SKILL.md
   ├── eval-consistency/SKILL.md
-  ├── eval-hint/SKILL.md
   ├── eval-fix/SKILL.md
   ├── eval-report/SKILL.md
   ├── eval-review/SKILL.md
@@ -26,6 +26,13 @@ The eval skill is fully self-contained. Copy the entire `.claude/skills/eval/` d
   │   ├── publish-report.sh
   │   ├── compare-ground-truth.js
   │   ├── compare-runs.js
+  │   ├── build-leaderboard.js
+  │   ├── append-iteration-log.js
+  │   ├── validate-verdicts.js
+  │   ├── validate-artifacts.js
+  │   ├── hydrate-persona-results.js (deprecated)
+  │   ├── generate-dashboard.js
+  │   ├── resolve-root.js
   │   ├── bootstrap-consistency-checker.sh
   │   └── bootstrap-usability-testing.sh
   ├── config/

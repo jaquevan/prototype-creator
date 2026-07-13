@@ -172,7 +172,7 @@ function readEvalResults(dir) {
   const esPath = path.join(base, 'extract-state.json');
   let title = dir;
   if (fs.existsSync(esPath)) {
-    try { const es = JSON.parse(fs.readFileSync(esPath, 'utf8')); title = es.ticket_summary || dir; } catch {}
+    try { const es = JSON.parse(fs.readFileSync(esPath, 'utf8')); title = es.title || es.ticket_summary || es.story_title || dir; } catch {}
   }
 
   return { key: dir, title, result, pass, fail, flagged, total, usability, iterations, fixSummary, flaggedItems: flaggedItems.join(', '), reportUrl, evalDate, mtime, origResult, origPass, origFail, origFlagged, origUsability };

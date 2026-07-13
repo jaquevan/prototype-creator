@@ -13,7 +13,7 @@ Phase 5a of the eval pipeline. Applies fixes to the prototype based on evaluatio
 
 | Input | Description | Required |
 |-------|-------------|----------|
-| `.artifacts/<KEY>/refinement-suggestions.json` | Fix suggestions from eval-journey + eval-usability + eval-consistency | Yes |
+| `.artifacts/<KEY>/refinement-suggestions.json` | Fix suggestions from eval-verify + eval-discover + eval-consistency | Yes |
 | `.artifacts/<KEY>/consistency-report.json` | PatternFly violations with file/line references | No |
 | `--workspace` | Path to the prototype source code | Yes |
 | `.artifacts/<KEY>/extract-state.json` | AC context for understanding fix intent | No |
@@ -141,6 +141,26 @@ fix-log.json format:
 }
 ```
 
+### Step 7: PatternFly compliance validation (static checks only)
+
+After all fixes are applied, read each modified file and verify the fixes didn't introduce PatternFly violations. These are **source-code-only checks** — no rendering or viewport verification.
+
+**Import completeness:**
+- Every PatternFly component used in the file has a corresponding import from `@patternfly/react-core` or `@patternfly/react-table`
+- Icon components (`*Icon`) are imported from `@patternfly/react-icons`
+
+**Label/status patterns:**
+- Non-interactive `<Label>` components use `variant="outline"` (filled variant implies onClick)
+- Tooltips use `<Tooltip content={...}>` wrapper, not inline `title` attributes
+
+**Table structure (static tables only — skip for `.map()`-rendered dynamic tables):**
+- If columns were added/removed in literal JSX, verify `<Thead>` column count matches `<Tbody>` rows
+- Expandable rows have correct `colSpan` on the expanded `<Td>`
+
+**If any check fails:** Fix the issue before writing fix-log.json.
+
+**Note:** Viewport-level rendering validation (column truncation, responsive layout) cannot be verified from source alone. That's what eval-consistency `--mode=visual` handles post-journey.
+
 ## Rules
 
 - Never fix something that was deliberately de-scoped by a design decision
@@ -151,3 +171,13 @@ fix-log.json format:
 - Every applied fix MUST trace back to a `criterion_id` or `guideline_id` — no speculative improvements
 - Do NOT make changes that aren't backed by a specific suggestion in refinement-suggestions.json
 - Do NOT add features, polish, or enhancements beyond what the failing AC or violated guideline requires
+- **Single-pass file reading:** When multiple suggestions target the same file, read it once, apply all matching fixes in a single pass, then run Step 7 validation. Do not read-fix-read-fix the same file repeatedly.
+
+## Scriptable Steps (future optimization)
+
+These steps are candidates for scripted automation (no LLM judgment required):
+- **Step 3 (consistency fixes):** Deterministic with explicit file/line/suggestion. A codemod per `guideline_id` could replace LLM read+edit.
+- **Step 6 (write fix-log.json + mark suggestions):** Pure JSON bookkeeping. Same pattern as `append-iteration-log.js`.
+- **Step 7 (import/pattern checks):** Greppable static checks.
+
+Steps 2, 4, 4b, 5 require semantic judgment and should remain LLM-driven.

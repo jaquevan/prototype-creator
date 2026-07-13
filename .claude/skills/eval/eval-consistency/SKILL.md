@@ -16,7 +16,7 @@ Runs PatternFly design consistency checks against the prototype using vendored g
 eval-consistency runs in two modes, invoked separately by the orchestrator:
 
 - **`--mode=source`** (Phase A setup): Runs deterministic source-code checks against MR delta files. Fast, no screenshots needed. Produces initial `consistency-report.json` and appends to `refinement-suggestions.json`. Called before eval-classify.
-- **`--mode=visual`** (post-journey): Runs AI-powered visual checks against journey screenshots. Appends visual findings to the existing `consistency-report.json`. Called after eval-journey captures screenshots.
+- **`--mode=visual`** (post-journey): Runs AI-powered visual checks against journey screenshots. Appends visual findings to the existing `consistency-report.json`. Called after eval-verify captures screenshots.
 - **`--mode=both`** (legacy): Runs source then visual sequentially. Use when both inputs are available.
 
 When called without `--mode`, defaults to `both` (legacy behavior).

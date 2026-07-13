@@ -91,6 +91,8 @@ Fallback if MCP unavailable:
 python3 scripts/fetch_rfe.py <KEY> --fields summary,description,acceptance_criteria,issuelinks --markdown
 ```
 
+**Cache raw ticket fields for enrichment phase:** Save `parent` and `issuelinks` from the Jira response into `extract-state.json` as `raw_parent` and `raw_issuelinks`. The enrichment phase (Steps 6-7) needs these to discover the Outcome ticket without re-fetching from Jira.
+
 
 
 ### Step 2: Extract Acceptance Criteria
@@ -261,6 +263,8 @@ Each entry has `key`, `url`, `validated` (true if confirmed via API).
 
 **Phase gate:** This step runs only with `--phase=enrichment` or no `--phase` flag. Skip when `--phase=core`.
 
+**Use cached data first:** Read `raw_parent` and `raw_issuelinks` from `extract-state.json` (saved during core phase Step 1). These contain the STRAT ticket's parent and issue links — no need to re-fetch from Jira. Only make additional Jira calls if the cached data doesn't contain the Outcome.
+
 Multi-strategy search. **Stop on first match** — do not run remaining strategies:
 
 1. RFE's `parent` field → **if found, stop**
@@ -322,6 +326,8 @@ Assemble all extracted data into the handoff artifact:
   "breadcrumb": { "outcome": null, "rfe": null, "strat": {}, "prototype": null, "mr": null },
   "persona_selection": { "selected": [], "target_audience_text": "", "reasoning": "" },
   "rfe_key": "<key or null>",
+  "raw_parent": "<parent field from Jira response, cached for enrichment phase>",
+  "raw_issuelinks": "<issuelinks array from Jira response, cached for enrichment phase>",
   "decision_context": { "has_decisions": false, "deliberate_descopes": [] }
 }
 ```
