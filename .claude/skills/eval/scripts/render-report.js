@@ -1622,6 +1622,10 @@ function buildReviewItemsHtml(csvRows, journeyLog, screenshots) {
 }
 
 function buildBaselineComparison() {
+  const fixLog = readJsonOr(path.join(absArtifacts, 'fix-log.json'), null);
+  const appliedFixes = fixLog ? (Array.isArray(fixLog) ? fixLog : fixLog.applied || []) : [];
+  if (appliedFixes.length === 0) return '';
+
   const beforePath = path.join(absArtifacts, 'screenshots', 'baseline-before.png');
   const afterPath = path.join(absArtifacts, 'screenshots', 'baseline-after.png');
   if (!fs.existsSync(beforePath) || !fs.existsSync(afterPath)) return '';
@@ -1972,18 +1976,22 @@ function buildTabbedExecSummary() {
     summaryInner += `</p>`;
   }
 
-  // Before/after baseline comparison
-  const beforePath = path.join(absArtifacts, 'screenshots', 'baseline-before.png');
-  const afterPath = path.join(absArtifacts, 'screenshots', 'baseline-after.png');
-  if (fs.existsSync(beforePath) && fs.existsSync(afterPath)) {
-    const beforeB64 = fs.readFileSync(beforePath).toString('base64');
-    const afterB64 = fs.readFileSync(afterPath).toString('base64');
-    summaryInner += `<div style="margin-top:0.75rem;border-top:1px solid var(--border);padding-top:0.75rem">`;
-    summaryInner += `<strong class="small" style="color:var(--text)">Before / After</strong>`;
-    summaryInner += `<div style="display:grid;grid-template-columns:1fr 1fr;gap:0.5rem;margin-top:0.5rem">`;
-    summaryInner += `<div style="text-align:center"><span class="small muted" style="display:block;margin-bottom:0.25rem">Before (initial state)</span><img src="data:image/png;base64,${beforeB64}" style="width:100%;border-radius:0.375rem;border:1px solid var(--border)" onclick="openImageLightbox(this.src)"></div>`;
-    summaryInner += `<div style="text-align:center"><span class="small muted" style="display:block;margin-bottom:0.25rem">After (post-evaluation)</span><img src="data:image/png;base64,${afterB64}" style="width:100%;border-radius:0.375rem;border:1px solid var(--border)" onclick="openImageLightbox(this.src)"></div>`;
-    summaryInner += `</div></div>`;
+  // Before/after baseline comparison — only show when eval-fix actually changed the prototype
+  const summaryFixLog = readJsonOr(path.join(absArtifacts, 'fix-log.json'), null);
+  const summaryAppliedFixes = summaryFixLog ? (Array.isArray(summaryFixLog) ? summaryFixLog : summaryFixLog.applied || []) : [];
+  if (summaryAppliedFixes.length > 0) {
+    const beforePath = path.join(absArtifacts, 'screenshots', 'baseline-before.png');
+    const afterPath = path.join(absArtifacts, 'screenshots', 'baseline-after.png');
+    if (fs.existsSync(beforePath) && fs.existsSync(afterPath)) {
+      const beforeB64 = fs.readFileSync(beforePath).toString('base64');
+      const afterB64 = fs.readFileSync(afterPath).toString('base64');
+      summaryInner += `<div style="margin-top:0.75rem;border-top:1px solid var(--border);padding-top:0.75rem">`;
+      summaryInner += `<strong class="small" style="color:var(--text)">Before / After</strong>`;
+      summaryInner += `<div style="display:grid;grid-template-columns:1fr 1fr;gap:0.5rem;margin-top:0.5rem">`;
+      summaryInner += `<div style="text-align:center"><span class="small muted" style="display:block;margin-bottom:0.25rem">Before (initial state)</span><img src="data:image/png;base64,${beforeB64}" style="width:100%;border-radius:0.375rem;border:1px solid var(--border)" onclick="openImageLightbox(this.src)"></div>`;
+      summaryInner += `<div style="text-align:center"><span class="small muted" style="display:block;margin-bottom:0.25rem">After (post-evaluation)</span><img src="data:image/png;base64,${afterB64}" style="width:100%;border-radius:0.375rem;border:1px solid var(--border)" onclick="openImageLightbox(this.src)"></div>`;
+      summaryInner += `</div></div>`;
+    }
   }
 
   // === Assemble (single panel, no tabs) ===
