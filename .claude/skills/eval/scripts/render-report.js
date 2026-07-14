@@ -230,7 +230,7 @@ function parseCsvSection(raw, sectionName) {
   return rows;
 }
 
-function buildFullCsv(csvRaw, journeyLog, passCount, failCount, flaggedCount) {
+function buildFullCsv(csvRaw, journeyLog, passCount, failCount, flaggedCount, extractState) {
   let fullCsv = csvRaw.trim();
 
   // Append Section 2 (Usability Dimensions) if not already present and data exists
@@ -249,10 +249,14 @@ function buildFullCsv(csvRaw, journeyLog, passCount, failCount, flaggedCount) {
   if (!fullCsv.includes('# PERSONA INSIGHTS')) {
     const ud = journeyLog ? normalizeUsabilityDimensions(journeyLog.usability_dimensions) : null;
     if (ud && ud.persona_overlays && ud.persona_overlays.length) {
-      fullCsv += '\n\n# PERSONA INSIGHTS\npersona,patience_start,patience_end,abandoned,confusion_events,cli_escapes,key_friction\n';
+      fullCsv += '\n\n# PERSONA INSIGHTS\npersona,task,patience_start,patience_end,abandoned,confusion_events,cli_escapes,key_friction\n';
+      const piTasks = extractState ? (extractState.tasks_to_be_done || []) : [];
       for (const overlay of ud.persona_overlays) {
+        const taskIdx = overlay.task_index;
+        const taskDef = taskIdx ? piTasks[taskIdx - 1] : null;
+        const taskLabel = taskDef ? taskDef.task : (taskIdx ? `Task ${taskIdx}` : '');
         const frictions = (overlay.confusion_events || []).map(e => e.trigger || '').filter(Boolean).slice(0, 3).join('; ');
-        fullCsv += `${escapeCSVField(overlay.persona_name || overlay.persona)},${overlay.patience_start || 100},${overlay.patience_end || 100},${overlay.abandoned || false},${(overlay.confusion_events || []).length},${overlay.cli_escapes || 0},${escapeCSVField(frictions)}\n`;
+        fullCsv += `${escapeCSVField(overlay.persona_name || overlay.persona)},${escapeCSVField(taskLabel)},${overlay.patience_start || 100},${overlay.patience_end || 100},${overlay.abandoned || false},${(overlay.confusion_events || []).length},${overlay.cli_escapes || 0},${escapeCSVField(frictions)}\n`;
       }
     }
   }
@@ -415,15 +419,14 @@ function loadScreenshots(screenshotsDir) {
   if (!fs.existsSync(screenshotsDir)) return map;
   const files = fs.readdirSync(screenshotsDir).filter(f => f.endsWith('.png')).sort();
 
-  // Screenshots are always written before journey-log.json (Playwright captures
-  // during walkthrough, then the journey log is assembled afterward). Only warn
-  // if screenshots are NEWER than the journey log, which would indicate a re-run
-  // captured new screenshots without re-generating the journey analysis.
   const journeyLogPath = path.join(path.dirname(screenshotsDir), 'journey-log.json');
   let journeyLogMtime = 0;
   try { journeyLogMtime = fs.statSync(journeyLogPath).mtimeMs; } catch {}
 
   let staleWarning = false;
+  const hashToDataUri = new Map();
+  let dedupSaved = 0;
+
   for (const file of files) {
     const filePath = path.join(screenshotsDir, file);
     if (journeyLogMtime > 0) {
@@ -433,13 +436,39 @@ function loadScreenshots(screenshotsDir) {
       }
     }
     const data = fs.readFileSync(filePath);
-    map[file] = 'data:image/png;base64,' + data.toString('base64');
+    const hash = require('crypto').createHash('md5').update(data).digest('hex');
+
+    if (hashToDataUri.has(hash)) {
+      map[file] = hashToDataUri.get(hash);
+      dedupSaved++;
+    } else {
+      const dataUri = 'data:image/png;base64,' + data.toString('base64');
+      hashToDataUri.set(hash, dataUri);
+      map[file] = dataUri;
+    }
   }
 
   if (staleWarning) {
     console.warn('  ⚠ WARNING: Screenshots appear newer than journey-log.json — journey analysis may not reflect current screenshots.');
   }
+  if (dedupSaved > 0) {
+    console.log(`  Screenshot dedup: ${files.length} files → ${hashToDataUri.size} unique images (${dedupSaved} duplicates reuse shared data URIs)`);
+  }
   return map;
+}
+
+const _ssFileCache = new Map();
+function getScreenshotDataUri(filePath) {
+  if (_ssFileCache.has(filePath)) return _ssFileCache.get(filePath);
+  if (!fs.existsSync(filePath)) { _ssFileCache.set(filePath, ''); return ''; }
+  const data = fs.readFileSync(filePath);
+  const hash = require('crypto').createHash('md5').update(data).digest('hex');
+  for (const [, uri] of _ssFileCache) {
+    if (uri && uri.includes(hash)) { _ssFileCache.set(filePath, uri); return uri; }
+  }
+  const uri = 'data:image/png;base64,' + data.toString('base64');
+  _ssFileCache.set(filePath, uri);
+  return uri;
 }
 
 // ---------------------------------------------------------------------------
@@ -2716,10 +2745,14 @@ function buildTokens(opts = {}) {
 
     // Patience tracking
     const overlays = ud.persona_overlays || [];
+    const tasksDef = extractState ? (extractState.tasks_to_be_done || []) : [];
     if (overlays.length) {
       let pCards = '';
       for (const o of overlays) {
         const name = escapeHtml(o.persona_name || o.persona);
+        const taskIdx = o.task_index;
+        const taskDef = taskIdx ? tasksDef[taskIdx - 1] : null;
+        const taskLabel = taskDef ? escapeHtml(taskDef.task) : (taskIdx ? `Task ${taskIdx}` : '');
         const pEnd = o.patience_end != null ? o.patience_end : 100;
         const barColor = pEnd > 70 ? 'var(--status-success)' : pEnd > 40 ? 'var(--status-warning)' : 'var(--status-danger)';
         const confCount = o.confusion_events ? o.confusion_events.length : 0;
@@ -2728,6 +2761,9 @@ function buildTokens(opts = {}) {
 
         pCards += `<div style="display:flex;align-items:center;gap:1rem;padding:0.75rem 1rem;border:1px solid var(--border);border-radius:0.5rem;margin-bottom:0.5rem;background:var(--bg)">`;
         pCards += `<div style="flex:1;min-width:0"><div style="font-weight:600;font-size:0.875rem;color:var(--text)">${name}</div>`;
+        if (taskLabel) {
+          pCards += `<div style="font-size:0.75rem;color:var(--text2);margin-top:0.15rem">${taskLabel}</div>`;
+        }
         pCards += `<div style="display:flex;align-items:center;gap:0.75rem;margin-top:0.35rem">`;
         pCards += `<div style="flex:1;max-width:160px;height:6px;background:var(--border);border-radius:3px;overflow:hidden"><div style="width:${pEnd}%;height:100%;background:${barColor};border-radius:3px"></div></div>`;
         pCards += `<span style="font-size:0.75rem;font-weight:600;color:${barColor}">${pEnd}%</span>`;
@@ -2755,13 +2791,17 @@ function buildTokens(opts = {}) {
   if (ud && ud.think_aloud && ud.think_aloud.traces && ud.think_aloud.traces.length > 0) {
     thinkAloudNarratives = '<h2>Think-Aloud Narratives</h2>';
 
+    const taTasks = extractState ? (extractState.tasks_to_be_done || []) : [];
     for (const trace of ud.think_aloud.traces) {
       const pName = escapeHtml(trace.persona_name || trace.persona);
       const outcome = escapeHtml(trace.outcome || '');
       const patience = trace.patience_end || 0;
       const patienceClass = patience > 60 ? 'ta-patience-high' : patience > 30 ? 'ta-patience-med' : 'ta-patience-low';
+      const taTaskIdx = trace.task_index;
+      const taTaskDef = taTaskIdx ? taTasks[taTaskIdx - 1] : null;
+      const taTaskLabel = taTaskDef ? ` — Task ${taTaskIdx}: ${escapeHtml(taTaskDef.task)}` : (taTaskIdx ? ` — Task ${taTaskIdx}` : '');
 
-      thinkAloudNarratives += `<details><summary>${pName} — ${outcome}</summary>`;
+      thinkAloudNarratives += `<details><summary>${pName}${taTaskLabel} — ${outcome}</summary>`;
       thinkAloudNarratives += `<p class="small muted">Patience: ${patience}% · Confusion: ${trace.confusion_events || 0} · CLI escapes: ${trace.cli_escapes || 0}</p>`;
 
       if (trace.response_strategies) {
@@ -2773,8 +2813,9 @@ function buildTokens(opts = {}) {
         thinkAloudNarratives += `</p>`;
       }
 
-      // Parse the think-aloud MD file for this persona if available
-      const taFile = taFiles.find(f => f.name.includes(trace.persona));
+      // Parse the think-aloud MD file for this persona+task if available
+      const taFilePattern = taTaskIdx ? `${trace.persona}-task-${taTaskIdx}` : trace.persona;
+      const taFile = taFiles.find(f => f.name.includes(taFilePattern)) || taFiles.find(f => f.name.includes(trace.persona));
       if (taFile && taFile.content) {
         const steps = parseTaSteps(taFile.content);
         for (const step of steps) {
@@ -2834,13 +2875,8 @@ function buildTokens(opts = {}) {
 
   // ---- Methodology ----
   const methodologyFallback = `
-    <p><strong>This evaluation runs a 3-phase automated pipeline:</strong></p>
-    <ol style="font-size:0.8125rem;line-height:1.7;color:var(--text)">
-      <li><strong>Extract</strong> — Fetches the Jira STRAT ticket, extracts acceptance criteria verbatim, identifies personas and user journeys from the linked RFE, and maps the SDLC breadcrumb (Outcome → RFE → STRAT → Prototype).</li>
-      <li><strong>Journey Walkthroughs</strong> — Generates Playwright scripts that navigate the prototype as different personas. Each acceptance criterion is classified into evaluation tiers. Screenshots are captured at every step. Design consistency is checked against PatternFly guidelines.</li>
-      <li><strong>Usability Scoring</strong> — Scores 7 dimensions (workflow continuity, cross-persona handoffs, scalability, system status, technical abstraction, mental model fidelity, accessibility) per persona. Optionally runs a think-aloud protocol where the evaluator role-plays a persona's internal monologue.</li>
-    </ol>
-    <p style="font-size:0.8125rem;color:var(--text2);margin-top:0.75rem">Verdicts: <strong>PASS</strong> = criterion met, <strong>FAIL</strong> = not implemented or broken, <strong>FLAGGED</strong> = requires human judgment (e.g., comparing against an external system the pipeline cannot access).</p>
+    <p>Acceptance criteria are extracted from the Jira ticket and verified against the live prototype using Playwright (headless Firefox, 1920x900). Each AC gets a <strong>PASS</strong>, <strong>FAIL</strong>, or <strong>FLAGGED</strong> verdict with screenshot evidence. If criteria fail, the pipeline applies fixes and re-evaluates.</p>
+    <p style="margin-top:0.5rem">Usability is scored by simulated personas who navigate the prototype independently, producing think-aloud traces and 7-dimension scores (0-3 each). Patience tracks frustration per task — confusion drains it, successful interactions recover it.</p>
   `;
   const methodologyHtml = methodologyFallback;
 
@@ -2917,23 +2953,25 @@ function buildTokens(opts = {}) {
   const aiInsightsDisplay = 'display:none';
 
   // ---- CSV data for download (full 3-section format) ----
-  const fullCsv = buildFullCsv(csvRaw, journeyLog, passCount, failCount, flaggedCount);
+  const fullCsv = buildFullCsv(csvRaw, journeyLog, passCount, failCount, flaggedCount, extractState);
   const csvDataEscaped = fullCsv.replace(/\\/g, '\\\\').replace(/`/g, '\\`').replace(/\$/g, '\\$');
 
   // Build link URLs
   const rfeKey = (extractState && extractState.rfe_key) || '';
   const rfeUrl = rfeKey ? `https://issues.redhat.com/browse/${rfeKey}` : jiraUrl;
 
-  // Prototype repo — detect from journey-log or default
-  const protoRepoBase = 'https://gitlab.cee.redhat.com/uxd/prototypes/rhoai';
-  const protoRepoUrl = (journeyLog && journeyLog.breadcrumb && journeyLog.breadcrumb.prototype)
-    ? journeyLog.breadcrumb.prototype.url
-    : `${protoRepoBase}/-/tree/3.5`;
+  // Prototype URL — use the URL that was actually tested (local or hosted)
+  const protoRepoUrl = (journeyLog && journeyLog.prototype_url)
+    ? journeyLog.prototype_url
+    : (extractState && extractState.breadcrumb && extractState.breadcrumb.prototype && extractState.breadcrumb.prototype.url)
+      ? extractState.breadcrumb.prototype.url
+      : 'http://localhost:8080';
 
+  const gitlabBase = 'https://gitlab.cee.redhat.com/uxd/prototypes/rhoai';
   const mrNumber = readKnownMRs()[protoId];
   const mrUrl = mrNumber
-    ? `${protoRepoBase}/-/merge_requests/${mrNumber}`
-    : `${protoRepoBase}/-/merge_requests`;
+    ? `${gitlabBase}/-/merge_requests/${mrNumber}`
+    : `${gitlabBase}/-/merge_requests`;
   const protoDeployUrl = mrNumber
     ? `https://rhoai-5171de.pages.redhat.com/mr-${mrNumber}/`
     : prototypeUrl;

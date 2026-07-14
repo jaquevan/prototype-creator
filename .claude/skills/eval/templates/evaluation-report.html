@@ -628,12 +628,9 @@ tr.dim-na{opacity:0.6;font-style:italic}
     <span class="arrow">→</span>
     <a href="{{PROTOTYPE_REPO_URL}}" target="_blank">Prototype</a>
     <span class="arrow">·</span>
-    <a href="{{MR_URL}}" target="_blank" class="link-archived" style="font-size:0.75rem;opacity:0.7" title="MR may be closed — link still viewable">{{MR_LABEL}}</a>
-    <span class="arrow">→</span>
-    <strong style="color:var(--text);font-size:0.8125rem">Eval</strong>
+    <a href="{{MR_URL}}" target="_blank" class="link-archived" style="opacity:0.8" title="View merge request on GitLab"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" style="vertical-align:middle"><path d="M22.65 14.39L12 22.13 1.35 14.39a.84.84 0 0 1-.3-.94l1.22-3.78 2.44-7.51A.42.42 0 0 1 4.82 2a.43.43 0 0 1 .58 0 .42.42 0 0 1 .11.18l2.44 7.49h8.1l2.44-7.51A.42.42 0 0 1 18.6 2a.43.43 0 0 1 .58 0 .42.42 0 0 1 .11.18l2.44 7.51L23 13.45a.84.84 0 0 1-.35.94z" fill="#E24329"/></svg></a>
   </div>
   <div class="header-actions">
-    <button onclick="toggleCsvPreview()">CSV Preview</button>
     <button onclick="showWelcome()" title="How to read this report">Guide</button>
   </div>
 </div>
@@ -804,15 +801,6 @@ tr.dim-na{opacity:0.6;font-style:italic}
     <summary style="font-size:0.8rem;font-weight:500;cursor:pointer">How This Evaluation Was Conducted</summary>
     <div style="margin-top:0.5rem;font-size:0.75rem;line-height:1.6;color:var(--text)">
       {{METHODOLOGY_HTML}}
-    </div>
-  </details>
-
-  <details id="scoring-methodology" style="margin:0 0 1.5rem">
-    <summary style="font-size:0.8rem;font-weight:500;cursor:pointer">How Usability Scores Are Calculated</summary>
-    <div style="margin-top:0.5rem;font-size:0.75rem;line-height:1.6;color:var(--text)">
-      <p><strong>INF (Inference)</strong> — fast, structural analysis from Playwright journey evidence. <strong>TA (Think-Aloud)</strong> — slow, diagnostic persona narration.</p>
-      <p>7 dimensions scored 0-3: Workflow Continuity, Cross-Persona Handoffs, Scalability, System Status, Technical Abstraction, Mental Model Fidelity, Accessibility. Dimensions marked N/A (e.g., Cross-Persona Handoffs for single-user features) are excluded — composite denominator adjusts accordingly (e.g., 18 when 1 dimension is N/A).</p>
-      <p>Patience model: starts 100%, confusion costs 5-15%, dead ends cost 10-30%, successes recover 5-10%. At 0% the persona abandons.</p>
     </div>
   </details>
 

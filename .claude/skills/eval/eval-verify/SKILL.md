@@ -45,7 +45,7 @@ The x-ray evaluator has full workspace access and uses it for speed. The goal is
 ```javascript
 // Generated script MUST start with this setup:
 const browser = await firefox.launch({ headless: true });
-const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+const context = await browser.newContext({ viewport: { width: 1920, height: 900 } });
 const page = await context.newPage();
 
 // Ensure "All projects" is selected (prototypes often default to an empty project)
@@ -106,8 +106,8 @@ fi
 ```javascript
 import { firefox } from 'playwright';
 const browser = await firefox.launch({ headless: true });
-// MANDATORY: 1440x900 viewport. Default 800x600 truncates table columns.
-const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+// MANDATORY: 1920x900 viewport. Default 800x600 truncates table columns. 1440 is insufficient for tables with 10+ columns (e.g., Kueue scheduling adds Queue + Scheduling + expand toggle).
+const context = await browser.newContext({ viewport: { width: 1920, height: 900 } });
 const page = await context.newPage();
 ```
 
@@ -141,7 +141,7 @@ const primaryRoute = componentMap ? componentMap.target_page : inferPrimaryRoute
 // PAIRED with eval-discover Step 7b (baseline-after.png).
 // Both captures MUST use identical addInitScript setup so the only
 // visual difference is actual code changes, not browser state drift.
-const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+const context = await browser.newContext({ viewport: { width: 1920, height: 900 } });
 const page = await context.newPage();
 await page.addInitScript(() => {
   try { localStorage.setItem('selectedProject', JSON.stringify('All projects')); } catch {}
@@ -161,6 +161,8 @@ await context.close();
 **If the page is still empty after content wait**, capture it anyway — it may indicate a build issue that the report should show. Do NOT use `ensureAllProjects()` here — the click-based approach opens a dropdown that can cover data rows. The `addInitScript` pre-seeding handles project selection before React mounts.
 
 This baseline captures the prototype's main feature page before eval-fix applies any changes. It's used in the report's Fix History tab and Summary section for before/after comparison.
+
+**Optimization:** The report's `buildBaselineComparison()` only renders the before/after when fixes were applied (`appliedFixes.length > 0`). If iteration 1 produces 0 FAILs and the fix loop will not run, the baseline-before screenshot is captured but never displayed. This is acceptable overhead (~2s) as the eval doesn't know at capture time whether fixes will be needed. The paired `baseline-after.png` (captured in eval-discover Step 7b) should be skipped if no fix loop ran — check `iteration-log.json` or `fix-log.json` existence before capturing.
 
 ### Step 2b: Source pre-scan — write component-map.json
 
@@ -249,7 +251,7 @@ const componentMap = JSON.parse(readFileSync(`${ARTIFACTS}/component-map.json`, 
 mkdirSync(SCREENSHOTS, { recursive: true });
 
 const browser = await firefox.launch({ headless: true });
-const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+const context = await browser.newContext({ viewport: { width: 1920, height: 900 } });
 const page = await context.newPage();
 
 // --- PF6 UTILITIES (tested, do not modify) ---
@@ -489,8 +491,7 @@ The output MUST match this exact schema. `render-report.js` reads these specific
         }
       ]
     }
-  ],
-  "exploration": []
+  ]
 }
 ```
 
