@@ -24,6 +24,16 @@ Ensure `.context/usability-testing/`, `.context/consistency-checker/` are bootst
 /eval-iterate RHAISTRAT-1536 http://localhost:4200 --max-iterations=2
 ```
 
+### Evaluating an Existing Prototype (no RFE required)
+
+You can evaluate any running prototype by pointing the pipeline at its URL and workspace. No RFE or Jira ticket is strictly required — you can use the STRAT key directly or even a synthetic key for ad-hoc evaluations:
+
+```
+/eval-iterate RHAISTRAT-432 http://localhost:8080 --workspace=~/Desktop/rhoai-prototypes
+```
+
+If the Jira ticket has no ACs, the pipeline will stop and ask for them. You can also point to a folder without a Jira ticket by providing ACs manually via a local `rfe-snapshot.md` placed in `.artifacts/<KEY>/`.
+
 ## Inputs
 
 | Input | Example | Required | Default |
@@ -39,6 +49,7 @@ Ensure `.context/usability-testing/`, `.context/consistency-checker/` are bootst
 | `--reset` | flag | No | Off (evaluate current state; when set, hard-resets workspace to origin branch HEAD before eval) |
 | `--fresh` | flag | No | Off (when set, deletes .artifacts/<KEY>/ before starting for a clean-slate run) |
 | `--auto-run` | flag | No | Off (when set, chains shell commands to reduce approval prompts in Claude Code from ~20 to ~5) |
+| `--no-report` | flag | No | Off (when set, skips HTML report generation and prints a compact chat summary instead. Use `/generate-report` later to create the full report from cached artifacts) |
 
 ## Environment Detection
 
@@ -429,7 +440,7 @@ Read .claude/skills/eval/eval-discover/SKILL.md and execute it
 # VALIDATE: Verify persona-results.json has non-empty trace[] arrays.
 # If any persona-task entry has empty trace[], the walkthrough failed to write live data.
 # In that case, re-run eval-discover for the affected persona (do NOT hydrate post-hoc).
-# The hydrate-persona-results.js script is DEPRECATED — trace data must be written during Step 1d.
+# Trace data must be written during Step 1d — there is no post-hoc hydration script.
 Read .artifacts/<KEY>/persona-results.json
 if any entry has trace == [] (empty array):
   echo "WARNING: persona-results.json has empty trace[] — re-running eval-discover"
@@ -440,43 +451,77 @@ if any entry has trace == [] (empty array):
 node .claude/skills/eval/scripts/append-iteration-log.js .artifacts/<KEY>/ <iteration> b
 
 # ═══════════════════════════════════════════════════════════════════
-# REPORT (always runs)
+# REPORT (runs unless --no-report is set)
 # ═══════════════════════════════════════════════════════════════════
 
 REPORT:
-Read .claude/skills/eval/eval-report/SKILL.md and execute it with:
-  --note="Phase A: <exit_reason> (<iteration> iterations). Phase B: <usability status>"
+if --no-report:
+  # Skip heavy report generation — print compact chat summary instead.
+  # All artifacts are cached; the user can run /generate-report later.
 
-# ═══════════════════════════════════════════════════════════════════
-# NOTIFY (open report + present summary)
-# ═══════════════════════════════════════════════════════════════════
+  python3 .claude/skills/eval/scripts/eval_state.py set .artifacts/<KEY>/eval-state.yaml \
+    pipeline_end=$(python3 .claude/skills/eval/scripts/eval_state.py timestamp)
 
-python3 .claude/skills/eval/scripts/eval_state.py set .artifacts/<KEY>/eval-state.yaml \
-  pipeline_end=$(python3 .claude/skills/eval/scripts/eval_state.py timestamp)
+  # Read evaluation-summary.json if it exists (from a previous run), otherwise read CSV directly.
+  # evaluation-summary.json is the canonical artifact for conversational mode.
+  Read .artifacts/<KEY>/evaluation-report.csv and .artifacts/<KEY>/extract-state.json
+  Compute pass/fail/flagged counts from CSV
 
-# Open the report for the designer
-open .artifacts/<KEY>/evaluation-report.html
+  # Show unique screenshots inline (only screenshots with distinct visual states)
+  # Use MD5 hashing to deduplicate: group screenshots by hash, show one per unique hash
+  # Pick the most informative screenshot per unique hash (prefer hover/expand states over default table)
 
-# Present narrative summary in chat (same model as eval-review)
-Read .artifacts/<KEY>/evaluation-report.csv and .artifacts/<KEY>/extract-state.json
-Compute pass/fail/flagged counts from CSV
-Present:
+  Present:
 
-  Eval complete for <KEY>: <story title>
+    Eval complete for <KEY>: <story title> (no-report mode)
 
-  **What passed:** <pass>/<total> acceptance criteria. [Usability: <score>/21]
-  **What needs attention:** <list failed/flagged items, 1 line each>
-  **What to do:** <prioritized actions from refinement-suggestions.json>
+    **What passed:** <pass>/<total> acceptance criteria. [Usability: <score>/21]
+    **What needs attention:** <list failed/flagged items, 1 line each>
+    **Key screenshots:** <embed 3-4 unique screenshots inline showing distinct visual states>
+    **What to do:** <prioritized actions from refinement-suggestions.json>
 
-  ---
-  How can I help?
-  • "Fix [issue]" — I'll apply the fix
-  • "Tell me more about [finding]"
-  • "Re-run eval"
-  • "Looks good"
+    ---
+    How can I help?
+    • "Fix [issue]" — I'll apply the fix
+    • "Tell me more about [finding]"
+    • "Re-run eval"
+    • "/generate-report" — create the full HTML report
+    • "Looks good"
 
-# Rebuild leaderboard with latest data
-node .claude/skills/eval/scripts/build-leaderboard.js
+else:
+  Read .claude/skills/eval/eval-report/SKILL.md and execute it with:
+    --note="Phase A: <exit_reason> (<iteration> iterations). Phase B: <usability status>"
+
+  # ═══════════════════════════════════════════════════════════════════
+  # NOTIFY (open report + present summary)
+  # ═══════════════════════════════════════════════════════════════════
+
+  python3 .claude/skills/eval/scripts/eval_state.py set .artifacts/<KEY>/eval-state.yaml \
+    pipeline_end=$(python3 .claude/skills/eval/scripts/eval_state.py timestamp)
+
+  # Open the report for the designer
+  open .artifacts/<KEY>/evaluation-report.html
+
+  # Present narrative summary in chat (same model as eval-review)
+  Read .artifacts/<KEY>/evaluation-report.csv and .artifacts/<KEY>/extract-state.json
+  Compute pass/fail/flagged counts from CSV
+  Present:
+
+    Eval complete for <KEY>: <story title>
+
+    **What passed:** <pass>/<total> acceptance criteria. [Usability: <score>/21]
+    **What needs attention:** <list failed/flagged items, 1 line each>
+    **What to do:** <prioritized actions from refinement-suggestions.json>
+
+    ---
+    How can I help?
+    • "Fix [issue]" — I'll apply the fix
+    • "Tell me more about [finding]"
+    • "Re-run eval"
+    • "Looks good"
+
+  # Rebuild leaderboard with latest data
+  node .claude/skills/eval/scripts/build-leaderboard.js
 ```
 
 ## Selective Rerun (Phase A Iterations 2+)

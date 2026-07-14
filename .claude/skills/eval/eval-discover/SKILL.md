@@ -201,7 +201,7 @@ async function runTask1(page, persona) {
 
 ```javascript
 import { firefox } from 'playwright';
-// MANDATORY: 1440x900 viewport in every context. Default 800x600 truncates tables.
+// MANDATORY: 1920x900 viewport in every context. Default 800x600 truncates tables. 1440 is insufficient for tables with 10+ columns.
 const browser = await firefox.launch({ headless: true });
 
 // MANDATORY: Pre-seed "All projects" in localStorage BEFORE React mounts.
@@ -237,7 +237,7 @@ async function runTask3(page, persona) { /* navigate to deployments, filter/scro
 async function main() {
   for (const persona of personas) {
     for (let i = 0; i < tasks.length; i++) {
-      const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+      const ctx = await browser.newContext({ viewport: { width: 1920, height: 900 } });
       const page = await ctx.newPage();
 
       // MANDATORY: Pre-seed project selection and feature flags BEFORE page.goto().
@@ -634,9 +634,11 @@ Rules:
 - Do NOT suggest fixes for FLAGGED criteria
 - `confidence: "low"` items are logged but NOT auto-applied by eval-fix
 
-### Step 7b: Capture final-state screenshot
+### Step 7b: Capture final-state screenshot (skip if no fix loop ran)
 
-After all persona walkthroughs complete, capture a screenshot of the **primary page being tested** (the same page eval-verify captured for `baseline-before.png`):
+**Skip this step if no fix loop ran** (check: `fix-log.json` does not exist OR `iteration-log.json` shows `iteration: 1` with `fail_count: 0`). The baseline-after screenshot is only meaningful when comparing against baseline-before to show fix impact. When no fixes were applied, both screenshots would be identical — wasted Playwright invocation and report bloat.
+
+If the fix loop DID run, capture a screenshot of the **primary page being tested** (the same page eval-verify captured for `baseline-before.png`):
 
 ```javascript
 // PAIRED with eval-verify Step 2a (baseline-before.png).
@@ -644,7 +646,7 @@ After all persona walkthroughs complete, capture a screenshot of the **primary p
 // visual difference is actual code changes, not browser state drift.
 const primaryRoute = componentMap ? componentMap.target_page : inferPrimaryRoute(extractState);
 
-const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+const ctx = await browser.newContext({ viewport: { width: 1920, height: 900 } });
 const page = await ctx.newPage();
 await page.addInitScript(() => {
   try { localStorage.setItem('selectedProject', JSON.stringify('All projects')); } catch {}
@@ -670,7 +672,13 @@ This pairs with `baseline-before.png` to show how the prototype changed during e
 The following top-level fields inside `usability_dimensions` are REQUIRED:
 - `personas_evaluated` — array of persona IDs (e.g., `["maude-experienced", "maude-junior"]`). NOT inside persona_selection — at the TOP level.
 - `dimensions[].composite_score` — number, the average of persona scores for that dimension. NOT just `score`.
-- `think_aloud.traces` — array with one entry per persona containing `narration_summary`, `confusion_events` count, `dimension_scores`
+- `think_aloud.traces` — array with one entry **per persona per task** containing `narration_summary`, `confusion_events` count, `dimension_scores`, `task_index`, and per-task `patience_end`
+
+**CRITICAL — per-task patience tracking:**
+- Patience resets to 100% at the start of each task (each task runs in an independent browser context/sub-agent).
+- `persona_overlays` entries MUST include `task_index` and pull `patience_start`, `patience_end`, `confusion_events` from the matching `persona-results.json` entry — NOT collapsed across tasks.
+- `think_aloud.traces` entries MUST include `task_index` and use per-task values from `persona-results.json` — NOT broadcast the same persona-level aggregate to every task.
+- If two confusion events from different tasks both occurred at step 3, they are disambiguated by `task_index`.
 
 Also in Step 6 (`persona-results.json`): output MUST be an **array** of objects, NOT a dict keyed by persona ID.
 
@@ -696,13 +704,24 @@ Also in Step 6 (`persona-results.json`): output MUST be an **array** of objects,
       {
         "persona": "maude-experienced",
         "persona_name": "Maude - Experienced MLOps Engineer",
-        "journey_id": "journey-1",
+        "task_index": 1,
         "patience_start": 100,
-        "patience_end": 85,
+        "patience_end": 100,
         "abandoned": false,
         "confusion_events": [
-          { "step": 2, "trigger": "Column headers truncated", "knowledge_gap": "ui: expected", "patience_cost": -5 }
+          { "step": 3, "trigger": "Column headers truncated", "knowledge_gap": "ui: expected", "patience_cost": -5 }
         ],
+        "cli_escapes": 0,
+        "would_complete": true
+      },
+      {
+        "persona": "maude-experienced",
+        "persona_name": "Maude - Experienced MLOps Engineer",
+        "task_index": 2,
+        "patience_start": 100,
+        "patience_end": 100,
+        "abandoned": false,
+        "confusion_events": [],
         "cli_escapes": 0,
         "would_complete": true
       }
@@ -712,17 +731,28 @@ Also in Step 6 (`persona-results.json`): output MUST be an **array** of objects,
       "traces": [
         {
           "persona": "maude-experienced",
+          "task_index": 1,
           "outcome": "completed",
-          "patience_end": 85,
+          "patience_end": 100,
           "confusion_events": 1,
           "cli_escapes": 0,
           "response_strategies": { "help_seeking": 0, "guess_and_continue": 0, "abandon": 0 },
           "expected_vs_actual": [
-            { "step": 2, "expected": "Hover tooltip", "actual": "Expandable row", "impact": "Better than expected" }
+            { "step": 3, "expected": "Hover tooltip", "actual": "Expandable row", "impact": "Better than expected" }
           ],
           "missing_feedback": [],
           "dimension_scores": { "workflow_continuity": { "score": 3, "confidence": "High" } },
-          "narration_summary": "1-2 sentence summary of the persona's experience and key friction point."
+          "narration_summary": "1-2 sentence summary of this persona's experience on this specific task."
+        },
+        {
+          "persona": "maude-experienced",
+          "task_index": 2,
+          "outcome": "completed",
+          "patience_end": 100,
+          "confusion_events": 0,
+          "cli_escapes": 0,
+          "dimension_scores": { "workflow_continuity": { "score": 3, "confidence": "High" } },
+          "narration_summary": "Summary of task 2 experience."
         }
       ]
     }
@@ -732,11 +762,13 @@ Also in Step 6 (`persona-results.json`): output MUST be an **array** of objects,
 
 #### CRITICAL FORMAT RULES for render-report.js
 
-- `persona_overlays` MUST always be populated (one entry per persona per journey)
+- `persona_overlays` MUST always be populated (one entry per persona **per task** — NOT collapsed across tasks)
 - `confusion_events[].step` MUST be a NUMBER matching `journey.steps[].step` (e.g., `2`, not `"journey-1 step 2"`)
 - `dimensions[].id` MUST use the 7 standard IDs (workflow_continuity, cross_persona_handoffs, etc.)
 - `dimensions[].scores` MUST be keyed by persona ID with `{score, confidence, finding}`
 - `think_aloud.traces` MUST be populated when `--usability=deep` — this is what renders the persona insights in the report
-- `think_aloud.traces[].confusion_events` scalar MUST equal `expected_vs_actual.length + missing_feedback.length` (count BOTH types)
+- `think_aloud.traces[].task_index` MUST be present — one trace entry per persona per task, NOT one per persona
+- `think_aloud.traces[].patience_end` MUST be the per-task value from `persona-results.json`, NOT the persona-level aggregate
+- `think_aloud.traces[].confusion_events` scalar MUST equal the count for THAT SPECIFIC TASK, pulled from the matching `persona-results.json` entry
 - `think_aloud.traces[].narration_summary` appears in the Personas tab as the think-aloud narrative
 - `overall_score` MUST be a string in "X/21" format

@@ -1,5 +1,8 @@
 # Pipeline output (per-RFE artifacts)
 .artifacts/
+
+# Parked ideas (local planning, not tracked)
+future.md
 tmp/
 reports/
 

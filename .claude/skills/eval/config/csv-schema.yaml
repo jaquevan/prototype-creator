@@ -103,24 +103,9 @@ sections:
         example: '{"deena-junior": 2, "alex-senior": 3}'
 
   # ---------------------------------------------------------------------------
-  # Section 3: BASELINE
+  # Section 3: BASELINE (REMOVED)
   # ---------------------------------------------------------------------------
-  - name: baseline
-    description: Aggregate metrics computed from the evaluation
-    columns:
-      - name: metric
-        description: "Metric identifier"
-        type: string
-        examples:
-          - total_criteria
-          - pass_rate
-          - usability_composite
-          - journey_pass_rate
-
-      - name: value
-        description: "The metric value"
-        type: string
-
-      - name: source
-        description: "Where this was computed from"
-        type: string
+  # Previously defined aggregate metrics (total_criteria, pass_rate, etc.)
+  # but no downstream consumer ever parsed this section from the CSV.
+  # These metrics now live in evaluation-summary.json, which is the
+  # canonical artifact for conversational mode and agent-readable summaries.

@@ -67,6 +67,26 @@ Or permanently allow the pipeline's commands by adding these patterns to your `~
 }
 ```
 
+### Evaluating Existing Prototypes
+
+You don't need an RFE to run an eval. If a team member already has a prototype running, point the pipeline at the STRAT key and the running server:
+
+```bash
+/eval-iterate RHAISTRAT-432 http://localhost:8080 --workspace=~/Desktop/rhoai-prototypes
+```
+
+The pipeline pulls ACs from the Jira ticket and evaluates the prototype as-is. For prototypes without a Jira ticket, place an `rfe-snapshot.md` with ACs in `.artifacts/<KEY>/` and the pipeline will use those instead of fetching from Jira.
+
+### No-Report Mode
+
+For fast iteration without the full HTML report (~14MB, ~2 min to render):
+
+```bash
+/eval-iterate RHAISTRAT-1536 http://localhost:3000 --workspace=~/Desktop/rhoai-prototypes --no-report
+```
+
+This prints a compact summary in chat with pass/fail counts, key screenshots, and refinement suggestions. Run `/generate-report` later when you want the full HTML report.
+
 ## What It Does
 
 The pipeline has three stages:

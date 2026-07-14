@@ -30,7 +30,7 @@ The eval skill is fully self-contained. Copy the entire `.claude/skills/eval/` d
   │   ├── append-iteration-log.js
   │   ├── validate-verdicts.js
   │   ├── validate-artifacts.js
-  │   ├── hydrate-persona-results.js (deprecated)
+  │   ├── (hydrate-persona-results.js removed — trace data written during Step 1d)
   │   ├── generate-dashboard.js
   │   ├── resolve-root.js
   │   ├── bootstrap-consistency-checker.sh
