@@ -21,11 +21,51 @@ make context
 # 2. Start your prototype locally
 cd ~/Desktop/rhoai-prototypes && npm start
 
-# 3. Run the eval
+# 3. Run the eval (either method works)
 /eval-iterate RHAISTRAT-1536 http://localhost:3000 --workspace=~/Desktop/rhoai-prototypes
 ```
 
 The pipeline runs, opens the report when done, and presents a summary with suggested actions.
+
+### Invocation Methods
+
+Both methods are fully supported — use whichever works in your environment:
+
+| Method | When to use |
+|--------|-------------|
+| **Slash command:** `/eval-iterate RHAISTRAT-1536 ...` | Default. Works when the IDE has indexed `.claude/skills/`. |
+| **Natural language:** "Read `.claude/skills/eval/eval-iterate/SKILL.md` and run it against RHAISTRAT-1536 at http://localhost:3000 with workspace ~/Desktop/rhoai-prototypes" | Fallback when the slash command doesn't appear, or in VS Code / Claude Code where skill indexing may not trigger automatically. |
+
+### Troubleshooting
+
+**Slash command not appearing?**
+- Restart your IDE (Cursor or VS Code) to re-index the skills directory
+- If it still doesn't appear, use the natural-language method above — same pipeline, same results
+- In Claude Code (terminal), skills are always invoked via natural language
+
+### Claude Code Users (VS Code)
+
+The eval pipeline runs ~20 shell commands (`node`, `npm`, `git`) that each require individual approval in Claude Code. Use `--auto-run` to reduce this to 5 checkpoints:
+
+```
+/eval-iterate RHAISTRAT-1536 http://localhost:3000 --workspace=~/Desktop/rhoai-prototypes --auto-run
+```
+
+Or permanently allow the pipeline's commands by adding these patterns to your `~/.claude/settings.json`:
+
+```json
+{
+  "permissions": {
+    "allow": [
+      "Bash(node .claude/skills/eval/scripts/*)",
+      "Bash(node .artifacts/*)",
+      "Bash(npm run build)",
+      "Bash(git log *)",
+      "Bash(git status *)"
+    ]
+  }
+}
+```
 
 ## What It Does
 
@@ -104,6 +144,7 @@ All output goes to `.artifacts/<KEY>/` (gitignored):
 | `iteration-log.json` | eval-iterate | Per-iteration pass/fail counts (from CSV) |
 | `eval-state.yaml` | eval-iterate | Pipeline state, per-skill timing |
 | `evaluation-report.html` | eval-report | Self-contained HTML report with embedded screenshots |
+| `evaluation-summary.json` | eval-report | Agent-readable summary: AC verdicts, usability scores, counts, iteration state |
 | `usability-thinkaloud-*.md` | eval-discover | Per-persona per-task think-aloud traces |
 | `screenshots/` | eval-verify + eval-discover | Journey finals, persona walkthroughs, baselines |
 
