@@ -201,7 +201,7 @@ Write to `.artifacts/<KEY>/component-map.json`:
 
 ### Step 3: Generate and run Playwright script
 
-Generate `.artifacts/<KEY>/journey-test.mjs` using the component map from Step 2b.
+Generate `.artifacts/<KEY>/journey-test.mjs` using the component map from Step 2b and the PF6 script template below.
 
 **Journey skip check (when `--rerun-only` set):** For each journey, check if ANY of its `ac_ids` are in `--rerun-only`. If none are, skip the journey — carry forward its previous `journey-log.json` entry and screenshots.
 
@@ -214,56 +214,138 @@ The generated script MUST contain:
 
 Verify before running: `journey_count_in_script == len(extract-state.journey_definitions)`
 
+#### Visual Differentiation Rule (MANDATORY)
+
+**Each journey MUST produce a screenshot showing a UNIQUE visual state.** Never screenshot the same default table view for multiple journeys. Before capturing the final screenshot, each journey must perform at least one interaction that visibly changes the page:
+
+| AC type | Required interaction before screenshot |
+|---|---|
+| Feature visibility (columns, labels) | Default table view is acceptable for ONE journey only |
+| Tooltip content ("hover over X") | `page.hover()` → screenshot WITH tooltip visible on screen |
+| Expandable row ("details", "resource info") | Click expand toggle → screenshot showing expanded content |
+| Feature absence ("when disabled", "no indicators") | Source verification → FLAGGED (can't toggle in prototype) |
+| Error absence ("no errors", "graceful degradation") | Check DOM for errors → screenshot (can share default view if no errors) |
+| Unmanaged/alternative state | Scroll to or highlight the specific row showing different state |
+| Multiple resource types | Expand a row showing the specific type, or navigate to a detail view |
+
+**Enforcement:** After generating the script, verify that no two journey functions produce screenshots at the same page state. If journeys 1, 3, and 4 all just call `navigateToDeployments()` and screenshot the same table, the script is INVALID — add interactions (hover, expand, scroll) to differentiate them.
+
+#### PF6 Script Template
+
+Use this tested template as the BASE of every generated `journey-test.mjs`. The agent fills in the journey-specific logic — do NOT write the boilerplate from scratch.
+
+```javascript
+import { firefox } from 'playwright';
+import { readFileSync, writeFileSync, mkdirSync } from 'fs';
+
+const BASE_URL = '<prototype-url>';
+const ARTIFACTS = '.artifacts/<KEY>';
+const SCREENSHOTS = `${ARTIFACTS}/screenshots`;
+const componentMap = JSON.parse(readFileSync(`${ARTIFACTS}/component-map.json`, 'utf8'));
+
+mkdirSync(SCREENSHOTS, { recursive: true });
+
+const browser = await firefox.launch({ headless: true });
+const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+const page = await context.newPage();
+
+// --- PF6 UTILITIES (tested, do not modify) ---
+
+// Pre-set project to "All projects" before React loads
+await page.addInitScript(() => {
+  try { localStorage.setItem('selectedProject', JSON.stringify('All projects')); } catch {}
+});
+
+async function navigateTo(route) {
+  await page.goto(`${BASE_URL}${route}`);
+  await page.waitForLoadState('domcontentloaded');
+  await page.waitForTimeout(2000);
+  // Verify data loaded
+  await page.waitForSelector('tbody tr', { timeout: 8000 }).catch(() => null);
+}
+
+async function expandRow(rowText) {
+  const row = page.locator('tbody tr').filter({ hasText: rowText }).first();
+  const toggle = row.locator('td:first-child button').first();
+  if (await toggle.isVisible({ timeout: 2000 }).catch(() => false)) {
+    await toggle.click();
+    await page.waitForTimeout(800);
+  }
+}
+
+async function hoverElement(selector) {
+  const el = page.locator(selector).first();
+  if (await el.isVisible({ timeout: 2000 }).catch(() => false)) {
+    await el.hover();
+    await page.waitForTimeout(600);
+  }
+}
+
+async function getTooltipText() {
+  const tooltip = page.locator('.pf-v6-c-tooltip__content').first();
+  if (await tooltip.isVisible({ timeout: 2000 }).catch(() => false)) {
+    return await tooltip.textContent();
+  }
+  return null;
+}
+
+async function getColumnHeaders() {
+  return await page.locator('thead th').allTextContents();
+}
+
+async function checkNoErrors() {
+  const errors = await page.locator('.pf-v6-c-alert--danger, [role="alert"]').count();
+  const bodyText = await page.locator('body').textContent().catch(() => '');
+  return errors === 0 && !bodyText.includes('403') && !bodyText.includes('Forbidden');
+}
+
+async function screenshot(name) {
+  await page.screenshot({ path: `${SCREENSHOTS}/${name}`, fullPage: false });
+}
+
+// --- JOURNEYS (agent fills these in using component-map.json) ---
+
+// EXAMPLE journey showing visual differentiation:
+// Journey for tooltip AC: navigate → hover over element → screenshot WITH tooltip
+// Journey for expand AC: navigate → click expand → screenshot WITH expanded content
+// Journey for absence AC: navigate → verify no elements → screenshot (FLAGGED if can't toggle)
+
+// <AGENT FILLS IN JOURNEY FUNCTIONS HERE>
+// Each journey function MUST:
+// 1. Call navigateTo(componentMap.target_page)
+// 2. Perform a UNIQUE interaction (hover, expand, scroll, filter)
+// 3. Call screenshot('journey-N-final.png') AFTER the interaction
+// 4. Return { id, title, ac_ids, verdict, steps }
+
+// --- MAIN ---
+async function main() {
+  await navigateTo(componentMap.target_page);
+  await screenshot('baseline-before.png');
+
+  // <AGENT CALLS EACH JOURNEY FUNCTION HERE>
+
+  await browser.close();
+
+  // Write results to journey artifacts
+  writeFileSync(`${ARTIFACTS}/journey-results.json`, JSON.stringify(results, null, 2));
+}
+
+main().catch(console.error);
+```
+
+**The agent's job:** Read `component-map.json`, then for each journey, write a function body that:
+1. Navigates to the target page (already done by the template)
+2. Performs the AC-specific interaction (hover, expand, scroll, check absence)
+3. Captures a screenshot AFTER the interaction
+4. Records the verdict
+
+Do NOT rewrite the utilities. Do NOT change the browser/context setup. Only fill in the journey functions.
+
 #### Journey Step Relevance Rule
 
-Every step MUST be necessary to verify the AC. Do not add steps that test unrelated interactions, attempt to toggle feature flags, navigate to unmentioned pages, or require backend state changes.
-
-If an AC describes a disabled/alternative state (e.g., "when Kueue is not enabled"):
+Every step MUST be necessary to verify the AC. If an AC describes a disabled/alternative state (e.g., "when Kueue is not enabled"):
 - Verify the conditional rendering exists in source code
-- Verify the feature flag gates the UI
-- Mark the journey **FLAGGED** with note: "Conditional rendering verified via source code only — cannot visually verify disabled state in this prototype"
-
-#### PatternFly Interaction Patterns
-
-Use these patterns when ACs describe specific UI interactions. Selectors come from the Step 2b component map.
-
-**Tooltip verification** (AC says "hover over X to see Y"):
-```javascript
-const target = page.locator('<selector-from-component-map>');
-await target.hover();
-await page.waitForTimeout(500);
-const tooltip = page.locator('.pf-v6-c-tooltip__content');
-const tooltipVisible = await tooltip.isVisible({ timeout: 3000 }).catch(() => false);
-const tooltipText = tooltipVisible ? await tooltip.textContent() : '';
-await page.screenshot({ path: screenshotPath });
-```
-
-**Expandable row verification** (AC says "click to see details" or "expand row"):
-```javascript
-const expandButton = page.locator('tr').filter({ hasText: 'target-name' })
-  .locator('button[aria-label*="expand"], td:first-child button');
-await expandButton.click();
-await page.waitForTimeout(500);
-const expandedContent = page.locator('.pf-v6-c-table__expandable-row-content');
-const visible = await expandedContent.isVisible().catch(() => false);
-```
-
-**Column-aware table verification** (use the component map, not AC text):
-```javascript
-const headerCells = await page.locator('thead th').allTextContents();
-const targetIndex = headerCells.findIndex(h => h.includes('<column-name-from-component-map>'));
-const cells = page.locator(`tbody tr td:nth-child(${targetIndex + 1})`);
-```
-
-**Error/RBAC state detection** (AC mentions "error", "RBAC", "permission", "graceful degradation", "no error indicators"):
-```javascript
-const errorElements = await page.locator(
-  '[class*="error"], [class*="danger"], .pf-v6-c-alert--danger, [role="alert"]'
-).count();
-const pageContent = await page.content();
-const has403 = pageContent.includes('403') || pageContent.includes('Forbidden');
-const result = (errorElements === 0 && !has403) ? 'success' : 'fail';
-```
+- Mark the journey **FLAGGED** — cannot visually verify disabled state in this prototype
 
 #### Verdict Assignment
 

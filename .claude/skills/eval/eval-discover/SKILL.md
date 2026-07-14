@@ -115,6 +115,14 @@ For each task:
 - If a task describes a state that can't be shown (feature disabled, RBAC restricted), navigate to the closest relevant page (Settings, Feature Flags, admin panel) and STAY there. Do NOT fall back to the default page.
 - A task about "comparing two things" should show BOTH things side-by-side or in sequence, not just one
 
+**Single-page prototype rule:** If ALL tasks resolve to the same route (e.g., all target the deployments page), differentiation MUST come from interactions:
+- Task 1: navigate + scan table (default view screenshot)
+- Task 2: expand a specific row (expanded content screenshot)
+- Task 3: hover over a status label (tooltip visible screenshot)
+- Task N: scroll to a specific row, open a modal, click a tab, filter the table
+
+**NEVER generate multiple task functions that all just navigate and screenshot the default table view.** Each task function's final screenshot must show a visually distinct state. If the component-map.json shows interactive_elements (tooltips, expandable rows), tasks MUST use them.
+
 **Write the task route mapping** as a comment block at the top of `persona-walkthrough.mjs`:
 
 ```
