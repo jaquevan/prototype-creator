@@ -296,6 +296,71 @@ function buildFullCsv(csvRaw, journeyLog, passCount, failCount, flaggedCount) {
   return fullCsv;
 }
 
+function buildSummaryJson() {
+  const protoId = extractPrototypeId();
+  const csvRaw = readFileOr(path.join(absArtifacts, 'evaluation-report.csv'), '');
+  const journeyLog = readJsonOr(path.join(absArtifacts, 'journey-log.json'), null);
+  const iterationLog = readJsonOr(path.join(absArtifacts, 'iteration-log.json'), null);
+  const suggestions = readJsonOr(path.join(absArtifacts, 'refinement-suggestions.json'), []);
+  const ud = journeyLog ? normalizeUsabilityDimensions(journeyLog.usability_dimensions) : null;
+  const csvRows = parseCsv(csvRaw);
+
+  let passCount = 0, failCount = 0, flaggedCount = 0;
+  for (const r of csvRows) {
+    const v = (r.verdict || '').toUpperCase();
+    if (v === 'PASS') passCount++;
+    else if (v === 'FAIL') failCount++;
+    else if (v === 'FLAGGED') flaggedCount++;
+  }
+  const total = passCount + failCount + flaggedCount;
+
+  let status = 'needs-attention';
+  if (total > 0 && failCount === 0 && flaggedCount === 0) status = 'pass';
+  else if (failCount > 0) status = 'fail';
+
+  const acVerdicts = csvRows.map(r => ({
+    id: r.criterion_id || '',
+    text: r.criterion_text || '',
+    verdict: (r.verdict || '').toUpperCase(),
+    tier: r.tier || '',
+    rationale: r.rationale || '',
+  }));
+
+  const usability = {};
+  if (ud) {
+    usability.overall_score = ud.overall_score || null;
+    usability.personas_evaluated = ud.personas_evaluated || [];
+    usability.dimensions = (ud.dimensions || []).map(d => ({
+      id: d.id,
+      name: d.name,
+      composite_score: d.composite_score,
+      persona_scores: d.persona_scores || d.scores || {},
+    }));
+  }
+
+  const pendingSuggestions = Array.isArray(suggestions)
+    ? suggestions.filter(s => !s.applied).length
+    : 0;
+
+  const iteration = {};
+  if (iterationLog) {
+    iteration.current = (iterationLog.iterations || []).length;
+    iteration.max = iterationLog.max_iterations || null;
+    iteration.exit_reason = iterationLog.exit_reason || null;
+  }
+
+  return {
+    key: protoId,
+    timestamp: (journeyLog && journeyLog.evaluated_at) || new Date().toISOString(),
+    status,
+    ac_verdicts: acVerdicts,
+    counts: { pass: passCount, fail: failCount, flagged: flaggedCount, total },
+    usability: Object.keys(usability).length ? usability : null,
+    suggestions_pending: pendingSuggestions,
+    iteration: Object.keys(iteration).length ? iteration : null,
+  };
+}
+
 function escapeCSVField(str) {
   if (!str) return '';
   if (str.includes(',') || str.includes('"') || str.includes('\n')) {
@@ -475,15 +540,18 @@ function buildPersonaSelectionHtml() {
   const selection = ud.persona_selection;
   if (selection) {
     let html = `<p class="small"><strong>Target audience:</strong> ${escapeHtml(selection.target_audience_text || '—')}</p>`;
-    if (selection.target_audience_source) html += `<p class="small muted"><strong>Source:</strong> ${escapeHtml(selection.target_audience_source)}</p>`;
-    html += `<p class="small"><strong>Reasoning:</strong> ${escapeHtml(selection.reasoning || '—')}</p>`;
-    html += `<p class="small"><strong>Selected:</strong> ${(selection.selected || []).map(p => '<code>' + escapeHtml(p) + '</code>').join(', ')}</p>`;
-    if (selection.considered_but_rejected && selection.considered_but_rejected.length) {
-      html += `<details><summary class="small muted">Considered but rejected</summary><ul class="small">`;
-      for (const r of selection.considered_but_rejected) {
-        html += `<li><code>${escapeHtml(r.persona)}</code> — ${escapeHtml(r.reason)}</li>`;
+    if (selection.reasoning) {
+      html += `<details><summary class="small muted" style="cursor:pointer">Why these personas?</summary>`;
+      html += `<p class="small" style="margin:0.5rem 0">${escapeHtml(selection.reasoning)}</p>`;
+      if (selection.target_audience_source) html += `<p class="small muted">Source: ${escapeHtml(selection.target_audience_source)}</p>`;
+      if (selection.considered_but_rejected && selection.considered_but_rejected.length) {
+        html += `<p class="small muted" style="margin-top:0.5rem"><strong>Considered but not selected:</strong></p><ul class="small">`;
+        for (const r of selection.considered_but_rejected) {
+          html += `<li><code>${escapeHtml(r.persona)}</code> — ${escapeHtml(r.reason)}</li>`;
+        }
+        html += `</ul>`;
       }
-      html += `</ul></details>`;
+      html += `</details>`;
     }
     return html;
   }
@@ -1929,44 +1997,41 @@ function buildTabbedExecSummary() {
 
   // === Summary panel ===
   let summaryInner = '';
-  summaryInner += `<p class="exec-detail"><strong>Acceptance criteria:</strong> ${acCount}</p>`;
-  if (rfeKey) summaryInner += `<p class="exec-detail"><strong>Linked RFE:</strong> ${escapeHtml(rfeKey)}</p>`;
 
-  // Feature context — background, problem statement, user stories, UI enhancements
   const featureCtx = extractState && extractState.feature_context;
   if (featureCtx) {
     if (featureCtx.problem_statement) {
       summaryInner += `<div class="exec-detail exec-problem" style="margin:0.5rem 0;padding:0.5rem 0.75rem;background:rgba(0,102,204,0.04);border-left:3px solid var(--accent);border-radius:0.25rem"><strong>Problem:</strong> ${escapeHtml(featureCtx.problem_statement)}</div>`;
     }
     if (featureCtx.background) {
-      summaryInner += `<p class="exec-detail small muted" style="margin-top:0.25rem"><strong>Background:</strong> ${escapeHtml(featureCtx.background)}</p>`;
+      summaryInner += `<div class="exec-detail small" style="margin-top:0.5rem"><p style="margin:0;color:var(--text2);line-height:1.6"><strong>Background:</strong> ${escapeHtml(featureCtx.background)}</p></div>`;
     }
     if (featureCtx.ui_enhancements) {
       const uiSections = featureCtx.ui_enhancements
         .split(/(?=New Columns|Status Indicators|Detailed View|Queue Position|Autoscale|Resource Allocation)/i)
         .map(s => s.trim()).filter(Boolean);
-      summaryInner += `<div class="exec-detail small" style="margin-top:0.5rem"><strong>UI changes:</strong>`;
-      summaryInner += `<ul style="margin:0.25rem 0 0 1rem;padding:0;line-height:1.5">`;
+      summaryInner += `<details class="exec-detail small exec-dropdown" style="margin-top:0.5rem"><summary><strong>Proposed UI enhancements</strong> <span class="muted">(from RFE) &middot; ${uiSections.length} items</span></summary>`;
+      summaryInner += `<ul style="margin:0.5rem 0 0 1rem;padding:0;line-height:1.5">`;
       for (const section of uiSections.slice(0, 8)) {
         summaryInner += `<li style="margin-bottom:0.3rem">${escapeHtml(section)}</li>`;
       }
       if (uiSections.length > 8) summaryInner += `<li class="muted">+${uiSections.length - 8} more</li>`;
-      summaryInner += `</ul></div>`;
+      summaryInner += `</ul></details>`;
     }
     if (Array.isArray(featureCtx.user_stories) && featureCtx.user_stories.length) {
-      summaryInner += `<div class="exec-detail small" style="margin-top:0.5rem"><strong>User stories:</strong>`;
-      summaryInner += `<ul style="margin:0.25rem 0 0 1rem;padding:0;line-height:1.6">`;
+      summaryInner += `<details class="exec-detail small exec-dropdown" style="margin-top:0.5rem"><summary><strong>User stories</strong> <span class="muted">&middot; ${featureCtx.user_stories.length} stories</span></summary>`;
+      summaryInner += `<ul style="margin:0.5rem 0 0 1rem;padding:0;line-height:1.6">`;
       for (const story of featureCtx.user_stories.slice(0, 6)) {
         summaryInner += `<li style="margin-bottom:0.3rem">${escapeHtml(story)}</li>`;
       }
       if (featureCtx.user_stories.length > 6) summaryInner += `<li class="muted">+${featureCtx.user_stories.length - 6} more</li>`;
-      summaryInner += `</ul></div>`;
+      summaryInner += `</ul></details>`;
     }
   } else if (outcomeContext && outcomeContext.problem_statement) {
     summaryInner += `<p class="exec-detail exec-problem">${escapeHtml(outcomeContext.problem_statement)}</p>`;
   }
 
-  // Inline pipeline stats (replaces the separate Pipeline tab)
+  // Inline pipeline stats
   if (iterationLog) {
     const iters = (iterationLog.iterations || []).length;
     const exitReason = iterationLog.exit_reason || 'pending';
@@ -1974,24 +2039,6 @@ function buildTabbedExecSummary() {
     summaryInner += `<strong>Pipeline:</strong> ${iters} iteration${iters !== 1 ? 's' : ''} &middot; Exit: ${escapeHtml(exitReason)}`;
     if (mrDelta) summaryInner += ` &middot; ${mrDelta.total_files_changed || 0} files changed`;
     summaryInner += `</p>`;
-  }
-
-  // Before/after baseline comparison — only show when eval-fix actually changed the prototype
-  const summaryFixLog = readJsonOr(path.join(absArtifacts, 'fix-log.json'), null);
-  const summaryAppliedFixes = summaryFixLog ? (Array.isArray(summaryFixLog) ? summaryFixLog : summaryFixLog.applied || []) : [];
-  if (summaryAppliedFixes.length > 0) {
-    const beforePath = path.join(absArtifacts, 'screenshots', 'baseline-before.png');
-    const afterPath = path.join(absArtifacts, 'screenshots', 'baseline-after.png');
-    if (fs.existsSync(beforePath) && fs.existsSync(afterPath)) {
-      const beforeB64 = fs.readFileSync(beforePath).toString('base64');
-      const afterB64 = fs.readFileSync(afterPath).toString('base64');
-      summaryInner += `<div style="margin-top:0.75rem;border-top:1px solid var(--border);padding-top:0.75rem">`;
-      summaryInner += `<strong class="small" style="color:var(--text)">Before / After</strong>`;
-      summaryInner += `<div style="display:grid;grid-template-columns:1fr 1fr;gap:0.5rem;margin-top:0.5rem">`;
-      summaryInner += `<div style="text-align:center"><span class="small muted" style="display:block;margin-bottom:0.25rem">Before (initial state)</span><img src="data:image/png;base64,${beforeB64}" style="width:100%;border-radius:0.375rem;border:1px solid var(--border)" onclick="openImageLightbox(this.src)"></div>`;
-      summaryInner += `<div style="text-align:center"><span class="small muted" style="display:block;margin-bottom:0.25rem">After (post-evaluation)</span><img src="data:image/png;base64,${afterB64}" style="width:100%;border-radius:0.375rem;border:1px solid var(--border)" onclick="openImageLightbox(this.src)"></div>`;
-      summaryInner += `</div></div>`;
-    }
   }
 
   // === Assemble (single panel, no tabs) ===
@@ -2618,41 +2665,39 @@ function buildTokens(opts = {}) {
 
   if (ud && ud.dimensions) {
     const personas = ud.personas_evaluated || [];
-    let thHeaders = '<th>Dimension</th>';
-    for (const p of personas) thHeaders += `<th>${escapeHtml(p)}</th>`;
-    thHeaders += '<th>Composite</th><th>Confidence</th><th>Key Finding</th>';
-
-    let tbodyRows = '';
     const sensitivityItems = [];
 
+    let cards = '';
     for (const dim of ud.dimensions) {
       const isNA = dim.composite_score === 'N/A' || dim.composite_score === 'n/a';
-      let row = `<td>${escapeHtml(dim.name)}${isNA ? ' <span class="score-na-label" title="Not applicable — single-user feature with no cross-persona handoff">N/A</span>' : ''}</td>`;
-      const scores = [];
-      let anyConf = '';
+      const score = isNA ? 'N/A' : dim.composite_score;
+      const scoreColor = isNA ? 'var(--text2)' : score >= 2.5 ? 'var(--status-success)' : score >= 1.5 ? 'var(--status-warning)' : 'var(--status-danger)';
 
+      const findings = [];
+      const scores = [];
       for (const p of personas) {
         const s = dim.scores[p];
         if (s) {
-          const sVal = s.score === 'N/A' || s.score === 'n/a'
-            ? '<span class="score-na">N/A</span>'
-            : `${s.score}/3`;
-          row += `<td>${sVal}</td>`;
           if (s.score !== 'N/A' && s.score !== 'n/a') scores.push(s.score);
-          anyConf = s.confidence || anyConf;
-        } else {
-          row += `<td>—</td>`;
+          if (s.finding) findings.push(s.finding);
         }
       }
+      const finding = findings[0] || (isNA ? 'Single-user feature — no cross-persona handoff to evaluate' : '');
 
-      const compDisplay = isNA
-        ? '<span class="score-na" title="Not applicable — single-user feature">N/A</span>'
-        : `<strong>${dim.composite_score}/3</strong>`;
-      row += `<td>${compDisplay}</td>`;
-      row += `<td>${escapeHtml(anyConf)}</td>`;
-      const finding = dim.scores[personas[0]] ? dim.scores[personas[0]].finding : '';
-      row += `<td class="small">${escapeHtml(isNA ? 'Single-user feature — no cross-persona handoff to evaluate' : finding)}</td>`;
-      tbodyRows += `<tr${isNA ? ' class="dim-na"' : ''}>${row}</tr>`;
+      let personaScores = '';
+      for (const p of personas) {
+        const s = dim.scores[p];
+        const pName = p.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+        const pScore = s ? (s.score === 'N/A' ? 'N/A' : `${s.score}/3`) : '—';
+        personaScores += `<span style="font-size:0.7rem;color:var(--text2)">${escapeHtml(pName)}: <strong style="color:var(--text)">${pScore}</strong></span>`;
+      }
+
+      cards += `<div class="usability-card" style="display:flex;gap:1rem;padding:1rem;border:1px solid var(--border);border-radius:0.5rem;margin-bottom:0.5rem;background:var(--bg)">`;
+      cards += `<div style="flex-shrink:0;text-align:center;min-width:56px"><div style="font-size:1.5rem;font-weight:700;color:${scoreColor};line-height:1">${isNA ? 'N/A' : score + '/3'}</div></div>`;
+      cards += `<div style="flex:1;min-width:0"><div style="font-weight:600;font-size:0.875rem;color:var(--text);margin-bottom:0.25rem">${escapeHtml(dim.name)}</div>`;
+      cards += `<p style="font-size:0.8125rem;color:var(--text2);line-height:1.55;margin:0 0 0.4rem">${escapeHtml(finding)}</p>`;
+      cards += `<div style="display:flex;gap:1rem;flex-wrap:wrap">${personaScores}</div>`;
+      cards += `</div></div>`;
 
       if (scores.length >= 2) {
         const maxS = Math.max(...scores);
@@ -2663,7 +2708,7 @@ function buildTokens(opts = {}) {
       }
     }
 
-    usabilityTable = `<table class="tbl"><thead><tr>${thHeaders}</tr></thead><tbody>${tbodyRows}</tbody></table>`;
+    usabilityTable = cards;
 
     if (sensitivityItems.length) {
       personaSensitivity = `<h3>Persona Sensitivity</h3><div class="card card-warning"><ul>${sensitivityItems.join('')}</ul></div>`;
@@ -2672,64 +2717,38 @@ function buildTokens(opts = {}) {
     // Patience tracking
     const overlays = ud.persona_overlays || [];
     if (overlays.length) {
-      let pRows = '';
+      let pCards = '';
       for (const o of overlays) {
-        const friction = o.confusion_events && o.confusion_events.length
-          ? escapeHtml(o.confusion_events[0].trigger)
-          : 'None';
-        pRows += `<tr><td>${escapeHtml(o.persona_name || o.persona)}</td><td>${escapeHtml(o.journey_id)}</td><td>100%</td><td>${o.patience_end}%</td><td>${o.abandoned ? 'Yes' : 'No'}</td><td>${o.confusion_events ? o.confusion_events.length : 0}</td><td class="small">${friction}</td></tr>`;
-      }
-      patienceTracking = `<h3>Patience Tracking</h3><table class="tbl"><thead><tr><th>Persona</th><th>Journey</th><th>Start</th><th>End</th><th>Abandoned</th><th>Confusion</th><th>Key Friction</th></tr></thead><tbody>${pRows}</tbody></table>`;
-    }
-  }
+        const name = escapeHtml(o.persona_name || o.persona);
+        const pEnd = o.patience_end != null ? o.patience_end : 100;
+        const barColor = pEnd > 70 ? 'var(--status-success)' : pEnd > 40 ? 'var(--status-warning)' : 'var(--status-danger)';
+        const confCount = o.confusion_events ? o.confusion_events.length : 0;
+        const abandoned = o.abandoned ? 'Yes' : 'No';
+        const frictions = (o.confusion_events || []).map(e => e.trigger || '').filter(Boolean);
 
-  // ---- Think-Aloud Comparison (INF vs TA) ----
-  let thinkAloudComparison = '';
-  if (ud && ud.think_aloud && ud.think_aloud.traces && ud.think_aloud.traces.length > 0) {
-    const dimNames = {
-      workflow_continuity: 'Workflow Continuity',
-      cross_persona_handoffs: 'Cross-Persona Handoffs',
-      scalability_progressive_complexity: 'Scalability & Complexity',
-      system_status_trust: 'System Status & Trust',
-      technical_abstraction: 'Technical Abstraction',
-      mental_model_fidelity: 'Mental Model Fidelity',
-      accessibility_inclusion: 'Accessibility'
-    };
+        pCards += `<div style="display:flex;align-items:center;gap:1rem;padding:0.75rem 1rem;border:1px solid var(--border);border-radius:0.5rem;margin-bottom:0.5rem;background:var(--bg)">`;
+        pCards += `<div style="flex:1;min-width:0"><div style="font-weight:600;font-size:0.875rem;color:var(--text)">${name}</div>`;
+        pCards += `<div style="display:flex;align-items:center;gap:0.75rem;margin-top:0.35rem">`;
+        pCards += `<div style="flex:1;max-width:160px;height:6px;background:var(--border);border-radius:3px;overflow:hidden"><div style="width:${pEnd}%;height:100%;background:${barColor};border-radius:3px"></div></div>`;
+        pCards += `<span style="font-size:0.75rem;font-weight:600;color:${barColor}">${pEnd}%</span>`;
+        pCards += `</div></div>`;
+        pCards += `<div style="display:flex;gap:1.5rem;flex-shrink:0">`;
+        pCards += `<div style="text-align:center"><div style="font-size:0.65rem;color:var(--text2);text-transform:uppercase;letter-spacing:0.05em">Confusion</div><div style="font-size:1rem;font-weight:700;color:${confCount > 0 ? 'var(--status-warning)' : 'var(--status-success)'}">${confCount}</div></div>`;
+        pCards += `<div style="text-align:center"><div style="font-size:0.65rem;color:var(--text2);text-transform:uppercase;letter-spacing:0.05em">Abandoned</div><div style="font-size:1rem;font-weight:700;color:${abandoned === 'Yes' ? 'var(--status-danger)' : 'var(--status-success)'}">${abandoned}</div></div>`;
+        pCards += `</div></div>`;
 
-    const infDims = {};
-    if (ud.dimensions) {
-      for (const d of ud.dimensions) {
-        infDims[d.id] = d.composite_score;
-      }
-    }
-
-    let compRows = '';
-    const taAvg = {};
-    for (const trace of ud.think_aloud.traces) {
-      if (trace.dimension_scores) {
-        for (const [key, val] of Object.entries(trace.dimension_scores)) {
-          if (val.score === 'N/A' || val.score === 'n/a') continue;
-          if (!taAvg[key]) taAvg[key] = { sum: 0, count: 0 };
-          taAvg[key].sum += val.score;
-          taAvg[key].count++;
+        if (frictions.length) {
+          pCards += `<div style="padding:0 1rem 0.5rem;margin-top:-0.5rem"><p class="small muted" style="margin:0">Friction: ${frictions.map(f => escapeHtml(f)).join(', ')}</p></div>`;
         }
       }
+      patienceTracking = `<h3 style="margin-bottom:0.5rem">Patience Tracking</h3>${pCards}`;
     }
-
-    for (const [key, label] of Object.entries(dimNames)) {
-      const inf = infDims[key] !== undefined ? infDims[key] : '—';
-      const ta = taAvg[key] ? (taAvg[key].sum / taAvg[key].count).toFixed(1) : '—';
-      if (inf === 'N/A' || inf === 'n/a' || (ta === '—' && inf === '—')) {
-        compRows += `<tr class="dim-na"><td>${label}</td><td colspan="3" class="small muted">N/A — not scored for this feature</td></tr>`;
-        continue;
-      }
-      const delta = (inf !== '—' && ta !== '—') ? (parseFloat(ta) - parseFloat(inf)).toFixed(1) : '—';
-      const deltaStr = delta !== '—' && parseFloat(delta) !== 0 ? (parseFloat(delta) > 0 ? '+' + delta : delta) : '0';
-      compRows += `<tr><td>${label}</td><td>${inf}/3</td><td>${ta}/3</td><td><strong>${deltaStr}</strong></td></tr>`;
-    }
-
-    thinkAloudComparison = `<h2>INF vs Think-Aloud Comparison <a class="help-anchor" href="#scoring-methodology" onclick="document.getElementById('scoring-methodology').open=true;return true" title="How scores are calculated">?</a></h2><p class="small muted" style="margin:-0.5rem 0 1rem"><strong>INF (Inference)</strong> scores are derived from structural analysis of the Playwright journey evidence — what the evaluator observes about the UI flow without role-playing a persona. <strong>TA (Think-Aloud)</strong> scores come from persona walkthroughs where each persona navigates the prototype at their own competence level, experiencing confusion, patience drain, and knowledge gaps in real-time. A positive delta means the UI works better in practice than the structure suggests; negative means real users struggle more than expected.</p><table class="tbl"><thead><tr><th>Dimension</th><th>INF Score</th><th>TA Score</th><th>Delta</th></tr></thead><tbody>${compRows}</tbody></table>`;
   }
+
+  // INF vs TA comparison removed — both scores come from the same evaluator run,
+  // producing identical values and all-zero deltas. The dimension scores table above
+  // already shows the composite scores which is all designers need.
+  const thinkAloudComparison = '';
 
   // ---- Think-Aloud Narratives ----
   let thinkAloudNarratives = '';
@@ -2796,7 +2815,13 @@ function buildTokens(opts = {}) {
       if (!rationale && !humanAction) hasEmptyContext = true;
       const rationaleDisplay = rationale || '<span class="muted" style="font-style:italic">Review this criterion against the prototype directly</span>';
       const actionDisplay = humanAction || '<span class="muted" style="font-style:italic">Verify manually</span>';
-      rows += `<tr><td><strong>${escapeHtml(r.criterion_id)}</strong></td><td class="small">${escapeHtml(r.criterion_text)}</td><td>${escapeHtml(r.tier)}</td><td class="small">${rationaleDisplay}</td><td class="small">${actionDisplay}</td></tr>`;
+      const shortText = (r.criterion_text || '').length > 80
+        ? escapeHtml(r.criterion_text.slice(0, 80)) + '&hellip;'
+        : escapeHtml(r.criterion_text);
+      rows += `<tr><td><strong>${escapeHtml(r.criterion_id)}</strong></td><td class="small">${shortText}</td><td>${escapeHtml(r.tier)}</td><td class="small">${rationaleDisplay}</td><td class="small">${actionDisplay}</td></tr>`;
+      if (r.criterion_text && r.criterion_text.length > 80) {
+        rows += `<tr><td colspan="5" style="padding:0.25rem 1rem 0.75rem;background:var(--bg2);border-top:none"><details><summary style="font-size:0.75rem;color:var(--accent);cursor:pointer;font-weight:500">Expected behavior</summary><p style="font-size:0.8125rem;line-height:1.6;color:var(--text);margin:0.5rem 0 0;white-space:pre-wrap">${escapeHtml(r.criterion_text)}</p></details></td></tr>`;
+      }
     }
     let contextNote = '';
     if (hasEmptyContext) {
@@ -2922,6 +2947,7 @@ function buildTokens(opts = {}) {
     '{{MR_URL}}': mrUrl,
     '{{MR_LABEL}}': mrNumber ? `MR !${mrNumber}` : 'MRs',
     '{{USABILITY_SCORE}}': escapeHtml(String(usabilityScore)),
+    '{{USABILITY_SCORE_SHORT}}': rawUsability !== '—' ? escapeHtml(String(rawUsability)) : 'Not scored',
     '{{PASS_COUNT}}': String(passCount),
     '{{FAIL_COUNT}}': String(failCount),
     '{{FLAGGED_COUNT}}': String(flaggedCount),
@@ -3261,6 +3287,12 @@ function main() {
   fs.writeFileSync(outPath, template, 'utf8');
   console.log(`✓ Report written to ${outPath}`);
   console.log(`  Size: ${(Buffer.byteLength(template) / 1024).toFixed(0)} KB`);
+
+  // Write agent-readable summary JSON
+  const summary = buildSummaryJson();
+  const summaryPath = path.join(absArtifacts, 'evaluation-summary.json');
+  fs.writeFileSync(summaryPath, JSON.stringify(summary, null, 2), 'utf8');
+  console.log(`  ✓ Summary: ${summaryPath}`);
 
   // Sanity check: verify hero stat in HTML matches CSV verdicts
   const csvRaw = readFileOr(path.join(absArtifacts, 'evaluation-report.csv'), '');

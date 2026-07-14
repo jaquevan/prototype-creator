@@ -27,6 +27,7 @@ Phase 4 of the eval pipeline. Renders the final HTML report from JSON/CSV artifa
 | File | Description |
 |------|-------------|
 | `.artifacts/<KEY>/evaluation-report.html` | Self-contained HTML report with embedded screenshots |
+| `.artifacts/<KEY>/evaluation-summary.json` | Agent-readable summary: AC verdicts, usability scores, counts, iteration state |
 | `.artifacts/runs/run-log.csv` | Appended run entry for cross-run tracking |
 
 ## Procedure

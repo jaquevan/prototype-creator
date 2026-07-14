@@ -204,7 +204,17 @@ import { firefox } from 'playwright';
 // MANDATORY: 1440x900 viewport in every context. Default 800x600 truncates tables.
 const browser = await firefox.launch({ headless: true });
 
-// Standard setup: ensure "All projects" is selected if a project filter exists
+// MANDATORY: Pre-seed "All projects" in localStorage BEFORE React mounts.
+// Many prototypes default to a project with no mock data (e.g., "AI Platform Team").
+// Without this, every fresh context renders an empty table.
+// This MUST be called via page.addInitScript() on EVERY new page, BEFORE page.goto().
+// The ensureAllProjects() click fallback below is a SECONDARY safety net, not a replacement.
+//
+// IMPORTANT: When addInitScript is already in place, do NOT call ensureAllProjects()
+// before screenshots — it opens the project dropdown which covers the data rows.
+// Only call ensureAllProjects() as a diagnostic fallback if tbody has 0 rows despite addInitScript.
+
+// Fallback only: click-based project selection (opens dropdown — may cover data rows)
 async function ensureAllProjects(page) {
   const dropdown = page.locator('.pf-v6-c-menu-toggle, [data-testid="project-selector"]').first();
   if (await dropdown.isVisible({ timeout: 2000 }).catch(() => false)) {
@@ -229,6 +239,19 @@ async function main() {
     for (let i = 0; i < tasks.length; i++) {
       const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
       const page = await ctx.newPage();
+
+      // MANDATORY: Pre-seed project selection and feature flags BEFORE page.goto().
+      // Without this, the app defaults to "AI Platform Team" which has no mock data,
+      // producing empty-table screenshots that get embedded in the report.
+      await page.addInitScript(() => {
+        try { localStorage.setItem('selectedProject', JSON.stringify('All projects')); } catch {}
+        try {
+          const flags = JSON.parse(localStorage.getItem('featureFlags') || '{}');
+          flags._lastModified = new Date().toISOString();
+          localStorage.setItem('featureFlags', JSON.stringify(flags));
+        } catch {}
+      });
+
       if (i === 0) await runTask1(page, persona);
       else if (i === 1) await runTask2(page, persona);
       else if (i === 2) await runTask3(page, persona);
@@ -238,9 +261,10 @@ async function main() {
 }
 ```
 
-**Viewport validation:** After generating `persona-walkthrough.mjs`, verify before running:
+**Pre-flight validation:** After generating `persona-walkthrough.mjs`, verify BOTH viewport AND project seeding before running:
 ```bash
 grep -q "viewport" .artifacts/<KEY>/persona-walkthrough.mjs || { echo "FATAL: Missing viewport. Regenerate."; exit 1; }
+grep -q "addInitScript" .artifacts/<KEY>/persona-walkthrough.mjs || { echo "FATAL: Missing addInitScript project seed. Regenerate."; exit 1; }
 ```
 ```
 
@@ -615,12 +639,21 @@ Rules:
 After all persona walkthroughs complete, capture a screenshot of the **primary page being tested** (the same page eval-verify captured for `baseline-before.png`):
 
 ```javascript
-// Navigate to the same primary route used for baseline-before.png
-// Read from component-map.json or extract-state.json journey definitions
+// PAIRED with eval-verify Step 2a (baseline-before.png).
+// Both captures MUST use identical addInitScript setup so the only
+// visual difference is actual code changes, not browser state drift.
 const primaryRoute = componentMap ? componentMap.target_page : inferPrimaryRoute(extractState);
 
 const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
 const page = await ctx.newPage();
+await page.addInitScript(() => {
+  try { localStorage.setItem('selectedProject', JSON.stringify('All projects')); } catch {}
+  try {
+    const flags = JSON.parse(localStorage.getItem('featureFlags') || '{}');
+    flags._lastModified = new Date().toISOString();
+    localStorage.setItem('featureFlags', JSON.stringify(flags));
+  } catch {}
+});
 await page.goto(`${baseUrl}${primaryRoute || ''}`);
 await page.waitForSelector('tbody tr', { timeout: 8000 }).catch(() => null);
 await page.waitForTimeout(2000);
@@ -628,7 +661,7 @@ await page.screenshot({ path: '.artifacts/<KEY>/screenshots/baseline-after.png',
 await ctx.close();
 ```
 
-This pairs with `baseline-before.png` to show how the prototype changed during evaluation. Both screenshots must capture the same page for a meaningful comparison.
+This pairs with `baseline-before.png` to show how the prototype changed during evaluation. Both captures use identical `addInitScript` setup — the only visual difference should be actual code changes from the fix loop, not browser state differences.
 
 ### Step 8: Write usability_dimensions to journey-log.json
 

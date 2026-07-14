@@ -38,6 +38,37 @@ Ensure `.context/usability-testing/`, `.context/consistency-checker/` are bootst
 | `--no-fix` | flag | No | Off |
 | `--reset` | flag | No | Off (evaluate current state; when set, hard-resets workspace to origin branch HEAD before eval) |
 | `--fresh` | flag | No | Off (when set, deletes .artifacts/<KEY>/ before starting for a clean-slate run) |
+| `--auto-run` | flag | No | Off (when set, chains shell commands to reduce approval prompts in Claude Code from ~20 to ~5) |
+
+## Environment Detection
+
+Before parsing flags, check the execution environment:
+
+```
+if $CURSOR_AGENT is set:
+  # Running in Cursor — tool approvals are handled automatically
+  # No action needed
+else:
+  # Likely Claude Code (VS Code) — Bash commands require individual approval
+  echo "Detected non-Cursor environment (Claude Code / VS Code)."
+  echo "The pipeline runs ~20 shell commands that each require approval."
+  echo "Tip: Use --auto-run to reduce approval prompts to ~5 at natural checkpoints."
+  echo "Or add these patterns to ~/.claude/settings.json:"
+  echo '  "Bash(node .claude/skills/eval/scripts/*)"'
+  echo '  "Bash(node .artifacts/*)"'
+  echo '  "Bash(npm run build)"'
+  echo '  "Bash(git log *)", "Bash(git status *)"'
+```
+
+When `--auto-run` is set, chain related commands with `&&` into 5 groups at natural pipeline boundaries:
+
+| Group | Commands chained | Checkpoint purpose |
+|-------|-----------------|-------------------|
+| 1. Workspace state | `git log -1 --format="%h" && git status --short` | See what commit is being evaluated |
+| 2. Phase A validation | `node validate-verdicts.js && cp archive && node append-iteration-log.js` | See iteration results |
+| 3. Fix + rebuild | `cd workspace && npm run build` | See fixes being compiled |
+| 4. Playwright | `node journey-test.mjs` or `node persona-walkthrough.mjs` | See browser automation start |
+| 5. Report | `node validate-artifacts.js && node render-report.js && node log-run.js && node build-leaderboard.js` | See final report generated |
 
 ## Pipeline Flow (Two-Phase)
 

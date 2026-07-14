@@ -67,11 +67,16 @@ details[open] summary::before{transform:rotate(90deg)}
 .appendix{border-top:2px solid var(--border);margin-top:3rem;padding-top:2rem}
 .appendix-label{font-family:var(--font-heading);font-size:0.75rem;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--text2);margin:0 0 1.5rem}
 
-/* Appendix tabs */
-.appendix-tabs{display:flex;border-bottom:2px solid var(--border);margin-bottom:1.5rem;gap:0;flex-wrap:wrap}
-.appendix-tab{padding:0.5rem 1.25rem;font-size:0.875rem;font-weight:500;color:var(--text2);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-2px;background:none;border-top:none;border-left:none;border-right:none;font-family:var(--font-body)}
-.appendix-tab:hover{color:var(--text)}
-.appendix-tab.active{color:var(--accent);border-bottom-color:var(--accent)}
+/* Appendix tab cards */
+.appendix-tabs{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:0.5rem;margin-bottom:1.5rem}
+.appendix-tab{display:flex;flex-direction:column;align-items:center;gap:0.25rem;padding:0.75rem 0.5rem;background:var(--bg);border:2px solid var(--border);border-radius:0.5rem;cursor:pointer;font-family:var(--font-body);text-align:center;transition:border-color 0.15s,background 0.15s}
+.appendix-tab:hover{border-color:var(--accent);background:var(--bg2)}
+.appendix-tab.active{border-color:var(--accent);background:var(--bg2)}
+.appendix-tab-icon{width:20px;height:20px;fill:var(--text2);flex-shrink:0}
+.appendix-tab.active .appendix-tab-icon{fill:var(--accent)}
+.appendix-tab-label{font-size:0.75rem;font-weight:600;color:var(--text)}
+.appendix-tab.active .appendix-tab-label{color:var(--accent)}
+.appendix-tab-metric{font-size:0.65rem;color:var(--text2);font-weight:400}
 .appendix-tab-badge{font-size:0.6rem;background:var(--border);color:var(--text2);padding:1px 5px;border-radius:3px;margin-left:4px}
 .appendix-content{display:none}
 .appendix-content.active{display:block}
@@ -417,6 +422,11 @@ details[open] summary .section-icon{opacity:0.8}
 .exec-detail{font-size:0.875rem;line-height:1.6;margin:0 0 0.4rem;color:var(--text)}
 .exec-detail code{font-family:var(--font-mono);font-size:0.8em;background:var(--bg2);padding:0.1rem 0.3rem;border-radius:0.2rem}
 .exec-problem{margin-top:0.5rem;padding:0.6rem 0.75rem;background:var(--bg2);border-radius:0.375rem;border-left:3px solid var(--accent);color:var(--text)}
+.exec-dropdown{border:1px solid var(--border);border-radius:0.375rem;padding:0.5rem 0.75rem}
+.exec-dropdown summary{cursor:pointer;list-style:none;display:flex;align-items:center;gap:0.25rem}
+.exec-dropdown summary::before{content:'▸';font-size:0.7rem;color:var(--text2);transition:transform 0.15s;flex-shrink:0}
+.exec-dropdown[open] summary::before{transform:rotate(90deg)}
+.exec-dropdown summary::-webkit-details-marker{display:none}
 
 /* Welcome modal — first-visit onboarding */
 .welcome-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px);z-index:2000;align-items:center;justify-content:center;padding:1.5rem}
@@ -694,11 +704,31 @@ tr.dim-na{opacity:0.6;font-style:italic}
       <div class="appendix-label">Appendix — Detailed Evidence</div>
 
       <div class="appendix-tabs" data-tour="appendix-tabs">
-        <button class="appendix-tab active" onclick="switchAppendixTab('journeys')">Journeys <span class="appendix-tab-badge">{{PERSONA_COUNT}}</span></button>
-        <button class="appendix-tab" onclick="switchAppendixTab('usability')">Usability</button>
-        <button class="appendix-tab" onclick="switchAppendixTab('fix-history')" style="{{FIXES_TAB_DISPLAY}}">Fix History <span class="appendix-tab-badge">{{FIX_COUNT}}</span></button>
-        <button class="appendix-tab" onclick="switchAppendixTab('design-compliance')" style="{{CONSISTENCY_TAB_DISPLAY}}">Design Compliance <span class="appendix-tab-badge">{{COMPLIANCE_COUNT}}</span></button>
-        <button class="appendix-tab" onclick="switchAppendixTab('pipeline')" style="{{ITERATION_DISPLAY}}">Pipeline <span class="appendix-tab-badge">{{PIPELINE_COUNT}}</span></button>
+        <button class="appendix-tab active" onclick="switchAppendixTab('journeys')">
+          <svg class="appendix-tab-icon" viewBox="0 0 640 512"><path d="M144 0a80 80 0 1 1 0 160A80 80 0 1 1 144 0zM512 0a80 80 0 1 1 0 160A80 80 0 1 1 512 0zM0 298.7C0 239.8 47.8 192 106.7 192h42.7c15.9 0 31 3.5 44.6 9.7c-1.3 7.2-1.9 14.7-1.9 22.3c0 38.2 16.8 72.5 43.3 96H21.3C9.6 320 0 310.4 0 298.7zM405.3 320H234.7c-11.8 0-21.3-9.6-21.3-21.3 0-58.9 47.8-106.7 106.7-106.7H320h42.7c58.9 0 106.7 47.8 106.7 106.7 0 11.8-9.6 21.3-21.3 21.3zm0 0h26.3c26.5 0 52-6.4 75.4-18.8A96 96 0 0 1 640 298.7c0 11.8-9.6 21.3-21.3 21.3H469.3zM320 256a96 96 0 1 0 0-192 96 96 0 1 0 0 192zM533.3 192h42.7c58.9 0 106.7 47.8 106.7 106.7 0 11.8-9.6 21.3-21.3 21.3H618.7zM432 128a80 80 0 1 0-160 0 80 80 0 1 0 160 0z"/></svg>
+          <span class="appendix-tab-label">Journeys</span>
+          <span class="appendix-tab-metric">{{PERSONA_COUNT}} personas</span>
+        </button>
+        <button class="appendix-tab" onclick="switchAppendixTab('usability')">
+          <svg class="appendix-tab-icon" viewBox="0 0 512 512"><path d="M32 32c17.7 0 32 14.3 32 32V400c0 8.8 7.2 16 16 16H480c17.7 0 32 14.3 32 32s-14.3 32-32 32H80c-44.2 0-80-35.8-80-80V64C0 46.3 14.3 32 32 32zm96 128c0-17.7 14.3-32 32-32l192 0c17.7 0 32 14.3 32 32s-14.3 32-32 32H160c-17.7 0-32-14.3-32-32zm32 64H288c17.7 0 32 14.3 32 32s-14.3 32-32 32H160c-17.7 0-32-14.3-32-32s14.3-32 32-32zm0 96h64c17.7 0 32 14.3 32 32s-14.3 32-32 32H160c-17.7 0-32-14.3-32-32s14.3-32 32-32z"/></svg>
+          <span class="appendix-tab-label">Usability</span>
+          <span class="appendix-tab-metric">{{USABILITY_SCORE_SHORT}}</span>
+        </button>
+        <button class="appendix-tab" onclick="switchAppendixTab('fix-history')" style="{{FIXES_TAB_DISPLAY}}">
+          <svg class="appendix-tab-icon" viewBox="0 0 512 512"><path d="M352 320c88.4 0 160-71.6 160-160c0-15.3-2.2-30.1-6.2-44.2c-3.1-10.8-16.4-13.2-24.3-5.3l-76.8 76.8c-3 3-7.1 4.7-11.3 4.7H336c-8.8 0-16-7.2-16-16V118.6c0-4.2 1.7-8.3 4.7-11.3l76.8-76.8c7.9-7.9 5.4-21.2-5.3-24.3C382.1 2.2 367.3 0 352 0C263.6 0 192 71.6 192 160c0 19.1 3.4 37.5 9.5 54.5L19.9 396.1C7.2 408.8 0 426.1 0 444.1C0 481.6 30.4 512 67.9 512c18 0 35.3-7.2 48-19.9l181.6-181.6c17 6.2 35.4 9.5 54.5 9.5zM80 456a24 24 0 1 1 0-48 24 24 0 1 1 0 48z"/></svg>
+          <span class="appendix-tab-label">Fix History</span>
+          <span class="appendix-tab-metric">{{FIX_COUNT}} applied</span>
+        </button>
+        <button class="appendix-tab" onclick="switchAppendixTab('design-compliance')" style="{{CONSISTENCY_TAB_DISPLAY}}">
+          <svg class="appendix-tab-icon" viewBox="0 0 512 512"><path d="M256 48a208 208 0 1 1 0 416 208 208 0 1 1 0-416zm0 464A256 256 0 1 0 256 0a256 256 0 1 0 0 512zM369 209c9.4-9.4 9.4-24.6 0-33.9s-24.6-9.4-33.9 0l-111 111-47-47c-9.4-9.4-24.6-9.4-33.9 0s-9.4 24.6 0 33.9l64 64c9.4 9.4 24.6 9.4 33.9 0L369 209z"/></svg>
+          <span class="appendix-tab-label">Compliance</span>
+          <span class="appendix-tab-metric">{{COMPLIANCE_COUNT}} findings</span>
+        </button>
+        <button class="appendix-tab" onclick="switchAppendixTab('pipeline')" style="{{ITERATION_DISPLAY}}">
+          <svg class="appendix-tab-icon" viewBox="0 0 384 512"><path d="M0 64C0 28.7 28.7 0 64 0H224V128c0 17.7 14.3 32 32 32H384V448c0 35.3-28.7 64-64 64H64c-35.3 0-64-28.7-64-64V64zm384 64H256V0L384 128z"/></svg>
+          <span class="appendix-tab-label">What Changed</span>
+          <span class="appendix-tab-metric">{{PIPELINE_COUNT}} files</span>
+        </button>
       </div>
 
       <!-- Appendix Tab: Journeys -->
@@ -709,20 +739,13 @@ tr.dim-na{opacity:0.6;font-style:italic}
           {{PERSONA_SELECTION_HTML}}
         </div>
         {{PERSONA_WALKTHROUGHS_HTML}}
-        <details open style="margin-top:2rem">
-          <summary class="small muted">Phase A: AC Verification Summary</summary>
-          <p class="small muted" style="margin:0.5rem 0">X-ray evaluator path comparison — which ACs passed and how many steps each journey took.</p>
-          {{PATH_COMPARISON_TABLE}}
-        </details>
       </div>
 
       <!-- Appendix Tab: Usability -->
       <div class="appendix-content" id="appendix-usability">
-        <h2 id="usability-dimensions" data-tour="usability">Usability Dimension Scores (INF) <a class="help-anchor" href="#scoring-methodology" onclick="document.getElementById('scoring-methodology').open=true;return true" title="How scores are calculated">?</a></h2>
+        <h2 id="usability-dimensions" data-tour="usability">Usability Dimension Scores <a class="help-anchor" href="#scoring-methodology" onclick="document.getElementById('scoring-methodology').open=true;return true" title="How scores are calculated">?</a></h2>
         {{USABILITY_TABLE}}
         {{PATIENCE_TRACKING}}
-        {{THINK_ALOUD_COMPARISON}}
-        {{THINK_ALOUD_NARRATIVES}}
       </div>
 
       <!-- Appendix Tab: Fix History -->
@@ -750,10 +773,10 @@ tr.dim-na{opacity:0.6;font-style:italic}
         {{CONSISTENCY_HTML}}
       </div>
 
-      <!-- Appendix Tab: Pipeline -->
+      <!-- Appendix Tab: What Changed -->
       <div class="appendix-content" id="appendix-pipeline" data-tour="tab-pipeline">
-        <h2 style="margin-top:0.5rem">Pipeline</h2>
-        <p class="small muted" style="margin:-0.5rem 0 1rem">MR delta and code-level changes from this prototype.</p>
+        <h2 style="margin-top:0.5rem">What Changed</h2>
+        <p class="small muted" style="margin:-0.5rem 0 1rem">Files added or modified in the merge request.</p>
         <div id="what-changed" style="{{DELTA_DISPLAY}}">
           <details open>
             <summary style="font-size:0.875rem">What Changed in This MR</summary>
@@ -832,6 +855,7 @@ tr.dim-na{opacity:0.6;font-style:italic}
     <div class="ev-body">
       <div class="ev-sidebar" id="ev-tree"></div>
       <div class="ev-main" id="ev-main">
+        <div class="ev-hint" id="ev-hint" style="display:none;padding:0.5rem 1rem;background:var(--accent);color:#fff;font-size:0.75rem;text-align:center;border-radius:0 0 0.375rem 0.375rem;opacity:0.9;transition:opacity 0.5s">Use <kbd style="background:rgba(255,255,255,0.2);padding:0.1rem 0.35rem;border-radius:3px;font-size:0.7rem">&#8592;</kbd> <kbd style="background:rgba(255,255,255,0.2);padding:0.1rem 0.35rem;border-radius:3px;font-size:0.7rem">&#8594;</kbd> arrow keys or click steps in the sidebar to navigate between screenshots</div>
         <div class="ev-main-split">
           <div class="ev-screenshot" id="ev-screenshot"></div>
           <div class="ev-context" id="ev-context"></div>
@@ -1223,6 +1247,13 @@ function openEvidenceViewer(acId) {
   modal.classList.add('active');
   document.body.style.overflow = 'hidden';
 
+  var hint = document.getElementById('ev-hint');
+  if (hint && !localStorage.getItem('ev-hint-seen')) {
+    hint.style.display = 'block';
+    setTimeout(function() { hint.style.opacity = '0'; setTimeout(function() { hint.style.display = 'none'; }, 500); }, 6000);
+    localStorage.setItem('ev-hint-seen', '1');
+  }
+
   buildAcDropdown(evidenceViewerData.ac_list || []);
 
   if (acId) {
@@ -1312,6 +1343,17 @@ function selectAcFilter(acId) {
 function filterByAc(acId) {
   evState.acFilter = acId;
   renderTree();
+
+  if (acId && evidenceViewerData && evidenceViewerData.ac_to_steps) {
+    var matches = evidenceViewerData.ac_to_steps[acId] || [];
+    if (matches.length > 0) {
+      var first = matches[0];
+      selectStep(first.persona, first.task, first.step);
+      return;
+    }
+    var ssEl = document.getElementById('ev-screenshot');
+    if (ssEl) ssEl.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--text2);font-size:0.85rem;text-align:center;padding:2rem;">No visual evidence captured for this criterion.<br>The evaluator may have verified it via source code inspection.</div>';
+  }
 }
 
 function renderTree() {
@@ -1424,6 +1466,8 @@ function renderStepFlow() {
 }
 
 function selectStep(persona, taskIdx, stepIdx) {
+  var hint = document.getElementById('ev-hint');
+  if (hint) hint.style.display = 'none';
   evState.persona = persona;
   evState.task = taskIdx;
   evState.step = stepIdx;
@@ -1733,7 +1777,7 @@ document.addEventListener('DOMContentLoaded', function() {
         <p><strong>Top section</strong> &mdash; Executive summary with pass/fail/flagged counts and the overall usability score.</p>
         <p style="margin-top:0.5rem"><strong>AC Table</strong> &mdash; Each acceptance criterion with a verdict. Click <strong>View evidence</strong> to open a full-screen viewer with screenshots, think-aloud narration, and persona reactions.</p>
         <p style="margin-top:0.5rem"><strong>Flagged items</strong> &mdash; Need your judgment. The evaluator couldn't make a confident call. Click to review and override.</p>
-        <p style="margin-top:0.5rem"><strong>Appendix tabs</strong> &mdash; Detailed evidence: persona walkthroughs, usability scores, fix history (with before/after screenshots), design compliance checks, and pipeline info.</p>
+        <p style="margin-top:0.5rem"><strong>Appendix tabs</strong> &mdash; Detailed evidence: persona walkthroughs, usability scores, fix history (with before/after screenshots), design compliance checks, and what changed in the MR.</p>
       </div>
       <div class="welcome-section">
         <div class="welcome-section-label">Key interactions</div>
@@ -1783,12 +1827,12 @@ var tourSteps = [
   { target: '[data-tour="ac-table"]', text: 'The acceptance criteria table. Each row shows a criterion with its verdict. Click "View evidence" to open the full evidence viewer with screenshots and persona think-aloud.' },
   { target: '.ac-view-link', text: 'Opens the evidence viewer modal. You\'ll see: persona screenshots on the left, think-aloud narration on the right, and a sidebar to step through each persona\'s navigation. Use the AC dropdown at the top to filter by criterion.' },
   { target: '[data-tour="flagged"]', text: 'Items the evaluator couldn\'t confidently judge. Open the Review Panel (top-right) to override verdicts and add notes.' },
-  { target: '[data-tour="appendix-tabs"]', text: 'Detailed evidence tabs: Journeys shows per-persona walkthroughs with patience tracking. Usability has 7-dimension scores. Fix History shows before/after screenshots of what changed. Design Compliance checks PatternFly guidelines. Pipeline shows the MR delta.' },
+  { target: '[data-tour="appendix-tabs"]', text: 'Detailed evidence tabs: Journeys shows per-persona walkthroughs with patience tracking. Usability has 7-dimension scores. Fix History shows before/after screenshots of what changed. Design Compliance checks PatternFly guidelines. What Changed shows the MR file delta.' },
   { target: '[data-tour="personas"]', text: 'Persona cards show who navigated the prototype. Each ran independently at their own skill level. Click to see their full step-by-step trace.', action: function() { switchAppendixTab('journeys'); } },
   { target: '[data-tour="usability"]', text: 'Seven usability dimensions scored 0-3 per persona. Composite score averages across personas. The INF vs TA comparison below shows whether real persona navigation matched structural analysis.', action: function() { switchAppendixTab('usability'); } },
   { target: '[data-tour="tab-fix-history"]', text: 'Iteration timeline showing what the evaluator found broken and fixed. The before/after screenshot comparison shows the visual difference.', action: function() { switchAppendixTab('fix-history'); } },
   { target: '[data-tour="tab-design-compliance"]', text: 'PatternFly design guideline compliance. Checks source code patterns (icon styles, table conventions, color tokens) against the consistency-checker ruleset.', action: function() { switchAppendixTab('design-compliance'); } },
-  { target: '[data-tour="tab-pipeline"]', text: 'Shows which files changed in the MR, categorized by type (pages, components, routes, feature flags). Helps understand the scope of what\'s being evaluated.', action: function() { switchAppendixTab('pipeline'); } }
+  { target: '[data-tour="tab-pipeline"]', text: 'Shows which files were added or modified in the merge request, categorized by type (pages, components, routes, feature flags). Helps understand the scope of what\'s being evaluated.', action: function() { switchAppendixTab('pipeline'); } }
 ];
 var tourCurrentStep = 0;
 window._tourActive = false;

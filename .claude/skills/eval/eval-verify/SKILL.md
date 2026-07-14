@@ -138,24 +138,27 @@ const firstSteps = journeys.map(j => (j.expected_path || [])[0]).filter(Boolean)
 // feature context (e.g., "Model Deployments Overview" → /ai-hub/models/deployments).
 const primaryRoute = componentMap ? componentMap.target_page : inferPrimaryRoute(firstSteps);
 
+// PAIRED with eval-discover Step 7b (baseline-after.png).
+// Both captures MUST use identical addInitScript setup so the only
+// visual difference is actual code changes, not browser state drift.
 const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
 const page = await context.newPage();
-
-// Navigate to the primary feature page (NOT the homepage)
+await page.addInitScript(() => {
+  try { localStorage.setItem('selectedProject', JSON.stringify('All projects')); } catch {}
+  try {
+    const flags = JSON.parse(localStorage.getItem('featureFlags') || '{}');
+    flags._lastModified = new Date().toISOString();
+    localStorage.setItem('featureFlags', JSON.stringify(flags));
+  } catch {}
+});
 await page.goto(`${baseUrl}${primaryRoute || ''}`);
-await page.waitForLoadState('domcontentloaded');
-
-// Ensure "All projects" is selected (prototypes default to empty project)
-await ensureAllProjects(page);
-
-// Wait for actual page content to render
 await page.waitForSelector('tbody tr', { timeout: 8000 }).catch(() => null);
 await page.waitForTimeout(2000);
 await page.screenshot({ path: '.artifacts/<KEY>/screenshots/baseline-before.png', fullPage: false });
 await context.close();
 ```
 
-**If the page is still empty after ensureAllProjects + content wait**, capture it anyway — it may indicate a build issue that the report should show.
+**If the page is still empty after content wait**, capture it anyway — it may indicate a build issue that the report should show. Do NOT use `ensureAllProjects()` here — the click-based approach opens a dropdown that can cover data rows. The `addInitScript` pre-seeding handles project selection before React mounts.
 
 This baseline captures the prototype's main feature page before eval-fix applies any changes. It's used in the report's Fix History tab and Summary section for before/after comparison.
 
