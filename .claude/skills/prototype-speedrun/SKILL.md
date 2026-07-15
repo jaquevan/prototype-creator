@@ -125,7 +125,18 @@ For the most common case (single ID, workspace, auto mode, local submit):
 10. Print summary
 ```
 
-For `--target=repo` with a workspace: the submit step automatically creates a GitLab merge request targeting the original workspace branch with a designer-oriented description that includes the feature summary, key design decisions, pipeline details (fidelity, mode, rubric score), and instructions for reviewing locally. No extra setup needed — uses GitLab push options with the user's existing git authentication.
+For `--target=repo` with a workspace: the submit step automatically creates a GitLab merge request targeting the original workspace branch with a designer-oriented description that includes the feature summary, key design decisions, pipeline details (fidelity, mode, rubric score), and instructions for reviewing locally.
+
+**MR creation uses `glab mr create`** (not push options) — this avoids the fatal newline restriction in `git push -o merge_request.description=...` and supports full markdown descriptions.
+
+**Fork workflow support:** If the workspace has `origin` (user fork) and `upstream` (canonical repo) pointing to different projects, the script:
+1. Pushes the branch to `origin` (the fork)
+2. Creates the MR with `-H fork_project -R upstream_project` so GitLab correctly maps the source branch
+3. Verifies the MR shows real file diffs (sha non-null, changes_count ≥ 1)
+
+If verification fails (empty MR), the script auto-recovers by re-pushing and retrying. This prevents the "MR with no commits" bug that occurs when branches are pushed to upstream instead of the fork.
+
+**Pages preview:** After MR creation, the script polls for GitLab Pages deployment (up to 10 minutes). When live, the Jira comment is updated with the preview URL. If timeout occurs, the expected URL is noted as "deploying".
 
 ### Sandbox and Git Permissions
 
@@ -339,10 +350,16 @@ Testing does not gate submission — results are informational.
 Invoke the `prototype-submit` skill:
 
 ```
-/prototype.submit {ID} --target={target} [--remote={remote}] [--dry-run]
+/prototype.submit {ID} --target={target} [--pages-base-url={pages_url}] [--dry-run]
 ```
 
-Record: submission target, label applied, success/failure.
+For `--target=repo`:
+1. The submit skill calls `submit_to_repo.py` which handles fork detection, MR creation via `glab`, and verification
+2. After MR creation, if `--pages-base-url` is configured, the script polls for Pages deployment (up to 10 min)
+3. The skill posts the initial Jira comment with the MR link, then **updates the same comment** once Pages is live (or notes "deploying" on timeout)
+4. Never declare success for an MR that has `verification.verified: false` — report the issue to the user
+
+Record: submission target, label applied, MR URL, Pages URL, success/failure.
 
 ### Step 3: Generate Summary
 
@@ -413,6 +430,8 @@ This file can be polled by CI systems to detect pipeline completion.
 | `--announce-complete` | (flag) | Off | CI signal |
 | `--skip-jira` | (flag) | Off | prototype-submit |
 | `--force` | (flag) | Off | prototype-submit |
+| `--pages-base-url` | URL | None | prototype-submit (Pages preview polling) |
+| `--pages-timeout` | Seconds | `600` | prototype-submit (Pages poll timeout) |
 | `--no-ssl-verify` | (flag) | Off | prototype-create (clone), prototype-submit (push) |
 
 ## Batch File Format
