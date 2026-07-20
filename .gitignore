@@ -43,6 +43,7 @@ htmlcov/
 
 # Eval harness integration (local testing only, not pushed)
 .claude/skills/eval/eval-harness/
+.claude/skills/eval/eval-optimize-mlflow/
 
 # Stray Playwright scripts from eval runs (should be in .artifacts/)
 .claude/skills/eval/journey-test-*.mjs
