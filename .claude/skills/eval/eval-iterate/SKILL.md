@@ -222,14 +222,23 @@ LOOP:
 
   # ── Classify ───────────────────────────────────────────────────
   if iteration == 1:
+    python3 .claude/skills/eval/scripts/eval_state.py set .artifacts/<KEY>/eval-state.yaml \
+      classify_start=$(python3 .claude/skills/eval/scripts/eval_state.py timestamp)
+
     Read .claude/skills/eval/eval-classify/SKILL.md and execute it
     # Produces: evaluation-report.csv (Section 1, tiers only)
+
+    python3 .claude/skills/eval/scripts/eval_state.py set .artifacts/<KEY>/eval-state.yaml \
+      classify_end=$(python3 .claude/skills/eval/scripts/eval_state.py timestamp)
   # Iteration 2+: skip classify entirely. Tiers are structural and don't change.
   # The CSV already has tier assignments from iteration 1. Only verdicts need updating.
 
   # ── Journey (x-ray mode) ────────────────────────────────────
   # The x-ray evaluator uses workspace source directly for navigation.
   # No discovery-first pretense — goal is fast AC verification.
+  python3 .claude/skills/eval/scripts/eval_state.py set .artifacts/<KEY>/eval-state.yaml \
+    verify_start=$(python3 .claude/skills/eval/scripts/eval_state.py timestamp)
+
   if iteration == 1:
     Read .claude/skills/eval/eval-verify/SKILL.md and execute it with:
       --mode=informed
@@ -239,6 +248,9 @@ LOOP:
       --mode=informed --rerun-only=<FAIL+FLAGGED AC IDs from previous CSV>
     # Only runs Playwright for journeys testing failing criteria
     # Carries forward PASS verdicts from previous iteration
+
+  python3 .claude/skills/eval/scripts/eval_state.py set .artifacts/<KEY>/eval-state.yaml \
+    verify_end=$(python3 .claude/skills/eval/scripts/eval_state.py timestamp)
 
   # ── Verdict cross-check (BLOCKING — bidirectional) ──────────────
   node .claude/skills/eval/scripts/validate-verdicts.js .artifacts/<KEY>/
@@ -332,8 +344,14 @@ LOOP:
     BREAK → proceed to Phase B
     # Findings remain in refinement-suggestions.json for human/agent review
 
+  python3 .claude/skills/eval/scripts/eval_state.py set .artifacts/<KEY>/eval-state.yaml \
+    fix_start=$(python3 .claude/skills/eval/scripts/eval_state.py timestamp)
+
   Read .claude/skills/eval/eval-fix/SKILL.md and execute it
   # Applies fixes from refinement-suggestions.json (AC failures + consistency + flagged)
+
+  python3 .claude/skills/eval/scripts/eval_state.py set .artifacts/<KEY>/eval-state.yaml \
+    fix_end=$(python3 .claude/skills/eval/scripts/eval_state.py timestamp)
 
   # Record what was fixed into the iteration log (reads fix-log.json)
   node .claude/skills/eval/scripts/append-iteration-log.js .artifacts/<KEY>/ <iteration> fix
@@ -427,6 +445,9 @@ python3 .claude/skills/eval/scripts/eval_state.py set .artifacts/<KEY>/eval-stat
 # Phase B is NOT inference-only scoring — it MUST produce new screenshots.
 # Do NOT skip the Playwright walkthroughs and score from Phase A evidence alone.
 
+python3 .claude/skills/eval/scripts/eval_state.py set .artifacts/<KEY>/eval-state.yaml \
+  discover_start=$(python3 .claude/skills/eval/scripts/eval_state.py timestamp)
+
 Read .claude/skills/eval/eval-discover/SKILL.md and execute it
 # Use Task tool with run_in_background=true for each persona-task pair when possible.
 # Produces: per-persona screenshots, think-aloud traces, 7-dimension scores,
@@ -446,6 +467,9 @@ if any entry has trace == [] (empty array):
   echo "WARNING: persona-results.json has empty trace[] — re-running eval-discover"
   Read .claude/skills/eval/eval-discover/SKILL.md and execute it
   # This should not happen if Step 1d synchronous writing is followed correctly
+
+python3 .claude/skills/eval/scripts/eval_state.py set .artifacts/<KEY>/eval-state.yaml \
+  discover_end=$(python3 .claude/skills/eval/scripts/eval_state.py timestamp)
 
 # Update iteration log with usability results
 node .claude/skills/eval/scripts/append-iteration-log.js .artifacts/<KEY>/ <iteration> b
