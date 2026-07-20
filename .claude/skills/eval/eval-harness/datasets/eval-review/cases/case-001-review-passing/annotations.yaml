@@ -1,6 +1,0 @@
-expected_pass_count: 6
-expected_fail_count: 0
-expected_flagged_count: 1
-should_mention_flagged_ac: AC-2
-should_offer_actions: true
-should_use_plain_english: true

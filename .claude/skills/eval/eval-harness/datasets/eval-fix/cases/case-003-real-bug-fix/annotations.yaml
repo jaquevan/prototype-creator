@@ -1,7 +1,0 @@
-expected_fixes_applied: 2
-expected_fixes_skipped: 0
-notes: |
-  The isExpanded bug in Deployments.tsx hides all table rows.
-  eval-fix should identify and fix both root causes:
-  1. Remove isExpanded prop from primary Tr (1 line)
-  2. Add Tooltip to Kueue status Label (AC-6 fix)

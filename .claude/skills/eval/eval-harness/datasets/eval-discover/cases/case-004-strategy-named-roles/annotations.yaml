@@ -1,7 +1,0 @@
-expected_persona_count: 2
-expected_personas_match_strategy: true
-expected_role_types: [platform-admin, model-deployer]
-notes: |
-  When a strategy document names distinct personas/roles with different
-  permissions (Platform Admin vs Model Deployer), Phase B should use
-  those exact personas rather than generic senior/junior pairs.

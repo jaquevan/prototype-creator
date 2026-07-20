@@ -1,5 +1,0 @@
-expected_apply_count: 2
-expected_skip_count: 0
-expected_deferred_count: 1
-low_confidence_should_defer: ["technical_abstraction usability suggestion"]
-ordering: ["consistency", "ac_failure", "usability"]

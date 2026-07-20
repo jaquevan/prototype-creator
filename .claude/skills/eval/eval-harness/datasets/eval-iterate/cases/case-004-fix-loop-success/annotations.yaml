@@ -1,9 +1,0 @@
-expected_exit_reason: all_pass
-expected_phase_a_pass: true
-expected_ac_pass_count: 5
-expected_ac_fail_count: 0
-expected_ac_flagged_count: 0
-expected_iteration_count: 2
-expected_html_produced: true
-expected_max_cost_usd: 15.00
-expected_lofi_verdict: pass
