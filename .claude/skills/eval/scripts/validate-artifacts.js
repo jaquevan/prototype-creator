@@ -158,8 +158,13 @@ const cm = readJson('component-map.json');
 if (cm) {
   console.log('Checking component-map.json...');
   check(cm.target_page, 'component-map', 'Missing "target_page" field');
-  check(cm.table_columns, 'component-map', 'Missing "table_columns" field');
-  check(cm.ac_column_mapping, 'component-map', 'Missing "ac_column_mapping" field');
+  check(cm.ui_type, 'component-map', 'Missing "ui_type" field (expected: table, form, wizard, dashboard, or mixed)');
+  check(cm.content_ready_selector, 'component-map', 'Missing "content_ready_selector" field');
+  check(cm.ac_element_mapping || cm.ac_column_mapping, 'component-map',
+    'Missing "ac_element_mapping" field', 'Map each AC to its target element and interaction type');
+  if (cm.ui_type === 'table') {
+    check(cm.table_columns, 'component-map', 'Table UI type requires "table_columns" field');
+  }
 } else {
   console.log('component-map.json: not found (skipping)');
 }

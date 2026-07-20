@@ -5,6 +5,8 @@ user-invocable: true
 allowed-tools: Read, Write, Edit, Glob, Grep, Bash
 ---
 
+<!-- Model: Sonnet-tier sufficient. Reads JSON artifacts, formats summaries, handles conversational routing. -->
+
 # eval-review
 
 Conversational entry point for designers to review eval results. Reads the pipeline artifacts, presents a concise narrative summary, and offers actions — fix issues, explain findings, or approve.
@@ -44,6 +46,12 @@ Optional:
 If `.artifacts/<KEY>/` does not exist, tell the user: "No eval results found for <KEY>. Run `/eval-iterate <KEY> <URL>` first."
 
 ### Step 2: Open the Report
+
+If `.artifacts/<KEY>/evaluation-report.html` does not exist (e.g., after a `--no-report` run):
+  Suggest: "No HTML report found. Run `/generate-report` to create one, or I can summarize from the cached artifacts."
+  Then proceed with Step 3 using evaluation-summary.json or raw artifacts.
+
+Otherwise:
 
 ```bash
 open .artifacts/<KEY>/evaluation-report.html

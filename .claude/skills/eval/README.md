@@ -12,16 +12,33 @@ The report is a **confidence gate + iteration driver** for designers:
 
 The report answers three questions in under 10 seconds: *Did it pass? What needs my attention? What do I do next?*
 
+## First Time Setup
+
+If this is your first time using the eval, you need three things:
+
+```bash
+# 1. Make sure your prototype branch has the latest eval skills
+# (if /eval-iterate doesn't appear as a slash command, you need to rebase)
+cd ~/Desktop/rhoai-prototypes
+git fetch upstream
+git rebase upstream/3.6
+
+# 2. Bootstrap context (required for usability scoring and consistency checks)
+cd ~/Desktop/prototype-creator
+make context
+
+# 3. Start your prototype locally
+cd ~/Desktop/rhoai-prototypes && npm run build && npm start
+```
+
+**Looking for /prototype-create?** That creates a NEW prototype from a Jira ticket. To evaluate an EXISTING prototype, use `/eval-iterate` instead.
+
+**Slash command not appearing?** Restart your IDE to re-index skills. If it still doesn't appear, use the natural-language fallback: "Read `.claude/skills/eval/eval-iterate/SKILL.md` and run it against RHAISTRAT-1536 at http://localhost:3000 with workspace ~/Desktop/rhoai-prototypes"
+
 ## Quick Start
 
 ```bash
-# 1. Bootstrap context (required for usability scoring)
-make context
-
-# 2. Start your prototype locally
-cd ~/Desktop/rhoai-prototypes && npm start
-
-# 3. Run the eval (either method works)
+# Run the eval against your running prototype
 /eval-iterate RHAISTRAT-1536 http://localhost:3000 --workspace=~/Desktop/rhoai-prototypes
 ```
 
@@ -118,7 +135,7 @@ Phase B: eval-discover (per-persona Playwright) → eval-report → open + summa
 - **Component map drives script generation.** eval-verify reads workspace source files and writes `component-map.json` before generating Playwright scripts. The script uses actual column indices and selectors from the map, never guessing from AC text.
 - **Visual differentiation required.** Each journey screenshot must show a unique visual state (hover, expand, scroll). Multiple journeys screenshotting the same default table view is invalid.
 - **PF6 script template.** eval-verify provides tested Playwright utilities (`navigateTo`, `expandRow`, `hoverElement`, `getTooltipText`, `checkNoErrors`) so the agent fills in AC-specific logic without writing boilerplate from scratch.
-- **1440x900 viewport.** All Playwright contexts use this size. The default 800x600 truncates PatternFly tables.
+- **1920x900 viewport.** All Playwright contexts use this size. The default 800x600 truncates PatternFly tables.
 
 ## Tier System
 
@@ -127,7 +144,7 @@ ACs are classified into tiers that determine how to evaluate them:
 | Tier | What it means | Verdict |
 |------|---------------|---------|
 | **T1** | Verifiable from prototype UI (default) | PASS or FAIL |
-| **T2** | Needs external reference to compare | PASS, FAIL, or FLAGGED |
+| **T2** | Needs external reference to compare (not yet implemented) | PASS, FAIL, or FLAGGED |
 | **T3** | Backend-only, no UI surface | Auto-PASS at classify time |
 | **T4** | Subjective — needs human judgment | FLAGGED with evidence |
 
@@ -142,7 +159,7 @@ T1 is the default. Any AC with an observable UI effect is T1, even if the AC tex
 | `--usability=deep` | deep | Run Phase B persona walkthroughs |
 | `--no-iterate` | Off | Run Phase A once, no fix loop |
 | `--no-fix` | Off | Pure evaluation — skip fixes, produce findings only |
-| `--depth=deep` | deep | Evaluation thoroughness |
+| `--depth=deep` | deep | Evaluation thoroughness (vestigial — no branching logic; always runs at full depth) |
 
 ## Output Artifacts
 
@@ -193,7 +210,36 @@ To review results from a previous run:
 | `eval-discover` | Phase B persona walkthroughs + 7-dimension scoring |
 | `eval-consistency` | PatternFly design guideline compliance check |
 | `eval-report` | Renders the HTML report from artifacts |
+| `eval-generate-report` | On-demand HTML report from cached artifacts (after `--no-report`) |
 | `eval-review` | Conversational entry point for reviewing results |
+
+## Scripts
+
+| Script | Description |
+|--------|-------------|
+| `append-iteration-log.js` | Appends a Phase A/B iteration entry to iteration-log.json |
+| `build-leaderboard.js` | Builds pain-leaderboard.html from archived runs |
+| `build-summary.js` | Writes evaluation-summary.json without HTML generation (`--no-report` path) |
+| `check-exit-condition.js` | Decides whether the Phase A fix loop should exit |
+| `classify-tiers.js` | Keyword-driven AC tier classification → evaluation-report.csv |
+| `compute-patience.js` | Applies deterministic patience formula to persona-results / journey-log |
+| `eval_state.py` | Read/write eval-state.yaml (init, set, get, timestamp) |
+| `extract-nav-context.js` | Deterministic routes/nav extractor → navigation-hints.json |
+| `generate-dashboard.js` | Builds a multi-eval dashboard HTML from an evals directory |
+| `generate-journey-script.js` | Emits journey-test.mjs from component-map + extract-state |
+| `generate-report.sh` | Thin shell wrapper for validate → render → log → optional leaderboard |
+| `generate-thinkaloud-md.js` | Formats persona think-aloud traces to markdown |
+| `list-failing-acs.js` | Lists FAIL/FLAGGED AC IDs from evaluation-report.csv |
+| `log-run.js` | Appends a run to run-log.csv and archives key artifacts |
+| `publish-report.sh` | Publishes evaluation-report.html to GitLab Pages / reports branch |
+| `render-report.js` | Renders self-contained evaluation-report.html from artifacts |
+| `resolve-root.js` | Resolves the prototype-creator project root for scripts |
+| `sync-sheet.js` | Syncs run results to Google Sheets (when auth is configured) |
+| `validate-artifacts.js` | Pre-flight schema check before report render |
+| `validate-fix-log.js` | Validates fix-log.json schema |
+| `validate-verdicts.js` | Bidirectional CSV ↔ journey-log verdict consistency check |
+| `bootstrap-usability-testing.sh` | Bootstraps personas + 7-dimension rubric into `.context/` |
+| `bootstrap-consistency-checker.sh` | Bootstraps PatternFly design guidelines into `.context/` |
 
 ## Prerequisites
 

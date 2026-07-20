@@ -36,6 +36,19 @@ build/
 # Test fixtures — oversized files (>20MB) excluded from git
 .claude/skills/eval/tests/fixtures/images/oversized-test.png
 
+# Eval harness integration (local testing only, not pushed)
+.claude/skills/eval/eval-harness/
+
+# Stray Playwright scripts from eval runs (should be in .artifacts/)
+.claude/skills/eval/journey-test-*.mjs
+.claude/skills/eval/persona-walkthrough-*.mjs
+
+# Run metrics (generated per-run, not source)
+.artifacts/**/run-metrics.json
+
+# Cursor workspace state
+.cursor/
+
 # Presentation drafts and personal notes
 docs/drafts/
 

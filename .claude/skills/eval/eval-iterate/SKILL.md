@@ -5,6 +5,8 @@ user-invocable: true
 allowed-tools: Read, Write, Edit, Glob, Grep, Bash, AskUserQuestion, mcp__atlassian__getJiraIssue, mcp__atlassian__searchJiraIssuesUsingJql, mcp__atlassian__addCommentToJiraIssue
 ---
 
+<!-- Model: Opus for orchestration judgment. Mechanical steps (git, timing, file copies, npm build) could use cheaper model or scripts. -->
+
 # eval-iterate
 
 Two-phase eval pipeline orchestrator. Phase A (x-ray) validates acceptance criteria with an x-ray evaluator that has full code access, fixing until all ACs pass. Phase B (discovery) runs per-persona Playwright walkthroughs to score usability on a known-good prototype.
@@ -15,7 +17,13 @@ Two-phase eval pipeline orchestrator. Phase A (x-ray) validates acceptance crite
 make context
 ```
 
-Ensure `.context/usability-testing/`, `.context/consistency-checker/` are bootstrapped.
+**REQUIRED:** `.context/usability-testing/` and `.context/consistency-checker/` MUST be bootstrapped before running. The pipeline will not proceed without them. If missing, run `make context` first.
+
+```bash
+# Verify both exist before starting
+test -d .context/consistency-checker/guidelines || { echo "FATAL: consistency-checker not bootstrapped. Run: make context"; exit 1; }
+test -d .context/usability-testing/personas || { echo "FATAL: usability-testing not bootstrapped. Run: make context"; exit 1; }
+```
 
 ## Usage
 
@@ -42,8 +50,6 @@ If the Jira ticket has no ACs, the pipeline will stop and ask for them. You can 
 | Prototype URL | `http://localhost:3000` | Yes | — |
 | `--workspace` | Path to prototype repo | No | — |
 | `--max-iterations` | Number | No | 3 |
-| `--depth` | `deep` | No | `deep` |
-| `--usability` | `deep` | No | `deep` |
 | `--no-iterate` | flag | No | Off |
 | `--no-fix` | flag | No | Off |
 | `--reset` | flag | No | Off (evaluate current state; when set, hard-resets workspace to origin branch HEAD before eval) |
@@ -79,7 +85,9 @@ When `--auto-run` is set, chain related commands with `&&` into 5 groups at natu
 | 2. Phase A validation | `node validate-verdicts.js && cp archive && node append-iteration-log.js` | See iteration results |
 | 3. Fix + rebuild | `cd workspace && npm run build` | See fixes being compiled |
 | 4. Playwright | `node journey-test.mjs` or `node persona-walkthrough.mjs` | See browser automation start |
-| 5. Report | `node validate-artifacts.js && node render-report.js && node log-run.js && node build-leaderboard.js` | See final report generated |
+| 5. Report | `node validate-artifacts.js && node render-report.js && node log-run.js` | See final report generated |
+
+> **Note:** `build-leaderboard.js` should be called from `log-run.js` as a post-hook, not directly by the orchestrator.
 
 ## Pipeline Flow (Two-Phase)
 
@@ -135,6 +143,38 @@ if --fresh:
 # avoids false invalidation when eval-iterate itself adds comments to the ticket.
 # If --fresh is set, artifacts are already cleared above. Otherwise, let
 # eval-extract's own cache check (content hash) decide whether to re-fetch.
+
+# ── eval-state.yaml: LLM Scratchpad ────────────────────────────────
+# eval-state.yaml is the pipeline's persistent memory across context
+# compression boundaries. When the LLM's context window fills up and
+# earlier conversation is compressed, eval-state.yaml survives because
+# it's a file on disk — not in-memory state.
+#
+# The LLM writes to it at every phase transition and reads it back
+# after context compression to recover: current iteration, phase,
+# exit reason, timing, workspace commit, and any other state needed
+# to resume the pipeline without re-running completed steps.
+#
+# Fields:
+#   iteration        — current loop counter
+#   max_iterations   — cap from --max-iterations flag
+#   exit_reason      — pending | all_pass | flagged_unfixable | max_iterations | regression | no_fix | no_iterate
+#   phase            — a | b
+#   ac_pass          — true | false
+#   key              — Jira story key (e.g., RHAISTRAT-1536)
+#   url              — prototype URL being tested
+#   workspace        — path to prototype repo
+#   workspace_commit — git commit hash being evaluated
+#   workspace_dirty  — number of uncommitted changes
+#   pipeline_start   — ISO timestamp when pipeline began
+#   pipeline_end     — ISO timestamp when pipeline finished
+#   extract_core_start/end — timing for eval-extract core phase
+#   consistency_source_start/end — timing for eval-consistency source mode
+#   bridge_start/end — timing for pre-Phase-B deferred context gathering
+#
+# Any skill can read/write additional fields using:
+#   python3 .claude/skills/eval/scripts/eval_state.py set <path> key=value
+#   python3 .claude/skills/eval/scripts/eval_state.py get <path> key
 
 # Initialize persistent state (survives context compression)
 python3 .claude/skills/eval/scripts/eval_state.py init .artifacts/<KEY>/eval-state.yaml \
@@ -253,87 +293,37 @@ LOOP:
   cp .artifacts/<KEY>/evaluation-report.csv → .artifacts/<KEY>/evaluation-report-iter-<iteration>.csv
   cp -r .artifacts/<KEY>/screenshots/ → .artifacts/<KEY>/screenshots-iter-<iteration>/
 
-  # ── Compute counts FROM the CSV (source of truth) ──────────────
-  # CRITICAL: Read the CSV FILE, not journey-log.json, not agent memory.
-  # The CSV is what the report renders. If you use different counts,
-  # the pipeline will report "7/7 PASS" while the report shows "0/7".
-  Read .artifacts/<KEY>/evaluation-report.csv Section 1 (ACCEPTANCE CRITERIA)
-  Parse using proper CSV quoting (fields may contain commas):
-    pass_count = count rows where verdict column == "PASS"
-    fail_count = count rows where verdict column == "FAIL"
-    flagged_count = count rows where verdict column == "FLAGGED"
-
-  NEVER use journey-log verdicts for these counts. NEVER manually estimate.
-  Always compute from the CSV file — it is the ONLY source of truth.
-
   # ── Write iteration entry to iteration-log.json ────────────────
   # ALWAYS use the script — NEVER write iteration-log.json directly.
   # The script reads the CSV (source of truth) for pass/fail/flagged counts.
   node .claude/skills/eval/scripts/append-iteration-log.js .artifacts/<KEY>/ <iteration> a
 
-  # This script reads CSV, journey-log, fix-log, refinement-suggestions, and
-  # consistency-report to produce a complete iteration entry including:
-  #   - pass/fail/flagged counts (from CSV — NOT from journey-log)
-  #   - per-AC verdict details (from CSV)
-  #   - journey coverage mapping (from journey-log)
-  #   - changes_applied (from fix-log.json, if fix loop ran)
-  #   - root_cause (if any FAILs)
-  #   - consistency_summary (from consistency-report)
-  #   - timestamp for timing analysis
+  # ── Exit condition check (deterministic) ──────────────────────
+  EXIT_REASON=$(node .claude/skills/eval/scripts/check-exit-condition.js .artifacts/<KEY>/ $iteration $max_iterations)
+  EXIT_CODE=$?
 
-  # Read the updated log to get computed counts for exit checks:
-  Read .artifacts/<KEY>/iteration-log.json for pass_count, fail_count from the last entry
-
-  # ── Exit condition checks ──────────────────────────────────────
-  if fail_count == 0 AND flagged_count == 0:
-    Set exit_reason = "all_pass"
+  if [ $EXIT_CODE -eq 1 ]; then
     python3 .claude/skills/eval/scripts/eval_state.py set .artifacts/<KEY>/eval-state.yaml \
-      exit_reason=all_pass ac_pass=true
+      exit_reason=$EXIT_REASON ac_pass=$([ "$EXIT_REASON" = "all_pass" ] || [ "$EXIT_REASON" = "flagged_unfixable" ] && echo true || echo false)
+
+    # ── Write exit_reason to iteration-log.json (MANDATORY) ────────
+    # iteration-log.json must reflect the final exit reason, not stay "pending".
+    node -e "const f='.artifacts/<KEY>/iteration-log.json'; const d=JSON.parse(require('fs').readFileSync(f,'utf8')); d.exit_reason='$EXIT_REASON'; require('fs').writeFileSync(f, JSON.stringify(d,null,2));"
+
     BREAK → proceed to Phase B
+  fi
 
-  if fail_count == 0 AND flagged_count > 0:
-    # FLAGGED items may be fixable (e.g., wrong interaction pattern, missing mock state)
-    # Attempt fix loop on FLAGGED suggestions. If eval-fix produces no changes, exit.
-    if iteration > 1:
-      # Check if fix-log.json from last iteration had zero applied fixes for FLAGGED items
-      Read .artifacts/<KEY>/fix-log.json
-      if fix-log shows 0 applied fixes (all skipped/deferred):
-        Set exit_reason = "flagged_unfixable"
-        python3 .claude/skills/eval/scripts/eval_state.py set .artifacts/<KEY>/eval-state.yaml \
-          exit_reason=flagged_unfixable ac_pass=true
-        BREAK → proceed to Phase B (FLAGGED items need human review)
-    # Otherwise continue to fix loop — eval-fix will attempt FLAGGED suggestions
-
-  if iteration > 1:
-    Compare current CSV verdicts against previous iteration's archived CSV
-    if any criterion flipped PASS → FAIL:
-      Set exit_reason = "regression"
-      python3 .claude/skills/eval/scripts/eval_state.py set .artifacts/<KEY>/eval-state.yaml \
-        exit_reason=regression ac_pass=false
-      BREAK → proceed to Phase B (on current prototype state)
-
-  if iteration >= max_iterations:
-    Set exit_reason = "max_iterations"
-    python3 .claude/skills/eval/scripts/eval_state.py set .artifacts/<KEY>/eval-state.yaml \
-      exit_reason=max_iterations ac_pass=false
-    BREAK → proceed to Phase B (even with remaining FAILs)
-
-  if --no-iterate:
-    Set exit_reason = "no_iterate"
-    python3 .claude/skills/eval/scripts/eval_state.py set .artifacts/<KEY>/eval-state.yaml \
-      exit_reason=no_iterate ac_pass=false
-    BREAK → proceed to Phase B
+  # For selective rerun, get failing AC IDs:
+  RERUN_ACS=$(node .claude/skills/eval/scripts/list-failing-acs.js .artifacts/<KEY>/evaluation-report.csv)
 
   # ── Fix ────────────────────────────────────────────────────────
-  if no_fix:
-    Set exit_reason = "no_fix"
-    python3 .claude/skills/eval/scripts/eval_state.py set .artifacts/<KEY>/eval-state.yaml \
-      exit_reason=no_fix ac_pass=false
-    BREAK → proceed to Phase B
-    # Findings remain in refinement-suggestions.json for human/agent review
 
   Read .claude/skills/eval/eval-fix/SKILL.md and execute it
   # Applies fixes from refinement-suggestions.json (AC failures + consistency + flagged)
+
+  # Validate fix-log.json before using it
+  node .claude/skills/eval/scripts/validate-fix-log.js .artifacts/<KEY>/
+  # If exit code 1: fix-log.json is malformed. Log warning and proceed without fix data.
 
   # Record what was fixed into the iteration log (reads fix-log.json)
   node .claude/skills/eval/scripts/append-iteration-log.js .artifacts/<KEY>/ <iteration> fix
@@ -351,6 +341,18 @@ LOOP:
   GOTO LOOP
 
 # ═══════════════════════════════════════════════════════════════════
+# SPEC FILE (core phase) — step-by-step UI requirements for Yoni's
+# post-engineering workflow validator. Assembled from artifacts that
+# already exist (journey-log.json + evaluation-report.csv) — no new
+# evaluation logic. See eval-generate-spec/SKILL.md.
+# ═══════════════════════════════════════════════════════════════════
+
+node .claude/skills/eval/eval-generate-spec/scripts/generate-spec.js .artifacts/<KEY>/ --phase=core
+# Produces: spec.md (AC section only — persona section added after Phase B below)
+# Non-blocking: if this fails, log a warning and continue to Phase B. spec.md
+# is a downstream connectivity artifact, not a pipeline gate.
+
+# ═══════════════════════════════════════════════════════════════════
 # FINAL-STATE CAPTURE (N+1 pass — only when fix loop actually ran)
 # Ensures the report shows post-fix screenshots, not pre-fix evidence
 # ═══════════════════════════════════════════════════════════════════
@@ -360,21 +362,20 @@ if iteration > 1:
   # Archive the current screenshots as the last iteration's evidence
   # (they may be from a selective rerun, not a full re-capture)
 
-  # Re-run eval-verify in screenshot-only mode: full journey set, no verdict changes
-  # This captures final-state screenshots that reflect all applied fixes
-  Read .claude/skills/eval/eval-verify/SKILL.md and execute in capture-only mode:
-    --mode=informed --capture-only --all-journeys
-  # This re-walks ALL journeys (not just the re-run set) and captures fresh screenshots
-  # to .artifacts/<KEY>/screenshots/ — overwriting the partial captures from fix iterations.
-  # Verdict CSV is NOT modified. journey-log.json step screenshots are updated in-place.
-
-  # Ensure the rebuild completed before capturing (static server needs explicit build)
+  # Rebuild FIRST so screenshots reflect post-fix state
   if NEEDS_REBUILD:
     cd <workspace>
     npm run build
     echo "Final rebuild complete — N+1 screenshots will show post-fix state"
   else:
     sleep 5
+
+  # THEN capture screenshots
+  Read .claude/skills/eval/eval-verify/SKILL.md and execute in capture-only mode:
+    --mode=informed --capture-only --all-journeys
+  # This re-walks ALL journeys (not just the re-run set) and captures fresh screenshots
+  # to .artifacts/<KEY>/screenshots/ — overwriting the partial captures from fix iterations.
+  # Verdict CSV is NOT modified. journey-log.json step screenshots are updated in-place.
 
 # ═══════════════════════════════════════════════════════════════════
 # PRE-PHASE-B: Deferred Context (PARALLEL)
@@ -451,6 +452,16 @@ if any entry has trace == [] (empty array):
 node .claude/skills/eval/scripts/append-iteration-log.js .artifacts/<KEY>/ <iteration> b
 
 # ═══════════════════════════════════════════════════════════════════
+# SPEC FILE (enrichment phase) — adds persona-validated task flows
+# from persona-results.json on top of the core-phase AC section.
+# Idempotent: regenerates spec.md in full, does not append.
+# ═══════════════════════════════════════════════════════════════════
+
+node .claude/skills/eval/eval-generate-spec/scripts/generate-spec.js .artifacts/<KEY>/ --phase=enrichment
+# Produces: spec.md (AC section + Persona-Validated Task Flows section)
+# Non-blocking: if this fails, log a warning and continue to REPORT.
+
+# ═══════════════════════════════════════════════════════════════════
 # REPORT (runs unless --no-report is set)
 # ═══════════════════════════════════════════════════════════════════
 
@@ -462,14 +473,17 @@ if --no-report:
   python3 .claude/skills/eval/scripts/eval_state.py set .artifacts/<KEY>/eval-state.yaml \
     pipeline_end=$(python3 .claude/skills/eval/scripts/eval_state.py timestamp)
 
-  # Read evaluation-summary.json if it exists (from a previous run), otherwise read CSV directly.
-  # evaluation-summary.json is the canonical artifact for conversational mode.
-  Read .artifacts/<KEY>/evaluation-report.csv and .artifacts/<KEY>/extract-state.json
-  Compute pass/fail/flagged counts from CSV
+  # Build the evaluation-summary.json (standalone, no render-report.js dependency)
+  node .claude/skills/eval/scripts/build-summary.js .artifacts/<KEY>/
 
-  # Show unique screenshots inline (only screenshots with distinct visual states)
-  # Use MD5 hashing to deduplicate: group screenshots by hash, show one per unique hash
-  # Pick the most informative screenshot per unique hash (prefer hover/expand states over default table)
+  # Read the summary for structured data
+  Read .artifacts/<KEY>/evaluation-summary.json
+
+  # Show unique screenshots inline — deduplicate by MD5 hash
+  # Run: md5 -r .artifacts/<KEY>/screenshots/*.png | sort | uniq -w 32
+  # Group by hash, pick one representative per unique hash.
+  # Prefer screenshots with interactions (tooltip, expand) over the default table view.
+  # Embed 3-4 unique screenshots inline in the chat message.
 
   Present:
 
@@ -479,6 +493,7 @@ if --no-report:
     **What needs attention:** <list failed/flagged items, 1 line each>
     **Key screenshots:** <embed 3-4 unique screenshots inline showing distinct visual states>
     **What to do:** <prioritized actions from refinement-suggestions.json>
+    **Spec file:** <verified>/<total> ACs ready for Yoni's workflow validator → `spec.md`
 
     ---
     How can I help?
@@ -512,6 +527,7 @@ else:
     **What passed:** <pass>/<total> acceptance criteria. [Usability: <score>/21]
     **What needs attention:** <list failed/flagged items, 1 line each>
     **What to do:** <prioritized actions from refinement-suggestions.json>
+    **Spec file:** <verified>/<total> ACs ready for Yoni's workflow validator → `spec.md`
 
     ---
     How can I help?
@@ -520,7 +536,8 @@ else:
     • "Re-run eval"
     • "Looks good"
 
-  # Rebuild leaderboard with latest data
+  # NOTE: build-leaderboard.js should be called from log-run.js as a post-hook,
+  # not directly by the orchestrator. Kept here until log-run.js owns that hook.
   node .claude/skills/eval/scripts/build-leaderboard.js
 ```
 
@@ -555,6 +572,7 @@ After each Phase A iteration (2+), compare verdicts against the previous CSV:
 | `.artifacts/<KEY>/screenshots-iter-N/` | Archived screenshots per Phase A iteration |
 | `.artifacts/<KEY>/screenshots/persona-<id>-step-N.png` | Phase B per-persona screenshots |
 | `.artifacts/<KEY>/usability-thinkaloud-<id>.md` | Phase B think-aloud traces |
+| `.artifacts/<KEY>/spec.md` | Step-by-step UI requirements for Yoni's post-engineering workflow validator (see `eval-generate-spec/SKILL.md`) |
 
 ## iteration-log.json format
 
@@ -635,6 +653,7 @@ PHASE B — Usability:
   Score:     <score>/21
   Key finding: <one-liner from highest-impact dimension>
 
+Spec file: <verified>/<total> ACs Playwright-verified → .artifacts/<KEY>/spec.md
 Report: .artifacts/<KEY>/evaluation-report.html
 ────────────────────────────────────────
 ```
@@ -644,40 +663,5 @@ Report: .artifacts/<KEY>/evaluation-report.html
 - **Prototype URL unreachable:** Wait 10s, retry once. If still down, stop with error.
 - **eval-fix produces no changes:** Stop Phase A — more iterations won't help. Proceed to Phase B.
 - **Dev server crashes after fix:** Stop Phase A, note which files may have caused it. Proceed to Phase B.
-- **Missing .context/ directories:** Phase A runs without consistency. Phase B skipped if usability-testing missing.
+- **Missing .context/ directories:** STOP. Both `.context/consistency-checker/` and `.context/usability-testing/` are required. Instruct the user to run `make context` before retrying. The pipeline must not proceed without consistency checking.
 
-## Future: Phase B Feedback Loop (NOT YET IMPLEMENTED)
-
-Phase B currently produces usability findings that go into the report but do not trigger fixes. This section documents the planned architecture for a feedback loop.
-
-### Design
-
-After Phase B completes, check whether usability findings are severe enough to warrant another Phase A iteration:
-
-```
-Phase B complete → Score check:
-  - overall_score >= 14/21 AND no dimension = 0 → REPORT (no feedback)
-  - overall_score < 14/21 OR any dimension = 0 → Feed usability suggestions to eval-fix → one more Phase A crank → REPORT
-```
-
-### Trigger Conditions
-
-The feedback loop fires when ANY of:
-- `overall_score` < 14/21 (below "functional" threshold)
-- Any single dimension scores 0 (broken)
-- 3+ confusion events across ALL personas combined
-
-### What Gets Fed Back
-
-Only `refinement-suggestions.json` entries of `type: "usability"` with `confidence: "high"` or `"medium"`. Low-confidence usability suggestions remain report-only (human judgment required).
-
-### Constraints
-
-- Max 1 feedback loop (prevents infinite cycling between Phase A and Phase B)
-- The feedback Phase A crank does NOT re-run Phase B afterward (would create recursion)
-- `--no-outer-loop` flag skips this entirely (for when designers just want the report)
-- Feedback fixes are logged separately in fix-log.json as `"source": "phase_b_feedback"`
-
-### What This Enables
-
-Phase B persona walkthroughs currently identify issues like "junior user couldn't find the scheduling column because it requires scrolling right." With the feedback loop, this finding would generate a suggestion like "Add horizontal scroll indicator or move scheduling status column left" that eval-fix can apply, then Phase A re-verifies the fix works.

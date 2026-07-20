@@ -28,9 +28,9 @@ sections:
         values: ["jira", "inferred"]
 
       - name: tier
-        description: "Evaluation tier classification (1-4)"
-        type: integer
-        range: [1, 4]
+        description: "Evaluation tier classification"
+        type: string
+        values: ["T1", "T2", "T3", "T4"]
 
       - name: criterion_text
         description: "Verbatim text from Jira (for jira source) or evaluator description (for inferred)"

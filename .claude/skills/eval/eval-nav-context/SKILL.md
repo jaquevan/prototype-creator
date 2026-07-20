@@ -42,18 +42,29 @@ Pre-journey intelligence gathering. Reads the workspace source files listed in `
 
 ## Procedure
 
+**Preferred: use the deterministic script** to extract navigation context:
+```bash
+node .claude/skills/eval/scripts/extract-nav-context.js .artifacts/<KEY>/ <workspace-path>
+```
+This reads product-overlay.yaml + workspace source files and produces navigation-hints.json.
+Only fall back to LLM-driven extraction if the script fails (unusual project structure).
+
 ### Step 1: Read MR delta and identify target files
 
 Read `.artifacts/<KEY>/mr-delta.json`. Collect all files from `new_files` and `modified_files`.
 
+Read `config/product-overlay.yaml` for the `navigation` section to determine file paths:
+- `routes_file` — route definitions (default: `src/app/AppRoutes.tsx`)
+- `sidebar_file` — nav/sidebar layout (default: `src/app/AppLayout/AppLayout.tsx`)
+
 Also identify related files not in the delta that provide navigation context:
-- Route files: `AppRoutes.tsx`, `*Routes*`, `*routes*`
-- Nav/sidebar config: `AppLayout.tsx`, `*Nav*`, `*Sidebar*`, `*navigation*`
+- Route files: the `routes_file` from overlay, plus `*Routes*`, `*routes*`
+- Nav/sidebar config: the `sidebar_file` from overlay, plus `*Nav*`, `*Sidebar*`, `*navigation*`
 - Feature flag files: `FeatureFlags*`, `*flags*`
 
 ```bash
 cd <workspace>
-# Find route definitions
+# Find route definitions (use paths from product-overlay.yaml)
 grep -rl "Route\|path:" src/app/ --include="*.tsx" --include="*.ts" | head -10
 # Find nav configuration
 grep -rl "nav\|sidebar\|Nav\|Sidebar" src/app/ --include="*.tsx" --include="*.ts" | grep -i "layout\|nav\|sidebar" | head -10
@@ -61,11 +72,12 @@ grep -rl "nav\|sidebar\|Nav\|Sidebar" src/app/ --include="*.tsx" --include="*.ts
 
 ### Step 2: Extract routes
 
-Read route files and extract path definitions:
+Read the routes file specified in `product-overlay.yaml > navigation > routes_file` and extract path definitions:
 
 ```bash
 cd <workspace>
-grep -n "path:" src/app/AppRoutes.tsx 2>/dev/null || grep -rn "path:" src/app/ --include="*Route*" | head -30
+# Use the routes_file path from product-overlay.yaml (e.g., src/app/routes.tsx)
+grep -n "path:" <routes_file> 2>/dev/null || grep -rn "path:" src/app/ --include="*Route*" | head -30
 ```
 
 For each route, record:
@@ -76,12 +88,12 @@ For each route, record:
 
 ### Step 3: Extract nav hierarchy
 
-Read the sidebar/nav configuration to determine which sections contain which links:
+Read the sidebar/nav configuration from `product-overlay.yaml > navigation > sidebar_file` to determine which sections contain which links:
 
 ```bash
 cd <workspace>
-# Read the nav layout file
-cat src/app/AppLayout/AppLayout.tsx | grep -A 2 "NavItem\|nav__link\|expandable" | head -50
+# Read the sidebar file from product-overlay.yaml (e.g., src/app/AppLayout/AppLayout.tsx)
+cat <sidebar_file> | grep -A 2 "NavItem\|nav__link\|expandable" | head -50
 ```
 
 Build the nav section map: which parent button expands to reveal which child links. This directly tells eval-discover which section to expand for each target page.

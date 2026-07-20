@@ -5,6 +5,8 @@ user-invocable: false
 allowed-tools: Read, Write, Bash, Glob, Grep
 ---
 
+<!-- Model: Opus for persona think-aloud narration. Playwright script generation and screenshot orchestration could use Sonnet. -->
+
 # eval-discover
 
 Phase B of the eval pipeline. Runs discovery-based per-persona Playwright walkthroughs against the prototype in its current state (after Phase A validation and any fixes applied), then scores 7 usability dimensions using persona constraints and think-aloud narration.
@@ -37,6 +39,27 @@ Each persona navigates at their own competence level — an experienced user exp
 | `.artifacts/<KEY>/refinement-suggestions.json` | Appended with usability suggestions for scores 0-1 |
 
 ## Procedure
+
+### Step Overview
+
+| Step | What it does |
+|------|-------------|
+| 1a | Select personas |
+| 1b | Read persona YAMLs |
+| 1c | Read scoring rubric |
+| 1c-routes | Map tasks to routes |
+| 1d | Run per-persona Playwright walkthroughs |
+| 1d-verify | Verify persona screenshots exist and are unique |
+| 1e | Apply navigation hints as fallback |
+| 2 | Apply persona constraints to journey evidence |
+| 3 | Score 7 usability dimensions |
+| 4 | Append Section 2 to CSV |
+| 5 | Annotate traces and write think-aloud files |
+| 6 | Write persona-results.json |
+| 6b | Apply deterministic patience formula |
+| 7 | Generate refinement suggestions |
+| 7b | Capture final-state screenshot (if fix loop ran) |
+| 8 | Write usability_dimensions to journey-log.json |
 
 ### Step 1: Select and Load Personas
 
@@ -90,10 +113,12 @@ This file defines the specific scoring criteria for each dimension (0-3 scale). 
   "persona_selection": {
     "method": "automatic",
     "target_audience_text": "...",
-    "target_audience_source": "...",
-    "reasoning": "...",
-    "selected": ["deena-junior", "deena-senior"],
-    "considered_but_rejected": []
+    "target_audience_source": "extract-state.json > persona_selection.target_audience_text",
+    "reasoning": "MUST explain: (1) WHY this persona family was chosen over alternatives (e.g., 'alex pair chosen over deena because the feature targets AI engineers, not data scientists'), (2) WHAT knowledge gaps the junior persona has that will surface usability issues (e.g., 'alex-junior has kubernetes: none and will encounter K8s-specific scheduling terms'), (3) HOW the senior differs (e.g., 'alex-senior has kubernetes: intermediate and will navigate more efficiently'). One-liner reasoning like 'mapped to alex pair' is NOT sufficient.",
+    "selected": ["alex-junior", "alex-senior"],
+    "considered_but_rejected": [
+      {"persona": "deena-junior", "reason": "Feature targets AI engineers, not data scientists — deena's primary job (model training) is less relevant than alex's (infrastructure setup)"}
+    ]
   }
 }
 ```
@@ -332,9 +357,35 @@ Find where to go and complete the task. Think aloud as you navigate.
 Respect your persona's constraints — these change HOW you interact, not just what you say:
 - If exploration_tendency is low: stick to the obvious path, don't explore side menus, take the first reasonable link
 - If exploration_tendency is high: check Advanced Settings, expand optional sections, open every accordion, check YAML views
-- If domain_knowledge shows a topic as none/minimal: be confused by jargon for that topic, try wrong paths first, trigger confusion events
+- If domain_knowledge shows a topic as none/minimal/basic: any SPECIALIZED jargon for that topic triggers a confusion event. "Basic" means you know COMMON vocabulary only (e.g., pods, namespaces, deployments for K8s) — NOT operator-specific, CRD-specific, or advanced scheduling terms. At "basic" level, terms like "Admitted", "ClusterQueue", "PriorityClass", "Workload CR" are OUTSIDE your knowledge and MUST cause confusion.
 - If experience_level is junior: read labels carefully, take time, screenshot while still reading sidebar (shows scanning behavior), miss non-obvious affordances
 - If experience_level is senior/experienced: navigate efficiently, recognize UI patterns, skip intermediate states, use keyboard shortcuts if available
+
+SUB-DOMAIN RULE: Domain knowledge levels apply to COMMON vocabulary, not specialized sub-systems:
+- kubernetes: basic does NOT include: operators, CRDs, custom schedulers (Kueue, Volcano), admission controllers
+- mlops_tooling: basic does NOT include: Kueue, KubeRay, custom pipeline operators
+- If the UI uses terminology from a sub-system not in your basic vocabulary, treat your effective knowledge as "none" for that sub-system.
+
+ANTI-LEAKAGE RULE: You are an LLM with broad world knowledge. Your PERSONA does not have that knowledge. You MUST NOT use your training knowledge to interpret terms your persona wouldn't know. For every technical term you encounter, ask: "Would someone with ONLY the knowledge described in my YAML file understand this?" If only someone who'd specifically worked with that sub-system would know it, you ARE confused. Log a confusion event.
+
+JARGON AUDIT (before navigating past the first data screen): Scan all visible domain-specific terms (column headers, status labels, tooltips, expanded content). For each term, check it against your domain_knowledge:
+- Term covered by your listed level → proceed normally
+- Term requires knowledge ABOVE your level → log [CONFUSION EVENT] with the term and your knowledge gap
+- If your level is "basic", you know ONLY the vocabulary explicitly mentioned in your persona YAML description
+
+NAVIGATION vs COMPREHENSION: These are independent. A junior persona can successfully NAVIGATE to the right page while being CONFUSED about what the displayed information means. You can have would_complete: true AND 3 confusion events. Finding the target page and understanding what specialized terms mean are separate things.
+
+CONTRASTIVE EXAMPLES — same UI element, different personas:
+
+Junior seeing "Admitted" status label:
+- What I'm thinking: I can see a label that says "Admitted" next to this deployment. Admitted to what? I know "Running" and "Pending" from basic Kubernetes, but "Admitted" isn't something I've seen before. Maybe it means approved? I'm not confident about what this status actually tells me.
+- Confidence: low
+- Patience: 90% [CONFUSION EVENT: "Admitted" — kubernetes: basic does not cover Kueue admission states]
+
+Experienced seeing "Admitted" status label:
+- What I'm thinking: Admitted — standard Kueue state meaning the ClusterQueue has accepted this workload and allocated resources. Good, this deployment is scheduled.
+- Confidence: high
+- Patience: 100%
 
 Your persona attributes produce DIFFERENT screenshot sequences even on the same page:
 - A junior screenshots the sidebar while deciding where to click
@@ -346,7 +397,27 @@ At each step:
 1. Describe what you see (from the persona's perspective and domain knowledge)
 2. Decide what to do next (based on your exploration tendency and constraints)
 3. Take a screenshot
-4. Note your confidence level and current patience
+4. Note your confidence level
+5. For EVERY domain-specific term visible, check against your knowledge level — log [CONFUSION EVENT] if outside your boundary
+6. Compute patience MECHANICALLY using the formula below — do NOT estimate or round
+
+PATIENCE COMPUTATION (MECHANICAL — do not approximate):
+- Start each task at exactly 100%
+- For each [CONFUSION EVENT] in this step, apply the drain rate from your persona's patience attribute:
+  - High patience: -5% per confusion event
+  - Medium patience: -10% per confusion event
+  - Low patience: -15% per confusion event
+  - Dead ends (stuck, can't find target): High -10%, Medium -20%, Low -30%
+- For each successful sub-task completion in this step: High +10%, Medium +5%, Low +5% (only after frustration occurred)
+- Formula: patience = previous_step_patience - SUM(drain_this_step) + SUM(recovery_this_step)
+- Clamp between 0 and 100
+
+Example for Medium patience persona with 2 confusion events at step 2:
+  Step 1: patience = 100 (no events)
+  Step 2: patience = 100 - 10 - 10 = 80 (two confusion events, -10% each)
+  Step 3: patience = 80 - 10 = 70 (one more confusion event)
+
+The patience value in each trace entry MUST match this formula exactly. If step N has patience 80 and step N+1 has one confusion event with Medium patience, step N+1 MUST be 70 — not 65, not 75.
 
 If you get stuck (can't find where to go after reasonable exploration for your type):
 - Read .artifacts/<KEY>/navigation-hints.json for a hint
@@ -355,6 +426,28 @@ If you get stuck (can't find where to go after reasonable exploration for your t
 - Continue from the assisted location
 
 If your constraints say to abandon after N confusion events, do so.
+
+WOULD_COMPLETE RULE (MANDATORY): Set would_complete to false if ANY of these are true:
+- You encountered a dead_end (stuck, couldn't find target after reasonable exploration)
+- Your patience dropped below 30%
+- Your outcome is "abandoned"
+- You could not complete the core task objective
+would_complete=true means the persona completed the task successfully with no blocking issues. A dead end is ALWAYS a blocking issue even if you navigated away from it.
+
+MANDATORY PRE-NAVIGATION JARGON SCAN (before Step 2+ screenshots):
+After loading the first page, scan ALL visible text for domain-specific terms.
+For EACH term, check against your persona's domain_knowledge levels:
+- If your level for that domain is "none" or "basic", you MUST log a [CONFUSION EVENT]
+- Terms like "Admitted", "ClusterQueue", "WorkloadCR", "InferenceService", "PriorityClass", "AutoRAG", "Tech Preview", "GA" count as specialized when your knowledge is basic
+- Common UI terms (button, table, page, menu) do NOT count as specialized
+
+MINIMUM CONFUSION THRESHOLD: If the page shows 5+ specialized terms outside your knowledge boundary and you logged fewer than 2 confusion events, STOP. Re-examine the page and add the missing confusion events before proceeding. Your think-aloud must explicitly name each confusing term and explain WHY it's outside your knowledge level.
+
+POST-TRACE VALIDATION (BLOCKING): After completing all steps, verify:
+1. If you have basic-level domain knowledge and encountered 5+ specialized terms, you MUST have logged at least 2 confusion events. Zero confusion events is a constraint enforcement failure.
+2. If any step has dead_end=true, would_complete MUST be false.
+3. If patience dropped below 30%, would_complete MUST be false.
+4. patience_end MUST equal the last trace step's patience value exactly.
 
 Screenshot rules (these are seen by a human reviewer):
 - Take a screenshot whenever the view changes meaningfully (new page, modal/form opens, content loads)
@@ -366,9 +459,12 @@ Save screenshots to: .artifacts/<KEY>/screenshots/persona-<persona-id>-task-<N>-
 Write your think-aloud trace to: .artifacts/<KEY>/usability-thinkaloud-<persona-id>-task-<N>.md
 
 CRITICAL — SYNCHRONOUS TRACE WRITING:
-At EACH step, you MUST write BOTH:
-1. Append the step to the markdown think-aloud file (Phase 1 Actor format)
-2. Write the step entry to .artifacts/<KEY>/persona-results.json trace[] array
+At EACH step, you MUST do ALL THREE together:
+1. Take a screenshot (EVERY step gets a screenshot, no exceptions)
+2. Append the step to the markdown think-aloud file (Phase 1 Actor format)
+3. Write the step entry to .artifacts/<KEY>/persona-results.json trace[] array
+
+SCREENSHOT RULE: EVERY trace step MUST have a `screenshot` field pointing to the actual PNG file. Do NOT write `screenshot: null`, `screenshot: "None"`, or omit the field. If you didn't take a screenshot yet at this step, take one NOW before writing the trace entry. The screenshot and trace entry are written as an atomic pair — never one without the other.
 
 The persona-results.json entry for this step must include:
   { "step": M, "what_i_see": "...", "what_im_thinking": "...", "action": "...",
@@ -483,7 +579,7 @@ For each persona's trace, assess:
 3. **Knowledge gaps** — moments where persona constraints caused confusion
 4. **Assisted navigation** — steps marked `navigate-assisted` are FAIL evidence for usability
 
-Produce per-persona journey overlay with `patience_start`, `patience_end`, `confusion_events`, `cli_escapes`, `would_complete`.
+Produce per-persona journey overlay with `patience_start`, `patience_end`, `confusion_events`, `would_complete`.
 
 ### Step 3: Score 7 Usability Dimensions
 
@@ -566,6 +662,12 @@ Key insight: [1-2 sentences — the most actionable finding from this persona's 
 
 Use per-task naming (`-task-<N>.md`) even for single-task runs. Phase 1 steps are the primary content — the report's Personas tab renders these via `parseTaSteps`.
 
+**Script alternative:** After persona-results.json is complete, generate think-aloud files deterministically:
+```bash
+node .claude/skills/eval/scripts/generate-thinkaloud-md.js .artifacts/<KEY>/
+```
+This produces markdown files in the exact format that `parseTaSteps` in render-report.js expects, eliminating format drift.
+
 **Note:** Dimension scoring is handled in Step 3, not here. Do NOT re-score dimensions in the markdown — that was duplicate work the renderer never consumed.
 
 ### Step 6: Write persona-results.json
@@ -592,13 +694,18 @@ Format: array of persona-task results, one entry per persona per task:
         "confidence": "high|medium|low",
         "patience": 100,
         "screenshot": ".artifacts/<KEY>/screenshots/persona-<id>-task-1-step-1.png",
-        "evidence_for_acs": ["AC-1"]
+        "evidence_for_acs": ["AC-1"],
+        "confusion_event": false,
+        "dead_end": false,
+        "recovery": false
       }
     ],
     "screenshots": ["<paths>"],
     "patience_start": 100,
     "patience_end": 85,
-    "confusion_events": 1,
+    "confusion_events": [{ "step": 2, "trigger": "...", "knowledge_gap": "...", "patience_cost": -10 }],
+    "dead_ends": 0,
+    "recoveries": 0,
     "assisted": false,
     "would_complete": true,
     "outcome": "completed"
@@ -609,6 +716,18 @@ Format: array of persona-task results, one entry per persona per task:
 Even for single-task runs, wrap the single task with `task_index: 1`. This eliminates the need for fallback paths in the renderer.
 
 **VALIDATION GATE (BLOCKING):** After writing persona-results.json, verify that EVERY entry has a non-empty `trace[]` array. If any entry has `trace: []` (empty), the walkthrough for that persona-task pair FAILED to produce live trace data and MUST be re-run (return to Step 1d for that persona-task). Do NOT proceed to Step 7 with empty traces — this was the root cause of the hydrate dependency.
+
+### Step 6b: Apply deterministic patience formula
+
+After persona-results.json is written with trace data and confusion event counts, run the patience calculator to ensure all values match the rubric formula exactly:
+
+```bash
+node .claude/skills/eval/scripts/compute-patience.js .artifacts/<KEY>/
+```
+
+This script reads each persona's patience attribute from their YAML file, applies the mechanical drain formula (high=-5%, medium=-10%, low=-15% per confusion event), and updates `patience_end` in both `persona-results.json` and `journey-log.json`. Any LLM-approximated values are corrected to the exact formula result.
+
+**BLOCKING POST-CHECK:** After compute-patience.js runs, read the updated persona-results.json and verify that each entry's `patience_end` matches its last trace step's `patience` value. If they differ, update `patience_end` to match the trace (trace is the source of truth after correction). This prevents the mismatch where the top-level field retains the LLM-estimated value while the trace has the corrected value.
 
 ### Step 7: Generate refinement suggestions
 
@@ -634,11 +753,11 @@ Rules:
 - Do NOT suggest fixes for FLAGGED criteria
 - `confidence: "low"` items are logged but NOT auto-applied by eval-fix
 
-### Step 7b: Capture final-state screenshot (skip if no fix loop ran)
+### Step 7b: Capture final-state screenshot (ALWAYS)
 
-**Skip this step if no fix loop ran** (check: `fix-log.json` does not exist OR `iteration-log.json` shows `iteration: 1` with `fail_count: 0`). The baseline-after screenshot is only meaningful when comparing against baseline-before to show fix impact. When no fixes were applied, both screenshots would be identical — wasted Playwright invocation and report bloat.
+**Always capture a baseline-after screenshot**, regardless of whether fixes were applied. This provides the "current state" view in the Fix History tab. When no fixes were applied, the before and after will match — but the report still shows the evaluation-time state, which is valuable for designers reviewing the prototype.
 
-If the fix loop DID run, capture a screenshot of the **primary page being tested** (the same page eval-verify captured for `baseline-before.png`):
+Capture a screenshot of the **primary page being tested** (the same page eval-verify captured for `baseline-before.png`):
 
 ```javascript
 // PAIRED with eval-verify Step 2a (baseline-before.png).
@@ -711,7 +830,6 @@ Also in Step 6 (`persona-results.json`): output MUST be an **array** of objects,
         "confusion_events": [
           { "step": 3, "trigger": "Column headers truncated", "knowledge_gap": "ui: expected", "patience_cost": -5 }
         ],
-        "cli_escapes": 0,
         "would_complete": true
       },
       {
@@ -722,7 +840,6 @@ Also in Step 6 (`persona-results.json`): output MUST be an **array** of objects,
         "patience_end": 100,
         "abandoned": false,
         "confusion_events": [],
-        "cli_escapes": 0,
         "would_complete": true
       }
     ],
@@ -735,12 +852,6 @@ Also in Step 6 (`persona-results.json`): output MUST be an **array** of objects,
           "outcome": "completed",
           "patience_end": 100,
           "confusion_events": 1,
-          "cli_escapes": 0,
-          "response_strategies": { "help_seeking": 0, "guess_and_continue": 0, "abandon": 0 },
-          "expected_vs_actual": [
-            { "step": 3, "expected": "Hover tooltip", "actual": "Expandable row", "impact": "Better than expected" }
-          ],
-          "missing_feedback": [],
           "dimension_scores": { "workflow_continuity": { "score": 3, "confidence": "High" } },
           "narration_summary": "1-2 sentence summary of this persona's experience on this specific task."
         },
@@ -750,7 +861,6 @@ Also in Step 6 (`persona-results.json`): output MUST be an **array** of objects,
           "outcome": "completed",
           "patience_end": 100,
           "confusion_events": 0,
-          "cli_escapes": 0,
           "dimension_scores": { "workflow_continuity": { "score": 3, "confidence": "High" } },
           "narration_summary": "Summary of task 2 experience."
         }

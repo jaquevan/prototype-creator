@@ -17,6 +17,7 @@ The eval skill is fully self-contained. Copy the entire `.claude/skills/eval/` d
   ├── eval-consistency/SKILL.md
   ├── eval-fix/SKILL.md
   ├── eval-report/SKILL.md
+  ├── eval-generate-report/SKILL.md
   ├── eval-review/SKILL.md
   ├── scripts/
   │   ├── render-report.js
@@ -24,29 +25,40 @@ The eval skill is fully self-contained. Copy the entire `.claude/skills/eval/` d
   │   ├── log-run.js
   │   ├── sync-sheet.js
   │   ├── publish-report.sh
-  │   ├── compare-ground-truth.js
-  │   ├── compare-runs.js
   │   ├── build-leaderboard.js
+  │   ├── build-summary.js
   │   ├── append-iteration-log.js
+  │   ├── check-exit-condition.js
+  │   ├── classify-tiers.js
+  │   ├── compute-patience.js
+  │   ├── extract-nav-context.js
+  │   ├── generate-journey-script.js
+  │   ├── generate-report.sh
+  │   ├── generate-thinkaloud-md.js
+  │   ├── list-failing-acs.js
   │   ├── validate-verdicts.js
   │   ├── validate-artifacts.js
+  │   ├── validate-fix-log.js
   │   ├── (hydrate-persona-results.js removed — trace data written during Step 1d)
+  │   ├── (compare-ground-truth.js removed)
+  │   ├── (compare-runs.js removed)
   │   ├── generate-dashboard.js
   │   ├── resolve-root.js
   │   ├── bootstrap-consistency-checker.sh
   │   └── bootstrap-usability-testing.sh
   ├── config/
   │   ├── csv-schema.yaml
-  │   ├── eval-settings.yaml
+  │   ├── (eval-settings.yaml removed — was reference-only; config lives in product-overlay.yaml)
+  │   ├── (report-style.yaml removed — replaced by references/report-style-spec.yaml)
   │   ├── product-overlay.yaml
-  │   ├── publish.yaml
-  │   └── report-style.yaml
+  │   └── publish.yaml
   ├── templates/
   │   ├── evaluation-report.html
   │   └── report-index.html
   ├── references/
   │   ├── phase-a-cli-workflow.md
-  │   └── skill-overlays.md
+  │   ├── skill-overlays.md
+  │   └── report-style-spec.yaml
   ├── gitlab-pages/
   │   ├── .gitlab-ci.yml
   │   ├── README.md

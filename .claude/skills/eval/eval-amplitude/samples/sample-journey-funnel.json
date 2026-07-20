@@ -1,0 +1,53 @@
+{
+  "_meta": {
+    "status": "MOCKED — not a live Amplitude API response",
+    "reason": "No AMPLITUDE_API_KEY configured and no Amplitude MCP plugin installed as of 2026-07-20. Structure follows Amplitude's documented /api/2/funnels response fields (event, stepTransTime, actual counts per step) plus a hand-built 'unique_paths' section approximating what a Journey Map chart shows on screen (Amplitude does not expose Journey Map via a documented REST export — see README.md).",
+    "source_ticket": "RHOAIUX-2788",
+    "based_on_demo": "Yahav Manor's Amplitude walkthrough, 2026-07-02 — event 'evaluations benchmark run selected' -> 'mlflow experiment created' -> 'evaluations run complete'"
+  },
+
+  "funnel": {
+    "events": [
+      "evaluations benchmark run selected",
+      "mlflow experiment created",
+      "evaluations run complete"
+    ],
+    "mode": "ordered",
+    "conversion_window_days": 30,
+    "segment": "external_participants",
+    "steps": [
+      { "step": 1, "event": "evaluations benchmark run selected", "count": 4, "percent_of_step1": 100.0 },
+      { "step": 2, "event": "mlflow experiment created", "count": 3, "percent_of_step1": 75.0, "drop_off_from_previous": 1, "drop_off_rate": 25.0 },
+      { "step": 3, "event": "evaluations run complete", "count": 2, "percent_of_step1": 50.0, "drop_off_from_previous": 1, "drop_off_rate": 33.3 }
+    ],
+    "note": "Sample size is intentionally tiny (4 users) — matches Yahav's caution in the 2026-07-02 meeting that only ~4 external participants were in the eval tool's Amplitude data at the time. Do not treat drop-off percentages as statistically meaningful at this volume."
+  },
+
+  "unique_paths": [
+    {
+      "path_id": "path-1",
+      "frequency": 3,
+      "starting_event": "evaluations benchmark run selected",
+      "sequence": [
+        { "event": "evaluations benchmark run selected", "properties": { "site_section": "evaluations" } },
+        { "event": "page viewed", "properties": { "site_section": "evaluations" } },
+        { "event": "mlflow experiment selected", "properties": {} },
+        { "event": "evaluations run complete", "properties": { "outcome": "success" } }
+      ],
+      "completed_funnel": true
+    },
+    {
+      "path_id": "path-2",
+      "frequency": 1,
+      "starting_event": "evaluations benchmark run selected",
+      "sequence": [
+        { "event": "evaluations benchmark run selected", "properties": { "site_section": "evaluations" } },
+        { "event": "page viewed", "properties": { "site_section": "evaluations" } },
+        { "event": "page viewed", "properties": { "site_section": "evaluations" } },
+        { "event": "page viewed", "properties": { "site_section": "evaluations" } }
+      ],
+      "completed_funnel": false,
+      "note": "Likely a refresh loop (repeated page viewed with no intermediate action) rather than a real navigation struggle — flagged as low-confidence signal in README.md."
+    }
+  ]
+}

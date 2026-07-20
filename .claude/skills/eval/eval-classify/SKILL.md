@@ -5,6 +5,8 @@ user-invocable: false
 allowed-tools: Read, Write, Bash, Glob, Grep
 ---
 
+<!-- Model: Sonnet-tier sufficient. Classification is keyword-driven with a T1 default. Use classify-tiers.js script for 80%+ of cases. -->
+
 # eval-classify
 
 Phase 2a of the eval pipeline. Classifies each acceptance criterion into a tier that determines *how* to evaluate it, and initializes the evaluation CSV with headers and tier assignments.
@@ -31,13 +33,16 @@ These prototypes are **functional TypeScript applications** built with Cursor --
 | Tier | What it means | Verdict options | When to use |
 |------|---------------|-----------------|-------------|
 | **T1** | Verifiable from the prototype UI | PASS or FAIL | Any AC where the answer is visible: elements exist, flows work, text appears, interactions respond. This is the default tier -- most ACs in a functional prototype are T1. |
-| **T2** | Needs external reference to compare against | PASS, FAIL, or FLAGGED | AC explicitly references another product, design system doc, or standard that must be compared side-by-side. Rare in practice. |
 | **T3** | Backend-only with no UI surface | PASS (noted) | AC describes purely backend behavior with zero UI manifestation (e.g., "BFF validates request size", "API rate limits"). These auto-PASS with a note -- the prototype's job is to demonstrate UX, not implement backends. |
 | **T4** | Subjective -- needs human designer judgment | FLAGGED with evidence | AC requires qualitative assessment: "user-friendly", "intuitive", "appropriate language", "clear hierarchy". Provide screenshot evidence and flag for human review. This is the ONLY tier that should routinely produce FLAGGEDs. |
 
-**T5 is removed.** Headed-browser limitations (microphone, camera, geolocation, WebRTC) are edge cases that auto-PASS with a note: "Hardware API -- verified code exists, cannot demonstrate in headless." These do not trigger the fix loop and do not need human review. If a prototype has a microphone button, the button exists (T1); whether it actually records audio is a hardware concern that doesn't affect UX evaluation.
-
 ## Procedure
+
+**Preferred: use the deterministic pre-classifier** for obvious cases:
+```bash
+node .claude/skills/eval/scripts/classify-tiers.js .artifacts/<KEY>/
+```
+Review the output — if any edge cases need reclassification (e.g., an AC with backend language that has a UI manifestation), manually adjust the CSV tier column. The script handles 80-90% of cases correctly.
 
 ### Step 1: Read extract-state.json
 
@@ -47,7 +52,7 @@ If `feature_context.ui_enhancements` exists, use it as supplementary signal for 
 
 ### Step 2: Classify each criterion
 
-For each AC in the list, determine its tier. **Default to T1 unless there is a strong reason not to.** These are functional prototypes -- if it's about UI, it's testable.
+For each AC in the list, determine its tier. **Default to T1 unless there is a strong reason not to.** These are functional prototypes — if it's about UI, it's testable. This is the single authoritative rule: T1 is the default. Only classify as T3 or T4 when the criteria below are clearly met.
 
 **Tier 1 — Verifiable from prototype (DEFAULT):**
 - Criteria about UI elements, forms, components, flows, visibility, navigation, interactions
@@ -63,11 +68,6 @@ For each AC in the list, determine its tier. **Default to T1 unless there is a s
 
 **Use `feature_context.ui_enhancements` to confirm T1:** If the UI enhancements section describes specific visual elements (columns, tooltips, labels, panels) that an AC references, the AC is T1 regardless of backend language in the AC text.
 
-**Tier 2 — Needs external reference:**
-- ONLY when an AC explicitly says "align with [other product]", "match [external system]'s behavior", or references a specific external design doc that must be fetched and compared
-- Check the reference map: does this AC have a fetchable URL to compare against?
-- Rare in practice -- most ACs describe what the prototype should do, not what it should match externally
-
 **Tier 3 — Backend-only, no UI surface:**
 - ONLY for ACs that describe purely backend/infrastructure behavior with zero observable UI effect
 - Examples: "BFF accepts 50MB request bodies", "catalog YAML schema validates", "API returns 429 after rate limit"
@@ -80,8 +80,6 @@ For each AC in the list, determine its tier. **Default to T1 unless there is a s
 - Provide evidence (screenshots) and FLAGGED for the designer to judge
 - This is the only tier that should routinely produce FLAGGEDs that might trigger attention
 
-**Classification bias: When in doubt, choose T1.** A T1 that gets a PASS moves the pipeline forward. A T3/T4 that gets FLAGGED may stall it. Since these are real functional apps, err toward testable.
-
 ### Step 3: Write evaluation-report.csv (Section 1 header + tier rows)
 
 ```
@@ -93,15 +91,13 @@ AC-3,jira,T3,"BFF validates request body size",,Backend-only -- no UI component 
 AC-4,jira,T4,"User-friendly terminology for scheduling states",,,,,,Assess whether status labels use appropriate plain language
 ```
 
-All 10 columns are required per `config/csv-schema.yaml`. Leave `verdict`, `rationale`, `evidence`, `fix_action`, `fix_file`, `human_action` empty for T1 and T2 — eval-verify fills those in. For T3 (backend-only), set verdict to PASS immediately with a rationale note. For T4, leave verdict empty but populate `human_action` with what the designer should assess.
+All 10 columns are required per `config/csv-schema.yaml`. Leave `verdict`, `rationale`, `evidence`, `fix_action`, `fix_file`, `human_action` empty for T1 — eval-verify fills those in. For T3 (backend-only), set verdict to PASS immediately with a rationale note. For T4, leave verdict empty but populate `human_action` with what the designer should assess.
 
 ## Rules
 
 - Classification is deterministic given the same inputs. Same AC text + same references + same feature_context = same tier.
-- **Default to T1.** Only use T2/T3/T4 when there is a clear, specific reason the AC cannot be evaluated from the prototype UI.
 - T3 ACs get their verdict assigned at classification time (PASS with note). They do NOT enter the journey loop.
 - T4 ACs get FLAGGED after eval-verify provides evidence. They are the only tier expected to produce FLAGGEDs.
 - Never generate journey steps for T3 ACs (backend-only, no UI to test).
 - Every criterion gets a tier. No criterion is skipped.
 - The CSV schema is strict — all 10 columns must be present, even if empty.
-- **If an AC mentions backend concepts but has any observable UI effect, it is T1.** The prototype demonstrates UX, not backend logic.

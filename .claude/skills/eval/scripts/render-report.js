@@ -475,90 +475,6 @@ function getScreenshotDataUri(filePath) {
 // Build tokens
 // ---------------------------------------------------------------------------
 
-function buildDeltaHtml() {
-  const deltaPath = path.join(absArtifacts, 'mr-delta.json');
-  const delta = normalizeDelta(readJsonOr(deltaPath, null));
-  if (!delta) return '<p class="muted small">No MR delta data available. Run with --workspace to enable.</p>';
-
-  const addIcon = '<span class="delta-added" title="Added">+</span>';
-  const modIcon = '<span class="delta-modified" title="Modified">~</span>';
-
-  const protoId = extractPrototypeId();
-  const mrNum = delta.mr_number || readKnownMRs()[protoId];
-  const mrDiffUrl = mrNum ? `https://gitlab.cee.redhat.com/uxd/prototypes/rhoai/-/merge_requests/${mrNum}/diffs` : '';
-
-  let html = `<p class="small"><strong>${delta.stats?.files_changed || delta.total_files_changed || 0} files changed</strong> against <code>${escapeHtml(delta.base_branch || '?')}</code>`;
-  if (mrNum) html += ` · <a href="${mrDiffUrl}" target="_blank">View full diff on GitLab (MR !${mrNum})</a>`;
-  html += `</p>`;
-
-  // Show modified file list
-  const allChanged = delta.changed_files || [...(delta.new_files || []), ...(delta.modified_files || [])];
-  if (allChanged.length) {
-    html += `<div class="delta-meta">`;
-    const shortFiles = allChanged.slice(0, 5).map(f => f.replace('src/app/', '').replace('src/', ''));
-    html += `<span class="small muted">${shortFiles.join(', ')}${allChanged.length > 5 ? ` +${allChanged.length - 5} more` : ''}</span>`;
-    html += `</div>`;
-  }
-
-  // Navigation warning
-  if (delta.nav_warning) {
-    html += `<div class="delta-nav-warn">${escapeHtml(delta.nav_warning)}</div>`;
-  }
-
-  // File lists with icons
-  const newFiles = delta.new_files || [];
-  const modFiles = delta.modified_files || [];
-  const changedFiles = delta.changed_files || [];
-
-  html += `<div class="delta-files">`;
-
-  if (newFiles.length || modFiles.length) {
-    if (newFiles.length) {
-      html += `<div class="delta-file-group"><h4>${addIcon} ${newFiles.length} Added</h4><ul class="delta-file-list">`;
-      for (const f of newFiles.slice(0, 8)) {
-        const short = f.replace('src/app/', '').replace('src/', '');
-        html += `<li>${addIcon} <code>${escapeHtml(short)}</code></li>`;
-      }
-      if (newFiles.length > 8) html += `<li class="muted">+${newFiles.length - 8} more</li>`;
-      html += `</ul></div>`;
-    }
-    if (modFiles.length) {
-      const important = modFiles.filter(f => f.includes('AppLayout') || f.includes('routes') || f.includes('FeatureFlag'));
-      const other = modFiles.filter(f => !important.includes(f));
-
-      html += `<div class="delta-file-group"><h4>${modIcon} ${modFiles.length} Modified</h4><ul class="delta-file-list">`;
-      for (const f of important) {
-        const short = f.replace('src/app/', '').replace('src/', '');
-        html += `<li>${modIcon} <code><strong>${escapeHtml(short)}</strong></code></li>`;
-      }
-      for (const f of other.slice(0, 5)) {
-        const short = f.replace('src/app/', '').replace('src/', '');
-        html += `<li>${modIcon} <code>${escapeHtml(short)}</code></li>`;
-      }
-      if (other.length > 5) html += `<li class="muted">+${other.length - 5} more</li>`;
-      html += `</ul></div>`;
-    }
-  } else if (changedFiles.length) {
-    html += `<div class="delta-file-group"><h4>${modIcon} ${changedFiles.length} Changed</h4><ul class="delta-file-list">`;
-    for (const f of changedFiles.slice(0, 8)) {
-      const short = f.replace('src/app/', '').replace('src/', '');
-      const isImportant = f.includes('AppLayout') || f.includes('routes') || f.includes('FeatureFlag');
-      html += `<li>${modIcon} <code${isImportant ? '><strong' : ''}>${escapeHtml(short)}${isImportant ? '</strong>' : ''}</code></li>`;
-    }
-    if (changedFiles.length > 8) html += `<li class="muted">+${changedFiles.length - 8} more</li>`;
-    html += `</ul></div>`;
-  }
-  html += `</div>`;
-
-  // New routes
-  if (delta.new_routes && delta.new_routes.length) {
-    html += `<p class="small muted mt1">New routes: ${delta.new_routes.map(r => '<code>' + escapeHtml(r) + '</code>').join(', ')}</p>`;
-  }
-
-  if (delta.summary) html += `<p class="small mt1">${escapeHtml(delta.summary)}</p>`;
-  return html;
-}
-
 function buildPersonaSelectionHtml() {
   const journeyLog = readJsonOr(path.join(absArtifacts, 'journey-log.json'), null);
   const ud = journeyLog ? normalizeUsabilityDimensions(journeyLog.usability_dimensions) : null;
@@ -569,19 +485,55 @@ function buildPersonaSelectionHtml() {
   const selection = ud.persona_selection;
   if (selection) {
     let html = `<p class="small"><strong>Target audience:</strong> ${escapeHtml(selection.target_audience_text || '—')}</p>`;
+    html += `<details open><summary class="small muted" style="cursor:pointer">Why these personas?</summary>`;
     if (selection.reasoning) {
-      html += `<details><summary class="small muted" style="cursor:pointer">Why these personas?</summary>`;
       html += `<p class="small" style="margin:0.5rem 0">${escapeHtml(selection.reasoning)}</p>`;
-      if (selection.target_audience_source) html += `<p class="small muted">Source: ${escapeHtml(selection.target_audience_source)}</p>`;
-      if (selection.considered_but_rejected && selection.considered_but_rejected.length) {
-        html += `<p class="small muted" style="margin-top:0.5rem"><strong>Considered but not selected:</strong></p><ul class="small">`;
-        for (const r of selection.considered_but_rejected) {
-          html += `<li><code>${escapeHtml(r.persona)}</code> — ${escapeHtml(r.reason)}</li>`;
-        }
-        html += `</ul>`;
-      }
-      html += `</details>`;
     }
+    if (selection.target_audience_source) html += `<p class="small muted">Source: ${escapeHtml(selection.target_audience_source)}</p>`;
+
+    // Show persona attributes from YAML if available
+    const personaIds = selection.selected || ud.personas_evaluated || [];
+    const personaDir = path.join(process.cwd(), '.context', 'usability-testing', 'personas');
+    if (personaIds.length && fs.existsSync(personaDir)) {
+      html += `<table class="small" style="margin-top:0.5rem;width:100%;border-collapse:collapse">`;
+      html += `<thead><tr style="border-bottom:1px solid var(--border)"><th style="text-align:left;padding:0.25rem 0.5rem">Persona</th><th style="text-align:left;padding:0.25rem 0.5rem">Level</th><th style="text-align:left;padding:0.25rem 0.5rem">Patience</th><th style="text-align:left;padding:0.25rem 0.5rem">Exploration</th><th style="text-align:left;padding:0.25rem 0.5rem">Key Knowledge Gaps</th></tr></thead><tbody>`;
+      for (const pid of personaIds) {
+        const yamlPath = path.join(personaDir, pid + '.yaml');
+        if (fs.existsSync(yamlPath)) {
+          const raw = fs.readFileSync(yamlPath, 'utf8');
+          const nameMatch = raw.match(/^name:\s*"?(.+?)"?\s*$/m);
+          const levelMatch = raw.match(/^experience_level:\s*(.+)$/m);
+          const patienceMatch = raw.match(/^\s+patience:\s*(\w+)/m);
+          const explorationMatch = raw.match(/^\s+exploration_tendency:\s*(\w+)/m);
+          const name = nameMatch ? nameMatch[1] : pid;
+          const level = levelMatch ? levelMatch[1].trim() : '—';
+          const patience = patienceMatch ? patienceMatch[1] : '—';
+          const exploration = explorationMatch ? explorationMatch[1] : '—';
+
+          // Extract knowledge gaps (none/minimal/basic levels)
+          const dkSection = raw.match(/domain_knowledge:\n((?:\s+\S+.*\n)*)/);
+          const gaps = [];
+          if (dkSection) {
+            for (const line of dkSection[1].split('\n')) {
+              const m = line.match(/(\w+):\s*(none|minimal|basic)/);
+              if (m) gaps.push(`${m[1]}: ${m[2]}`);
+            }
+          }
+          const gapStr = gaps.length ? gaps.slice(0, 4).join(', ') + (gaps.length > 4 ? ` +${gaps.length - 4} more` : '') : 'none';
+          html += `<tr style="border-bottom:1px solid var(--border)"><td style="padding:0.25rem 0.5rem"><strong>${escapeHtml(name)}</strong></td><td style="padding:0.25rem 0.5rem">${escapeHtml(level)}</td><td style="padding:0.25rem 0.5rem">${escapeHtml(patience)}</td><td style="padding:0.25rem 0.5rem">${escapeHtml(exploration)}</td><td style="padding:0.25rem 0.5rem;font-size:0.7rem">${escapeHtml(gapStr)}</td></tr>`;
+        }
+      }
+      html += `</tbody></table>`;
+    }
+
+    if (selection.considered_but_rejected && selection.considered_but_rejected.length) {
+      html += `<p class="small muted" style="margin-top:0.5rem"><strong>Considered but not selected:</strong></p><ul class="small">`;
+      for (const r of selection.considered_but_rejected) {
+        html += `<li><code>${escapeHtml(r.persona)}</code> — ${escapeHtml(r.reason)}</li>`;
+      }
+      html += `</ul>`;
+    }
+    html += `</details>`;
     return html;
   }
 
@@ -657,11 +609,17 @@ function buildPersonaWalkthroughsHtml() {
     const exploration = explorationMatch ? explorationMatch[1].trim() : '';
     const avatar = getPersonaAvatar(pid);
 
-    const overlay = overlays.find(o => o.persona === pid) || {};
-    const trace = traces.find(t => t.persona === pid) || {};
-    const confusionCount = (overlay.confusion_events || []).length;
-    const patienceEnd = overlay.patience_end || trace.patience_end || 100;
-    const outcome = trace.outcome || (overlay.abandoned ? 'abandoned' : overlay.would_complete === false ? 'abandoned' : 'completed');
+    const matchingOverlays = overlays.filter(o => o.persona === pid);
+    const matchingTraces = traces.filter(t => t.persona === pid);
+    const overlay = matchingOverlays[0] || {};
+    const trace = matchingTraces[0] || {};
+    const allConfusion = matchingOverlays.flatMap(o => o.confusion_events || []);
+    const confusionCount = allConfusion.length;
+    const patienceEnd = matchingOverlays.length > 0
+      ? Math.min(...matchingOverlays.map(o => o.patience_end ?? 100))
+      : (trace.patience_end || 100);
+    const anyAbandoned = matchingTraces.some(t => t.outcome === 'abandoned') || matchingOverlays.some(o => o.abandoned || o.would_complete === false);
+    const outcome = anyAbandoned ? 'abandoned' : (trace.outcome || 'completed');
     const outcomeBadge = outcome === 'completed' ? 'badge-pass' : outcome === 'abandoned' ? 'badge-fail' : 'badge-flagged';
 
     const personaScreenshots = fs.existsSync(screenshotsDir)
@@ -670,9 +628,9 @@ function buildPersonaWalkthroughsHtml() {
     const stepCount = personaScreenshots.length;
     const taskCount = extractState ? (extractState.tasks_to_be_done || []).length : 1;
 
-    const assistedCount = (overlay.confusion_events || []).filter(e => e.trigger && e.trigger.includes('assisted')).length;
+    const assistedCount = allConfusion.filter(e => e.trigger && e.trigger.includes('assisted')).length;
 
-    html += `<div class="card" style="cursor:pointer;transition:box-shadow 0.15s,border-color 0.15s" onclick="openEvidenceViewer()" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor=''">`;
+    html += `<div class="card" style="cursor:pointer;transition:box-shadow 0.15s,border-color 0.15s" onclick="openEvidenceViewer();setTimeout(function(){togglePersona('${pid}')},100)" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor=''">`;
     html += `<div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:0.75rem">`;
     html += `<div style="width:2.5rem;height:2.5rem;border-radius:50%;background:${avatar.color};display:flex;align-items:center;justify-content:center;flex-shrink:0">${avatar.svg}</div>`;
     html += `<div><h4 style="margin:0;font-size:0.9375rem">${escapeHtml(name)}</h4>`;
@@ -781,9 +739,10 @@ function buildPersonaWalkthroughData() {
   const data = {};
 
   for (const pid of ud.personas_evaluated) {
-    const overlay = overlays.find(o => o.persona === pid) || {};
+    const matchingOverlays = overlays.filter(o => o.persona === pid);
+    const overlay = matchingOverlays[0] || {};
     const trace = traces.find(t => t.persona === pid) || {};
-    const confusionEvents = overlay.confusion_events || [];
+    const confusionEvents = matchingOverlays.flatMap(o => o.confusion_events || []);
 
     const personaEntries = personaResults ? personaResults.filter(r => r.persona === pid) : [];
 
@@ -822,9 +781,7 @@ function buildPersonaWalkthroughData() {
 
         if (steps.length === 0 && screenshots.length > 0) {
           for (const ss of screenshots.sort((a, b) => a.step - b.step)) {
-            const ssB64 = fs.existsSync(path.join(screenshotsDir, ss.file))
-              ? fs.readFileSync(path.join(screenshotsDir, ss.file)).toString('base64')
-              : '';
+            const ssUri = getScreenshotDataUri(path.join(screenshotsDir, ss.file));
             steps.push({
               step: ss.step,
               see: entry.trace && entry.trace[ss.step - 1] ? (entry.trace[ss.step - 1].what_i_see || '') : '',
@@ -832,7 +789,7 @@ function buildPersonaWalkthroughData() {
               trying: entry.trace && entry.trace[ss.step - 1] ? (entry.trace[ss.step - 1].action || '') : '',
               confidence: entry.trace && entry.trace[ss.step - 1] ? (entry.trace[ss.step - 1].confidence || '') : '',
               patience: String(entry.trace && entry.trace[ss.step - 1] ? (entry.trace[ss.step - 1].patience || 100) : 100),
-              screenshot: ssB64 ? `data:image/png;base64,${ssB64}` : '',
+              screenshot: ssUri,
               confusionEvents: []
             });
           }
@@ -879,9 +836,7 @@ function buildPersonaWalkthroughData() {
         // If parsing produced no steps but we have screenshots, create minimal screenshot-only steps
         if (steps.length === 0 && screenshots.length > 0) {
           for (const ss of screenshots.sort((a, b) => a.step - b.step)) {
-            const ssB64 = fs.existsSync(path.join(screenshotsDir, ss.file))
-              ? fs.readFileSync(path.join(screenshotsDir, ss.file)).toString('base64')
-              : '';
+            const ssUri = getScreenshotDataUri(path.join(screenshotsDir, ss.file));
             steps.push({
               step: ss.step,
               see: '',
@@ -889,7 +844,7 @@ function buildPersonaWalkthroughData() {
               tryAction: '',
               confidence: '',
               patience: '100',
-              screenshot: ssB64 ? `data:image/png;base64,${ssB64}` : '',
+              screenshot: ssUri,
               confusion: []
             });
           }
@@ -987,8 +942,9 @@ function buildEvidenceViewerData() {
     const overlays = ud.persona_overlays || [];
 
     for (const pid of ud.personas_evaluated) {
-      const overlay = overlays.find(o => o.persona === pid) || {};
-      const confusionEvents = overlay.confusion_events || [];
+      const matchingOverlays = overlays.filter(o => o.persona === pid);
+      const overlay = matchingOverlays[0] || {};
+      const confusionEvents = matchingOverlays.flatMap(o => o.confusion_events || []);
       const personaEntries = personaResults ? personaResults.filter(r => r.persona === pid) : [];
 
       const allPersonaScreenshots = screenshotsByPersona[pid] || [];
@@ -1010,13 +966,7 @@ function buildEvidenceViewerData() {
             const t = traceSteps[si];
             const stepNum = t.step || si + 1;
             const ssEntry = ssFiles.find(s => s.step === stepNum);
-            let ssB64 = '';
-            if (ssEntry) {
-              const ssPath = path.join(screenshotsDir, ssEntry.file);
-              if (fs.existsSync(ssPath)) {
-                ssB64 = fs.readFileSync(ssPath).toString('base64');
-              }
-            }
+            const ssUri = ssEntry ? getScreenshotDataUri(path.join(screenshotsDir, ssEntry.file)) : '';
 
             const stepConfusion = confusionEvents.filter(e => e.step === stepNum);
 
@@ -1027,7 +977,7 @@ function buildEvidenceViewerData() {
               action: t.action || '',
               confidence: t.confidence || 'medium',
               patience: t.patience != null ? t.patience : 100,
-              screenshot: ssB64 ? `data:image/png;base64,${ssB64}` : '',
+              screenshot: ssUri,
               evidence_for_acs: t.evidence_for_acs || [],
               confusion_event: stepConfusion.length > 0 ? stepConfusion[0] : null
             });
@@ -1058,8 +1008,7 @@ function buildEvidenceViewerData() {
             const taskDef = tasksDefined[parseInt(taskIdx) - 1] || {};
             const steps = [];
             for (const ss of ssFiles.sort((a, b) => a.step - b.step)) {
-              const ssPath = path.join(screenshotsDir, ss.file);
-              const ssB64 = fs.existsSync(ssPath) ? fs.readFileSync(ssPath).toString('base64') : '';
+              const ssUri = getScreenshotDataUri(path.join(screenshotsDir, ss.file));
               const stepConfusion = confusionEvents.filter(e => e.step === ss.step);
               steps.push({
                 step: ss.step,
@@ -1068,7 +1017,7 @@ function buildEvidenceViewerData() {
                 action: '',
                 confidence: 'medium',
                 patience: 100,
-                screenshot: ssB64 ? `data:image/png;base64,${ssB64}` : '',
+                screenshot: ssUri,
                 evidence_for_acs: [],
                 confusion_event: stepConfusion.length > 0 ? stepConfusion[0] : null
               });
@@ -1087,8 +1036,7 @@ function buildEvidenceViewerData() {
           const taskDef = tasksDefined[0] || {};
           const steps = [];
           for (const ss of ssFiles.sort((a, b) => a.step - b.step)) {
-            const ssPath = path.join(screenshotsDir, ss.file);
-            const ssB64 = fs.existsSync(ssPath) ? fs.readFileSync(ssPath).toString('base64') : '';
+            const ssUri = getScreenshotDataUri(path.join(screenshotsDir, ss.file));
             const stepConfusion = confusionEvents.filter(e => e.step === ss.step);
             steps.push({
               step: ss.step,
@@ -1097,7 +1045,7 @@ function buildEvidenceViewerData() {
               action: '',
               confidence: 'medium',
               patience: 100,
-              screenshot: ssB64 ? `data:image/png;base64,${ssB64}` : '',
+              screenshot: ssUri,
               evidence_for_acs: [],
               confusion_event: stepConfusion.length > 0 ? stepConfusion[0] : null
             });
@@ -1163,12 +1111,12 @@ function parseThinkAloudSteps(thinkaloudRaw, screenshots, screenshotsDir, confus
   for (const p of parsed) {
     const stepNum = parseInt(p.num, 10);
     const ssEntry = screenshots.find(s => s.step === stepNum);
-    const ssB64 = ssEntry ? fs.readFileSync(path.join(screenshotsDir, ssEntry.file)).toString('base64') : '';
+    const ssUri = ssEntry ? getScreenshotDataUri(path.join(screenshotsDir, ssEntry.file)) : '';
     const stepConfusion = confusionEvents.filter(e => e.step === stepNum);
 
     steps.push({
       step: stepNum,
-      screenshot: ssB64 ? `data:image/png;base64,${ssB64}` : '',
+      screenshot: ssUri,
       see: p.see.slice(0, 300),
       thinking: p.think.slice(0, 300),
       trying: (p.trying || '').slice(0, 200),
@@ -1179,185 +1127,6 @@ function parseThinkAloudSteps(thinkaloudRaw, screenshots, screenshotsDir, confus
     });
   }
   return steps;
-}
-
-function buildCodeDeltasHtml() {
-  const delta = normalizeDelta(readJsonOr(path.join(absArtifacts, 'mr-delta.json'), null));
-  if (!delta) return '<p class="muted small">No MR delta data. Run with --workspace to enable code delta analysis.</p>';
-
-  const protoId = extractPrototypeId();
-  const mrNum = delta.mr_number || readKnownMRs()[protoId];
-  const baseUrl = 'https://gitlab.cee.redhat.com/uxd/prototypes/rhoai/-/merge_requests';
-
-  const workspaceDir = delta.workspace || path.join(absArtifacts, 'workspace');
-  const canReadDiff = fs.existsSync(workspaceDir);
-
-  function getFileDiff(filePath, maxLines) {
-    if (!canReadDiff) return null;
-    try {
-      const diff = execSync(`git diff origin/3.5 HEAD -- "${filePath}" 2>/dev/null`, { cwd: workspaceDir, encoding: 'utf8', maxBuffer: 1024 * 100 });
-      if (!diff) return null;
-      const lines = diff.split('\n');
-      return lines.slice(0, maxLines || 40).join('\n');
-    } catch { return null; }
-  }
-
-  function renderDiffBlock(diff) {
-    if (!diff) return '';
-    let out = `<details><summary class="small muted">View diff</summary><div class="diff-block"><pre>`;
-    for (const line of diff.split('\n')) {
-      if (line.startsWith('@@')) {
-        out += `<span class="diff-line diff-line-header">${escapeHtml(line)}</span>\n`;
-      } else if (line.startsWith('+') && !line.startsWith('+++')) {
-        out += `<span class="diff-line diff-line-add">${escapeHtml(line)}</span>\n`;
-      } else if (line.startsWith('-') && !line.startsWith('---')) {
-        out += `<span class="diff-line diff-line-del">${escapeHtml(line)}</span>\n`;
-      } else if (/^(diff |index |---|[+]{3})/.test(line)) {
-        // skip headers
-      } else {
-        out += `<span class="diff-line diff-line-context">${escapeHtml(line)}</span>\n`;
-      }
-    }
-    out += `</pre></div></details>`;
-    return out;
-  }
-
-  // Classify every file into a tier with metadata
-  const newFiles = new Set(delta.new_files || []);
-  const allFiles = [...(delta.new_files || []), ...(delta.modified_files || [])];
-  const boilerplate = /\/(index|types|__tests__|\.test\.|\.spec\.|\.stories\.)(\.\w+)?$/;
-  const rendered = new Set();
-
-  function classify(f) {
-    if (f.includes('AppLayout') || f.includes('Sidebar') || f.includes('Nav'))
-      return { tier: 0, severity: 'critical', label: 'Navigation', reason: delta.nav_changes ? 'Sidebar nav updated' : 'Sidebar nav NOT updated — pages orphaned' };
-    if (f.includes('routes'))
-      return { tier: 1, severity: 'critical', label: 'Routing', reason: 'Route registration — controls which URLs exist' };
-    if (f.includes('FeatureFlag'))
-      return { tier: 2, severity: 'high', label: 'Feature Flags', reason: 'Controls runtime feature visibility' };
-    if (f.match(/\/(pages|AIHub)\//) && !boilerplate.test(f) && newFiles.has(f))
-      return { tier: 3, severity: 'medium', label: 'New Page', reason: null };
-    if (f.match(/\/(pages|AIHub)\//) && !boilerplate.test(f))
-      return { tier: 4, severity: 'low', label: 'Modified Page', reason: null };
-    if (boilerplate.test(f))
-      return { tier: 9, severity: 'skip', label: 'Boilerplate', reason: null };
-    return { tier: 4, severity: 'low', label: 'Support', reason: null };
-  }
-
-  const classified = allFiles
-    .map(f => ({ path: f, short: f.replace('src/app/', '').replace('src/', ''), isNew: newFiles.has(f), ...classify(f) }))
-    .filter(f => f.severity !== 'skip')
-    .sort((a, b) => a.tier - b.tier);
-
-  // Deduplicate: group files from the same directory together
-  const seen = new Set();
-  const deduped = [];
-  for (const f of classified) {
-    const dir = f.path.replace(/\/[^/]+$/, '');
-    const key = f.tier <= 2 ? f.path : dir;
-    if (f.tier <= 2 || !seen.has(key)) {
-      seen.add(key);
-      deduped.push(f);
-    }
-  }
-
-  let html = '';
-
-  // Summary header
-  const critCount = deduped.filter(f => f.severity === 'critical').length;
-  const highCount = deduped.filter(f => f.severity === 'high').length;
-  const newCount = (delta.new_files || []).filter(f => !boilerplate.test(f)).length;
-  const modCount = (delta.modified_files || []).length;
-
-  html += `<div class="delta-summary">`;
-  html += `<div class="delta-summary-row">`;
-  html += `<div class="delta-stat"><span class="delta-stat-n">${delta.total_files_changed || 0}</span><span class="delta-stat-l">Files</span></div>`;
-  html += `<div class="delta-stat"><span class="delta-stat-n delta-added">${newCount}</span><span class="delta-stat-l">Added</span></div>`;
-  html += `<div class="delta-stat"><span class="delta-stat-n delta-modified">${modCount}</span><span class="delta-stat-l">Modified</span></div>`;
-  if (critCount) html += `<div class="delta-stat"><span class="delta-stat-n" style="color:var(--status-danger)">${critCount}</span><span class="delta-stat-l">Critical</span></div>`;
-  html += `</div>`;
-  html += `<p class="small muted" style="margin:0.5rem 0 0">Base: <code>${escapeHtml(delta.base_branch || '?')}</code>`;
-  if (mrNum) html += ` · <a href="${baseUrl}/${mrNum}/diffs" target="_blank">View full diff (MR !${mrNum})</a>`;
-  html += `</p>`;
-  html += `</div>`;
-
-  // Nav warning — prominent banner
-  if (delta.nav_warning) {
-    html += `<div class="delta-nav-warn"><strong>⚠ Navigation Gap</strong> — ${escapeHtml(delta.nav_warning)}</div>`;
-  }
-
-  // Status indicators
-  html += `<div class="delta-meta">`;
-  html += `<span class="${delta.route_changes ? 'delta-added' : ''}">${delta.route_changes ? '✓' : '✗'} Routes</span>`;
-  html += `<span class="${delta.nav_changes ? 'delta-added' : ''}" style="${!delta.nav_changes && delta.route_changes ? 'color:var(--status-danger);font-weight:500' : ''}">${delta.nav_changes ? '✓' : '✗'} Sidebar nav</span>`;
-  html += `<span class="${delta.feature_flag_changes ? 'delta-modified' : ''}">${delta.feature_flag_changes ? '✓' : '✗'} Feature flags</span>`;
-  html += `</div>`;
-
-  // New routes
-  if (delta.new_routes && delta.new_routes.length) {
-    html += `<div class="delta-routes">`;
-    for (const r of delta.new_routes) {
-      html += `<code class="delta-route">${escapeHtml(r)}</code>`;
-    }
-    html += `</div>`;
-  }
-
-  // File list grouped by severity
-  let currentSeverity = '';
-  for (const f of deduped) {
-    if (f.severity !== currentSeverity) {
-      currentSeverity = f.severity;
-      const heading = f.severity === 'critical' ? 'Critical — Score Impact'
-        : f.severity === 'high' ? 'High — Runtime Impact'
-        : f.severity === 'medium' ? 'New Feature Files'
-        : 'Modified Support Files';
-      html += `<h3 class="delta-group-heading">${heading}</h3>`;
-    }
-
-    const typeTag = f.isNew
-      ? '<span class="delta-tag delta-tag-add">added</span>'
-      : '<span class="delta-tag delta-tag-mod">modified</span>';
-    const severityTag = f.severity === 'critical'
-      ? '<span class="delta-tag delta-tag-critical">critical</span>'
-      : f.severity === 'high'
-      ? '<span class="delta-tag delta-tag-high">high</span>'
-      : '';
-
-    html += `<div class="delta-file-card delta-file-${f.severity}">`;
-    html += `<div class="delta-file-head">`;
-    html += `<code class="delta-file-name">${escapeHtml(f.short)}</code>`;
-    html += `<span class="delta-tags">${typeTag}${severityTag}</span>`;
-    html += `</div>`;
-
-    if (f.reason) {
-      const reasonClass = f.severity === 'critical' ? 'delta-file-reason-critical' : 'delta-file-reason';
-      html += `<p class="${reasonClass}">${f.reason}</p>`;
-    }
-
-    // Score impact for critical files
-    if (f.severity === 'critical') {
-      let impact = '';
-      if (f.path.includes('AppLayout') && !delta.nav_changes) {
-        impact = 'Caps Workflow Continuity + Mental Model Fidelity at 1/3 for all personas';
-      } else if (f.path.includes('routes') && !delta.nav_changes) {
-        impact = 'Pages exist at URLs but unreachable without nav — nav-assisted only';
-      } else if (f.path.includes('FeatureFlag')) {
-        impact = 'May hide/show features depending on runtime flag state';
-      }
-      if (impact) {
-        html += `<p class="delta-score-impact">${impact}</p>`;
-      }
-    }
-
-    html += renderDiffBlock(getFileDiff(f.path, 40));
-    html += `</div>`;
-  }
-
-  if (delta.summary) {
-    html += `<p class="small muted mt1">${escapeHtml(delta.summary)}</p>`;
-  }
-
-  return html;
 }
 
 function buildHeroStatus(csvRows, passCount, failCount, flaggedCount, extractState, iterationLog) {
@@ -1467,10 +1236,7 @@ function buildFlaggedDataArray(csvRows, journeyLog, screenshots) {
         const steps = j.steps || [];
         const lastStep = steps[steps.length - 1];
         if (lastStep && lastStep.screenshot) {
-          const ssPath = path.join(absArtifacts, lastStep.screenshot);
-          if (fs.existsSync(ssPath)) {
-            screenshotSrc = `data:image/png;base64,${fs.readFileSync(ssPath).toString('base64')}`;
-          }
+          screenshotSrc = getScreenshotDataUri(path.join(absArtifacts, lastStep.screenshot));
           break;
         }
       }
@@ -1510,13 +1276,13 @@ function buildIterationTimelineHtml() {
       html += ` <span style="font-size:0.7rem;color:var(--text2)">(MR baseline)</span>`;
       html += ` <a href="evaluation-report-original.html" target="_blank" style="font-size:0.7rem;margin-left:0.3rem">(full report ↗)</a>`;
     } else if (isLast && !isFirst) {
-      html += `<strong style="font-size:0.875rem">Iteration ${iter.iteration - 1}</strong>`;
+      html += `<strong style="font-size:0.875rem">Iteration ${iter.iteration}</strong>`;
       html += ` <span style="font-size:0.7rem;color:var(--accent)">(current)</span>`;
     } else if (isFirst && isLast) {
       html += `<strong style="font-size:0.875rem">Current</strong>`;
       html += ` <span style="font-size:0.7rem;color:var(--accent)">(single run, no loop)</span>`;
     } else {
-      html += `<strong style="font-size:0.875rem">Iteration ${iter.iteration - 1}</strong>`;
+      html += `<strong style="font-size:0.875rem">Iteration ${iter.iteration}</strong>`;
       html += ` <a href="evaluation-report-iter-${iter.iteration}.html" style="font-size:0.7rem;margin-left:0.3rem">(view report)</a>`;
     }
     html += `<span class="iter-counts" style="margin-left:0.75rem">${iter.pass_count}P / ${iter.fail_count}F / ${iter.flagged_count}FL</span>`;
@@ -1607,7 +1373,8 @@ function buildIterationTimelineHtml() {
   }
 
   // Loop summary
-  const exitSuccess = iterLog.exit_reason === 'all_pass' || iterLog.exit_reason === 'all_fixable_pass' || iterLog.exit_reason === 'unfixable_flagged' || iterLog.exit_reason === 'all_fixable_resolved';
+  const exitReason = iterLog.exit_reason || 'pending';
+  const exitSuccess = ['all_pass', 'all_fixable_pass', 'unfixable_flagged', 'all_fixable_resolved', 'flagged_unfixable'].includes(exitReason);
   const exitBg = exitSuccess ? 'rgba(22,163,74,0.04)' : 'var(--bg2)';
   const exitBorder = exitSuccess ? 'var(--status-success)' : 'var(--border)';
 
@@ -1632,8 +1399,19 @@ function buildIterationTimelineHtml() {
   }
   html += `</p>`;
 
-  // Exit reason detail
-  html += `<p style="font-size:0.75rem;color:var(--text2);margin:0 0 0.35rem">${escapeHtml(iterLog.exit_details || iterLog.exit_detail || iterLog.exit_reason)}</p>`;
+  // Exit reason detail with human-readable labels
+  const exitLabels = {
+    'all_pass': 'All criteria passed',
+    'flagged_unfixable': 'All verifiable criteria passed. Flagged items need human review.',
+    'unfixable_flagged': 'All verifiable criteria passed. Flagged items need human review.',
+    'max_iterations': 'Maximum iterations reached — some criteria still failing',
+    'regression': 'Fix loop stopped — a previously passing criterion regressed',
+    'no_fix': 'No-fix mode — findings logged for manual review',
+    'no_iterate': 'Single-run mode — no fix loop',
+    'pending': 'Evaluation complete'
+  };
+  const exitLabel = iterLog.exit_details || iterLog.exit_detail || exitLabels[exitReason] || exitReason;
+  html += `<p style="font-size:0.75rem;color:var(--text2);margin:0 0 0.35rem">${escapeHtml(exitLabel)}</p>`;
 
   // Files changed
   if (iterLog.files_modified && iterLog.files_modified.length) {
@@ -1671,11 +1449,7 @@ function buildReviewItemsHtml(csvRows, journeyLog, screenshots) {
         const steps = j.steps || [];
         const lastStep = steps[steps.length - 1];
         if (lastStep && lastStep.screenshot) {
-          const ssPath = path.join(absArtifacts, lastStep.screenshot);
-          if (fs.existsSync(ssPath)) {
-            const b64 = fs.readFileSync(ssPath).toString('base64');
-            screenshotSrc = `data:image/png;base64,${b64}`;
-          }
+          screenshotSrc = getScreenshotDataUri(path.join(absArtifacts, lastStep.screenshot));
           break;
         }
       }
@@ -1721,18 +1495,29 @@ function buildReviewItemsHtml(csvRows, journeyLog, screenshots) {
 function buildBaselineComparison() {
   const fixLog = readJsonOr(path.join(absArtifacts, 'fix-log.json'), null);
   const appliedFixes = fixLog ? (Array.isArray(fixLog) ? fixLog : fixLog.applied || []) : [];
-  if (appliedFixes.length === 0) return '';
 
   const beforePath = path.join(absArtifacts, 'screenshots', 'baseline-before.png');
   const afterPath = path.join(absArtifacts, 'screenshots', 'baseline-after.png');
+
+  if (appliedFixes.length === 0) {
+    if (fs.existsSync(beforePath)) {
+      const beforeUri = getScreenshotDataUri(beforePath);
+      if (beforeUri) {
+        return `<div style="margin-bottom:1rem;padding:0.75rem;background:var(--bg2);border-radius:0.5rem"><strong class="small" style="color:var(--text);display:block;margin-bottom:0.5rem">Evaluation State</strong><p class="small muted" style="margin-bottom:0.5rem">No fixes were applied during evaluation. This screenshot shows the prototype at evaluation time.</p><img src="${beforeUri}" style="width:100%;max-width:800px;border-radius:0.375rem;border:1px solid var(--border);cursor:pointer" onclick="openImageLightbox(this.src)"></div>`;
+      }
+    }
+    return '';
+  }
+
   if (!fs.existsSync(beforePath) || !fs.existsSync(afterPath)) return '';
-  const beforeB64 = fs.readFileSync(beforePath).toString('base64');
-  const afterB64 = fs.readFileSync(afterPath).toString('base64');
+  const beforeUri = getScreenshotDataUri(beforePath);
+  const afterUri = getScreenshotDataUri(afterPath);
+  if (!beforeUri || !afterUri) return '';
   let html = `<div style="margin-bottom:1rem;padding:0.75rem;background:var(--bg2);border-radius:0.5rem">`;
   html += `<strong class="small" style="color:var(--text);display:block;margin-bottom:0.5rem">Before / After Comparison</strong>`;
   html += `<div style="display:grid;grid-template-columns:1fr 1fr;gap:0.75rem">`;
-  html += `<div style="text-align:center"><span class="small muted" style="display:block;margin-bottom:0.25rem">Before (pre-evaluation)</span><img src="data:image/png;base64,${beforeB64}" style="width:100%;border-radius:0.375rem;border:1px solid var(--border);cursor:pointer" onclick="openImageLightbox(this.src)"></div>`;
-  html += `<div style="text-align:center"><span class="small muted" style="display:block;margin-bottom:0.25rem">After (post-evaluation)</span><img src="data:image/png;base64,${afterB64}" style="width:100%;border-radius:0.375rem;border:1px solid var(--border);cursor:pointer" onclick="openImageLightbox(this.src)"></div>`;
+  html += `<div style="text-align:center"><span class="small muted" style="display:block;margin-bottom:0.25rem">Before (pre-evaluation)</span><img src="${beforeUri}" style="width:100%;border-radius:0.375rem;border:1px solid var(--border);cursor:pointer" onclick="openImageLightbox(this.src)"></div>`;
+  html += `<div style="text-align:center"><span class="small muted" style="display:block;margin-bottom:0.25rem">After (post-evaluation)</span><img src="${afterUri}" style="width:100%;border-radius:0.375rem;border:1px solid var(--border);cursor:pointer" onclick="openImageLightbox(this.src)"></div>`;
   html += `</div></div>`;
   return html;
 }
@@ -1789,28 +1574,28 @@ function buildFixesAppliedHtml() {
     if (firstAcId) {
       const journeyIdx = findJourneyForAC(journeyLog, firstAcId);
       if (journeyIdx !== null) {
-        // Look for the true original broken state in nested screenshots dir
-        const originalDir = path.join(absArtifacts, 'screenshots-iter-1', 'screenshots');
-        const beforeDir = fs.existsSync(originalDir) ? originalDir : path.join(absArtifacts, 'screenshots-iter-1');
-        const afterDir = fs.existsSync(originalDir)
-          ? path.join(absArtifacts, 'screenshots-iter-1')  // iter-1 top-level is the first working state
-          : path.join(absArtifacts, 'screenshots');
+        const beforeDir = path.join(absArtifacts, 'screenshots-iter-1');
+        const afterDir = path.join(absArtifacts, 'screenshots');
         const beforeFile = findScreenshotForJourney(beforeDir, journeyIdx);
         const afterFile = findScreenshotForJourney(afterDir, journeyIdx);
 
         if (beforeFile && afterFile) {
-          const beforeB64 = fs.readFileSync(beforeFile).toString('base64');
-          const afterB64 = fs.readFileSync(afterFile).toString('base64');
-          html += `<div style="display:grid;grid-template-columns:1fr 1fr;gap:0.5rem;margin-top:0.75rem">`;
-          html += `<div><p class="small muted" style="margin:0 0 0.25rem">Before (original MR state)</p>`;
-          html += `<img src="data:image/png;base64,${beforeB64}" style="width:100%;border:1px solid var(--border);border-radius:4px;cursor:pointer" onclick="openImageLightbox(this.src)" /></div>`;
-          html += `<div><p class="small muted" style="margin:0 0 0.25rem">After (fix applied)</p>`;
-          html += `<img src="data:image/png;base64,${afterB64}" style="width:100%;border:1px solid var(--border);border-radius:4px;cursor:pointer" onclick="openImageLightbox(this.src)" /></div>`;
-          html += `</div>`;
+          const beforeUri = getScreenshotDataUri(beforeFile);
+          const afterUri = getScreenshotDataUri(afterFile);
+          if (beforeUri && afterUri) {
+            html += `<div style="display:grid;grid-template-columns:1fr 1fr;gap:0.5rem;margin-top:0.75rem">`;
+            html += `<div><p class="small muted" style="margin:0 0 0.25rem">Before (original MR state)</p>`;
+            html += `<img src="${beforeUri}" style="width:100%;border:1px solid var(--border);border-radius:4px;cursor:pointer" onclick="openImageLightbox(this.src)" /></div>`;
+            html += `<div><p class="small muted" style="margin:0 0 0.25rem">After (fix applied)</p>`;
+            html += `<img src="${afterUri}" style="width:100%;border:1px solid var(--border);border-radius:4px;cursor:pointer" onclick="openImageLightbox(this.src)" /></div>`;
+            html += `</div>`;
+          }
         } else if (afterFile) {
-          const afterB64 = fs.readFileSync(afterFile).toString('base64');
-          html += `<div style="margin-top:0.75rem"><p class="small muted" style="margin:0 0 0.25rem">Result after fix</p>`;
-          html += `<img src="data:image/png;base64,${afterB64}" style="width:100%;border:1px solid var(--border);border-radius:4px;cursor:pointer" onclick="openImageLightbox(this.src)" /></div>`;
+          const afterUri = getScreenshotDataUri(afterFile);
+          if (afterUri) {
+            html += `<div style="margin-top:0.75rem"><p class="small muted" style="margin:0 0 0.25rem">Result after fix</p>`;
+            html += `<img src="${afterUri}" style="width:100%;border:1px solid var(--border);border-radius:4px;cursor:pointer" onclick="openImageLightbox(this.src)" /></div>`;
+          }
         }
       }
     }
@@ -1841,7 +1626,7 @@ function findScreenshotForJourney(dir, journeyIdx) {
 
 function buildConsistencyHtml() {
   const report = readJsonOr(path.join(absArtifacts, 'consistency-report.json'), null);
-  if (!report) return '<p class="muted small">No consistency data. Run with `.context/consistency-checker/` bootstrapped to enable.</p>';
+  if (!report) return '<div style="padding:0.75rem;border:2px solid #c9190b;border-radius:0.375rem;background:rgba(201,25,11,0.06);margin:0.5rem 0"><strong style="color:#c9190b">Consistency check missing.</strong> This evaluation ran without PatternFly design guideline checks. Run <code>make context</code> to bootstrap the consistency-checker, then re-run the evaluation.</div>';
 
   const summary = report.summary || {};
   const srcMode = report.source_mode;
@@ -1988,9 +1773,14 @@ function buildComplianceNarrative() {
   const cr = readJsonOr(path.join(absArtifacts, 'consistency-report.json'), null);
   if (!cr || cr.skipped) return '';
   const violations = (cr.source_mode && cr.source_mode.violations) ? cr.source_mode.violations.length : 0;
-  const checked = cr.source_mode && cr.source_mode.guidelines_checked ? cr.source_mode.guidelines_checked : 0;
-  if (!violations) return `<p class="appendix-narrative">All ${checked} PatternFly guidelines checked — no violations found.</p>`;
-  return `<p class="appendix-narrative">${violations} PatternFly guideline violation${violations !== 1 ? 's' : ''} found across ${checked} guidelines checked.</p>`;
+  const checked = (cr.summary && cr.summary.total_guidelines_checked) || (cr.source_mode && cr.source_mode.guidelines_checked) || 0;
+  const warnings = (cr.summary && cr.summary.warnings) || 0;
+  const totalFindings = violations + warnings;
+  if (!totalFindings) return `<p class="appendix-narrative">All ${checked} PatternFly guidelines checked — no issues found.</p>`;
+  const parts = [];
+  if (violations) parts.push(`${violations} violation${violations !== 1 ? 's' : ''}`);
+  if (warnings) parts.push(`${warnings} warning${warnings !== 1 ? 's' : ''}`);
+  return `<p class="appendix-narrative">${parts.join(' and ')} found across ${checked} guidelines checked.</p>`;
 }
 
 // ---------------------------------------------------------------------------
@@ -2726,6 +2516,26 @@ function buildTokens(opts = {}) {
       cards += `<div style="flex:1;min-width:0"><div style="font-weight:600;font-size:0.875rem;color:var(--text);margin-bottom:0.25rem">${escapeHtml(dim.name)}</div>`;
       cards += `<p style="font-size:0.8125rem;color:var(--text2);line-height:1.55;margin:0 0 0.4rem">${escapeHtml(finding)}</p>`;
       cards += `<div style="display:flex;gap:1rem;flex-wrap:wrap">${personaScores}</div>`;
+
+      if (!isNA && score < 2) {
+        const suggestions = readJsonOr(path.join(absArtifacts, 'refinement-suggestions.json'), []);
+        const dimSuggestion = Array.isArray(suggestions) ? suggestions.find(s => s.type === 'usability' && s.dimension === dim.id) : null;
+        if (dimSuggestion && dimSuggestion.suggested_fix) {
+          cards += `<div style="margin-top:0.5rem;padding:0.4rem 0.6rem;background:rgba(234,179,8,0.06);border-radius:0.25rem;border-left:2px solid var(--status-warning);font-size:0.75rem;color:var(--text)"><strong style="color:var(--status-warning)">To improve:</strong> ${escapeHtml(dimSuggestion.suggested_fix)}</div>`;
+        } else if (finding) {
+          cards += `<div style="margin-top:0.5rem;padding:0.4rem 0.6rem;background:rgba(234,179,8,0.06);border-radius:0.25rem;border-left:2px solid var(--status-warning);font-size:0.75rem;color:var(--text)"><strong style="color:var(--status-warning)">Needs attention:</strong> This dimension scored below Functional (2/3). Review the persona traces for specific friction points.</div>`;
+        }
+      } else if (!isNA && score >= 2 && score < 2.5) {
+        const traceHints = [];
+        for (const p of personas) {
+          const s = dim.scores[p];
+          if (s && s.score === 2 && s.finding) traceHints.push(s.finding);
+        }
+        if (traceHints.length) {
+          cards += `<div style="margin-top:0.5rem;padding:0.4rem 0.6rem;background:rgba(22,163,74,0.04);border-radius:0.25rem;border-left:2px solid var(--border);font-size:0.75rem;color:var(--text2)"><strong>To reach 3/3:</strong> ${escapeHtml(traceHints[0])}</div>`;
+        }
+      }
+
       cards += `</div></div>`;
 
       if (scores.length >= 2) {
@@ -2759,7 +2569,8 @@ function buildTokens(opts = {}) {
         const abandoned = o.abandoned ? 'Yes' : 'No';
         const frictions = (o.confusion_events || []).map(e => e.trigger || '').filter(Boolean);
 
-        pCards += `<div style="display:flex;align-items:center;gap:1rem;padding:0.75rem 1rem;border:1px solid var(--border);border-radius:0.5rem;margin-bottom:0.5rem;background:var(--bg)">`;
+        const pid = o.persona || o.persona_id || '';
+        pCards += `<div style="display:flex;align-items:center;gap:1rem;padding:0.75rem 1rem;border:1px solid var(--border);border-radius:0.5rem;margin-bottom:0.5rem;background:var(--bg);cursor:pointer;transition:border-color 0.15s" onclick="openEvidenceViewer();setTimeout(function(){togglePersona('${pid}')},100)" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor=''">`;
         pCards += `<div style="flex:1;min-width:0"><div style="font-weight:600;font-size:0.875rem;color:var(--text)">${name}</div>`;
         if (taskLabel) {
           pCards += `<div style="font-size:0.75rem;color:var(--text2);margin-top:0.15rem">${taskLabel}</div>`;
@@ -3006,9 +2817,6 @@ function buildTokens(opts = {}) {
     '{{CONCLUSION_HTML}}': conclusionHtml,
     '{{AI_INSIGHTS}}': aiInsights,
     '{{AI_INSIGHTS_DISPLAY}}': aiInsightsDisplay,
-    '{{DELTA_HTML}}': buildDeltaHtml(),
-    '{{DELTA_DISPLAY}}': fs.existsSync(path.join(absArtifacts, 'mr-delta.json')) ? '' : 'display:none',
-    '{{ITERATION_DISPLAY}}': (fs.existsSync(path.join(absArtifacts, 'iteration-log.json')) || fs.existsSync(path.join(absArtifacts, 'mr-delta.json'))) ? '' : 'display:none',
     '{{ITERATION_TIMELINE_HTML}}': buildIterationTimelineHtml(),
     '{{CSV_DATA}}': csvDataEscaped,
     '{{FLAGGED_DATA}}': buildFlaggedDataArray(csvRows, journeyLog, screenshots),
@@ -3016,7 +2824,6 @@ function buildTokens(opts = {}) {
     '{{PERSONA_WALKTHROUGHS_HTML}}': buildPersonaWalkthroughsHtml(),
     '{{PERSONA_WALKTHROUGH_DATA}}': buildPersonaWalkthroughData(),
     '{{EVIDENCE_VIEWER_DATA}}': JSON.stringify(buildEvidenceViewerData()),
-    '{{CODE_DELTAS_HTML}}': buildCodeDeltasHtml(),
     '{{FIXES_APPLIED_HTML}}': buildFixesAppliedHtml(),
     '{{FIXES_TAB_DISPLAY}}': fs.existsSync(path.join(absArtifacts, 'refinement-suggestions.json')) || fs.existsSync(path.join(absArtifacts, 'fix-log.json')) || fs.existsSync(path.join(absArtifacts, 'consistency-report.json')) ? '' : 'display:none',
     '{{CONSISTENCY_HTML}}': buildConsistencyHtml(),
@@ -3025,7 +2832,7 @@ function buildTokens(opts = {}) {
     '{{FIX_COUNT}}': String((() => { const fl = readJsonOr(path.join(absArtifacts, 'fix-log.json'), null); const rs = readJsonOr(path.join(absArtifacts, 'refinement-suggestions.json'), null); const applied = fl ? (Array.isArray(fl) ? fl.length : (fl.applied || []).length) : 0; const outstanding = rs ? (Array.isArray(rs) ? rs.filter(s => s.type !== 'consistency').length : 0) : 0; return applied + outstanding; })()),
     '{{COMPLIANCE_COUNT}}': String((() => { const cr2 = readJsonOr(path.join(absArtifacts, 'consistency-report.json'), null); return cr2 && cr2.source_mode && cr2.source_mode.violations ? cr2.source_mode.violations.length : 0; })()),
     '{{PERSONA_COUNT}}': String(personasEvaluated.length),
-    '{{PIPELINE_COUNT}}': String((() => { const d = normalizeDelta(readJsonOr(path.join(absArtifacts, 'mr-delta.json'), null)); return d ? (d.total_files_changed || 0) : 0; })()),
+    '{{PIPELINE_COUNT}}': '0',
     '{{FIX_HISTORY_NARRATIVE}}': buildFixHistoryNarrative(),
     '{{COMPLIANCE_NARRATIVE}}': buildComplianceNarrative(),
     '{{OUTCOME_DISPLAY}}': outcomeContext ? '' : 'display:none',
@@ -3140,7 +2947,7 @@ function renderTaStep(step) {
 
   html += `<div style="display:flex;gap:1rem;align-items:center;margin-top:0.35rem">`;
   if (step.confidence) {
-    html += `<span class="ta-confidence ${confClass}">${escapeHtml(step.confidence)}</span>`;
+    html += `<span class="ta-confidence ${confClass}" title="How confident this persona felt at this step">${escapeHtml(step.confidence)}</span>`;
   }
   if (step.patience !== null) {
     html += `<span class="ta-patience ${pClass}"><span class="ta-patience-bar"><span class="ta-patience-fill" style="width:${step.patience}%"></span></span> ${step.patience}%</span>`;

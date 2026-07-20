@@ -5,6 +5,8 @@ user-invocable: false
 allowed-tools: Read, Write, Bash, Glob, Grep, mcp__atlassian__getJiraIssue, mcp__atlassian__searchJiraIssuesUsingJql
 ---
 
+<!-- Model: Sonnet-tier for most steps (data retrieval + JSON assembly). Only Step 5b (tasks_to_be_done rephrasing) benefits from a stronger model. -->
+
 # eval-extract
 
 Phase 1 of the eval pipeline. Gathers all context needed for evaluation from Jira, the RFE, the workspace, and decision history. Writes structured JSON artifacts that downstream skills read.
@@ -175,9 +177,12 @@ If ALL strategies fail, warn the user and proceed with `rfe_key: null`.
 
 Sources (priority order):
 
-1. `.artifacts/<KEY>/rfe-snapshot.md` — most reliable
-2. Jira ticket from Step 1
-3. Linked RFE from Step 4
+1. **`.artifacts/<KEY>/outcome-context.json > scenario_flow.flow`** — if this file already exists from a *prior* run's enrichment phase (see Step 7) and contains a `scenario_flow.flow`, use it as the highest-priority seed for `expected_path`. This is the Outcome's plain-language "Flow" — written before the RFE or prototype existed — describing the intended user journey at the intent level.
+2. `.artifacts/<KEY>/rfe-snapshot.md` — most reliable
+3. Jira ticket from Step 1
+4. Linked RFE from Step 4
+
+**Phasing note:** Outcome fetch (Step 7) is an *enrichment*-phase step that runs after Phase A, to keep Phase A cold-start fast (see "Phased Execution" above). On a fresh `.artifacts/<KEY>/` (first-ever run), `outcome-context.json` does not exist yet when this step runs, so source 1 is unavailable and Step 5 falls back to source 2/3/4 as before — this is expected, not a bug. On any *subsequent* run against the same key (the common case — designers iterate and re-run eval repeatedly), `outcome-context.json` from the previous run's enrichment phase is already on disk, so this step can opportunistically use it. Do not add a Jira/Outcome fetch call directly into Step 5 to close this gap for first runs — that would reintroduce the cold-start cost the phase split was designed to avoid.
 
 Extract personas from Target Audience / Affected Customers. Derive goals from Problem Statement + Proposed Solution. Build journey definitions from ACs that describe user actions.
 
@@ -185,7 +190,7 @@ Cross-reference with strategy brief and decisions.json if available.
 
 Each journey includes: `id`, `title`, `persona`, `source`, `ac_ids`, `expected_path` (steps).
 
-**Source labeling:** Use explicit user story text if available. Otherwise: `"Inferred from AC-6: <verbatim text>"`. Never synthesize fake user stories.
+**Source labeling:** Use explicit user story text if available. Otherwise: `"Inferred from AC-6: <verbatim text>"`. If seeded from the Outcome's Scenario Flow, label as `"Outcome Scenario Flow: <Outcome key> — <Scenario title>"` so the report can distinguish intent-derived journeys from AC-inferred ones. Never synthesize fake user stories.
 
 ### Step 5b: Derive Tasks-to-be-Done (for discovery persona walkthroughs)
 
@@ -195,9 +200,12 @@ After journeys are defined, produce a `tasks_to_be_done` array in extract-state.
 
 **Sources (priority order):**
 
-1. `outcome-context.json > problem_statement` — the real user problem being solved
-2. RFE user stories — "As a [role], I want to [goal] so that [benefit]"
-3. Journey titles — rephrased as user tasks
+1. `outcome-context.json > scenario_flow.win_moment` + `scenario_flow.flow` — the Outcome's structured Scenario, when present (see Step 7). `win_moment` describes the observable signal that the feature is working for real users — often a more concrete, testable task phrasing than a raw problem statement. When `scenario_flow.flow` describes multiple distinct actions, consider splitting it across multiple `tasks_to_be_done` entries rather than collapsing it into one.
+2. `outcome-context.json > problem_statement` — the real user problem being solved (fallback when no structured Scenario was found on the Outcome ticket)
+3. RFE user stories — "As a [role], I want to [goal] so that [benefit]"
+4. Journey titles — rephrased as user tasks
+
+**Source labeling when using scenario_flow:** set `source` to `"Outcome Scenario: <Outcome key> — win moment: <verbatim win_moment text>"` so the report can show this task came from validated upstream intent, not an inference chain.
 
 **Rules:**
 
@@ -277,6 +285,40 @@ If ALL strategies fail, write `outcome-context.json` with `null` values and warn
 
 Extract: key, title, problem_statement, user_journey, acceptance_criteria, connected_rfes.
 
+**Also extract `scenario_flow` — the Outcome's structured Scenario block, if present.** Outcome Creator's own template (`andybraren/outcome-creator > templates/outcome-template.md`) defines this format per delivery phase:
+
+```
+#### Scenario: [Title]
+- **Actors:** [Who is involved]
+- **Context:** [When/where this happens]
+- **Flow:** [Concise, plain-language steps — roles, decisions, handoffs]
+- **Win moment:** [Observable signal that Next is real]
+```
+
+Scan the Outcome ticket's description for a `#### Scenario:` heading matching this shape (under either the `### Next` or `### Future` phase section — prefer `### Next` if both exist, since that's the near-term delivery slice this eval run is most likely validating). If found, extract:
+
+```json
+{
+  "scenario_flow": {
+    "found": true,
+    "title": "<Scenario title>",
+    "actors": "<verbatim Actors text>",
+    "context": "<verbatim Context text>",
+    "flow": "<verbatim Flow text>",
+    "win_moment": "<verbatim Win moment text>",
+    "phase": "Next | Future"
+  }
+}
+```
+
+**If no `#### Scenario:` heading is found** (the Outcome ticket may only contain prose, or Outcome Creator may keep this structure in its own repo artifacts rather than writing it into the Jira description — unconfirmed as of 2026-07-20, worth checking with Andy/Yahav), write:
+
+```json
+{ "scenario_flow": { "found": false } }
+```
+
+Do NOT fabricate a Scenario block when one isn't present — `found: false` is a valid, expected result and Step 5/5b already handle it by falling back to `problem_statement`/AC-inference.
+
 Write to `.artifacts/<KEY>/outcome-context.json`.
 
 ### Step 8: Extract MR Deltas (when `--workspace` provided)
@@ -326,8 +368,9 @@ Assemble all extracted data into the handoff artifact:
   "breadcrumb": { "outcome": null, "rfe": null, "strat": {}, "prototype": null, "mr": null },
   "persona_selection": { "selected": [], "target_audience_text": "", "reasoning": "" },
   "rfe_key": "<key or null>",
-  "raw_parent": "<parent field from Jira response, cached for enrichment phase>",
-  "raw_issuelinks": "<issuelinks array from Jira response, cached for enrichment phase>",
+  // Internal cache fields (not consumed by downstream skills):
+  "raw_parent": "...",        // Used by enrichment phase only
+  "raw_issuelinks": "...",    // Used by enrichment phase only
   "decision_context": { "has_decisions": false, "deliberate_descopes": [] }
 }
 ```

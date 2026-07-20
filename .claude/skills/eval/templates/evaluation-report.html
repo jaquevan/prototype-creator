@@ -718,14 +718,10 @@ tr.dim-na{opacity:0.6;font-style:italic}
         </button>
         <button class="appendix-tab" onclick="switchAppendixTab('design-compliance')" style="{{CONSISTENCY_TAB_DISPLAY}}">
           <svg class="appendix-tab-icon" viewBox="0 0 512 512"><path d="M256 48a208 208 0 1 1 0 416 208 208 0 1 1 0-416zm0 464A256 256 0 1 0 256 0a256 256 0 1 0 0 512zM369 209c9.4-9.4 9.4-24.6 0-33.9s-24.6-9.4-33.9 0l-111 111-47-47c-9.4-9.4-24.6-9.4-33.9 0s-9.4 24.6 0 33.9l64 64c9.4 9.4 24.6 9.4 33.9 0L369 209z"/></svg>
-          <span class="appendix-tab-label">Compliance</span>
+          <span class="appendix-tab-label">Consistency</span>
           <span class="appendix-tab-metric">{{COMPLIANCE_COUNT}} findings</span>
         </button>
-        <button class="appendix-tab" onclick="switchAppendixTab('pipeline')" style="{{ITERATION_DISPLAY}}">
-          <svg class="appendix-tab-icon" viewBox="0 0 384 512"><path d="M0 64C0 28.7 28.7 0 64 0H224V128c0 17.7 14.3 32 32 32H384V448c0 35.3-28.7 64-64 64H64c-35.3 0-64-28.7-64-64V64zm384 64H256V0L384 128z"/></svg>
-          <span class="appendix-tab-label">What Changed</span>
-          <span class="appendix-tab-metric">{{PIPELINE_COUNT}} files</span>
-        </button>
+        <!-- What Changed tab removed — MR deltas are developer context, not eval output -->
       </div>
 
       <!-- Appendix Tab: Journeys -->
@@ -762,28 +758,15 @@ tr.dim-na{opacity:0.6;font-style:italic}
         </div>
       </div>
 
-      <!-- Appendix Tab: Design Compliance -->
+      <!-- Appendix Tab: Design Consistency -->
       <div class="appendix-content" id="appendix-design-compliance" data-tour="tab-design-compliance">
-        <h2>Design Compliance</h2>
-        <p class="small muted" style="margin:-0.5rem 0 1rem">Checks PatternFly design pattern compliance in source code and captured screenshots. Powered by <a href="https://gitlab.cee.redhat.com/bmorley/consistency-checker" target="_blank">consistency-checker</a> (Beau Morley).</p>
+        <h2>Design Consistency</h2>
+        <p class="small muted" style="margin:-0.5rem 0 1rem">Checks PatternFly design pattern consistency in source code and captured screenshots. Powered by <a href="https://gitlab.cee.redhat.com/bmorley/consistency-checker" target="_blank">consistency-checker</a> (Beau Morley).</p>
         {{COMPLIANCE_NARRATIVE}}
         {{CONSISTENCY_HTML}}
       </div>
 
-      <!-- Appendix Tab: What Changed -->
-      <div class="appendix-content" id="appendix-pipeline" data-tour="tab-pipeline">
-        <h2 style="margin-top:0.5rem">What Changed</h2>
-        <p class="small muted" style="margin:-0.5rem 0 1rem">Files added or modified in the merge request.</p>
-        <div id="what-changed" style="{{DELTA_DISPLAY}}">
-          <details open>
-            <summary style="font-size:0.875rem">What Changed in This MR</summary>
-            <div class="card card-compact" style="margin-top:0.5rem">
-              {{DELTA_HTML}}
-            </div>
-          </details>
-        </div>
-        {{CODE_DELTAS_HTML}}
-      </div>
+      <!-- What Changed tab removed -->
 
     </div><!-- end appendix -->
 
@@ -983,7 +966,7 @@ function switchAppendixTab(tab) {
   var content = document.getElementById('appendix-' + tab);
   if (content) content.classList.add('active');
 }
-function switchTab(t) { switchAppendixTab(t === 'fixes' ? 'fix-history' : t === 'findings' ? 'fix-history' : t === 'consistency' ? 'design-compliance' : t === 'iterations' ? 'pipeline' : t); }
+function switchTab(t) { switchAppendixTab(t === 'fixes' ? 'fix-history' : t === 'findings' ? 'fix-history' : t === 'consistency' ? 'design-compliance' : t); }
 
 
 
@@ -1360,7 +1343,13 @@ function renderTree() {
     }
 
     html += '<div class="ev-tree-persona" onclick="togglePersona(\'' + pid + '\')">';
+    var levelMatch = pid.match(/junior|senior|experienced/i);
+    var level = levelMatch ? levelMatch[0] : '';
+    var levelColor = level === 'junior' ? '#f97316' : level === 'experienced' || level === 'senior' ? '#22c55e' : 'var(--text2)';
     html += '<span>' + escHtml(p.name) + '</span>';
+    if (level) {
+      html += '<span style="font-size:0.6rem;font-weight:700;padding:1px 6px;border-radius:3px;background:' + levelColor + '20;color:' + levelColor + ';text-transform:uppercase;letter-spacing:0.04em">' + level + '</span>';
+    }
     if (evState.acFilter && evidenceCount > 0) {
       html += '<span class="ev-tree-badge">' + evidenceCount + '</span>';
     }
@@ -1377,7 +1366,9 @@ function renderTree() {
           html += '<span class="ev-tree-task-acs">';
           task.covers_acs.forEach(function(ac) {
             var acColor = getAcColor(ac);
-            html += '<span class="ev-tree-task-ac" style="background:' + acColor + '15;color:' + acColor + '">' + escHtml(ac) + '</span>';
+            var acData = evidenceViewerData.ac_list ? evidenceViewerData.ac_list.find(function(a) { return a.id === ac; }) : null;
+            var acTitle = acData ? acData.text || '' : '';
+            html += '<span class="ev-tree-task-ac" style="background:' + acColor + '15;color:' + acColor + ';cursor:pointer" title="' + escHtml(acTitle) + '" onclick="event.stopPropagation();document.getElementById(\'ev-ac-filter\').value=\'' + ac + '\';filterByAc(\'' + ac + '\')">' + escHtml(ac) + '</span>';
           });
           html += '</span>';
         }
@@ -1580,10 +1571,12 @@ function renderStepDetail() {
   if (step.what_im_thinking) ctx += '<strong>What I\'m thinking</strong><p>' + escHtml(step.what_im_thinking) + '</p>';
   if (step.action) ctx += '<strong>Action</strong><p>' + escHtml(step.action) + '</p>';
 
-  // Confidence
+  // Persona confidence
   if (step.confidence) {
     var confColor = step.confidence === 'high' ? 'var(--status-success)' : step.confidence === 'low' ? 'var(--status-warning)' : 'var(--text2)';
-    ctx += '<div style="margin-top:0.5rem;font-size:0.75rem;"><strong>Confidence:</strong> <span style="color:' + confColor + ';font-weight:600;">' + step.confidence + '</span></div>';
+    var pName = evState.persona ? (evidenceViewerData.personas[evState.persona] || {}).name || evState.persona : '';
+    var confLabel = pName ? pName.split(' ').pop() + '\'s confidence' : 'Persona confidence';
+    ctx += '<div style="margin-top:0.5rem;font-size:0.75rem;" title="How confident this persona felt at this step — not the system\'s certainty"><strong>' + confLabel + ':</strong> <span style="color:' + confColor + ';font-weight:600;">' + step.confidence + '</span></div>';
   }
 
   // AC evidence tags — show full criterion text
@@ -1765,7 +1758,7 @@ document.addEventListener('DOMContentLoaded', function() {
         <p><strong>Top section</strong> &mdash; Executive summary with pass/fail/flagged counts and the overall usability score.</p>
         <p style="margin-top:0.5rem"><strong>AC Table</strong> &mdash; Each acceptance criterion with a verdict. Click <strong>View evidence</strong> to open a full-screen viewer with screenshots, think-aloud narration, and persona reactions.</p>
         <p style="margin-top:0.5rem"><strong>Flagged items</strong> &mdash; Need your judgment. The evaluator couldn't make a confident call. Click to review and override.</p>
-        <p style="margin-top:0.5rem"><strong>Appendix tabs</strong> &mdash; Detailed evidence: persona walkthroughs, usability scores, fix history (with before/after screenshots), design compliance checks, and what changed in the MR.</p>
+        <p style="margin-top:0.5rem"><strong>Appendix tabs</strong> &mdash; Detailed evidence: persona walkthroughs, usability scores, fix history (with before/after screenshots), design consistency checks, and what changed in the MR.</p>
       </div>
       <div class="welcome-section">
         <div class="welcome-section-label">Key interactions</div>
@@ -1815,12 +1808,11 @@ var tourSteps = [
   { target: '[data-tour="ac-table"]', text: 'The acceptance criteria table. Each row shows a criterion with its verdict. Click "View evidence" to open the full evidence viewer with screenshots and persona think-aloud.' },
   { target: '.ac-view-link', text: 'Opens the evidence viewer modal. You\'ll see: persona screenshots on the left, think-aloud narration on the right, and a sidebar to step through each persona\'s navigation. Use the AC dropdown at the top to filter by criterion.' },
   { target: '[data-tour="flagged"]', text: 'Items the evaluator couldn\'t confidently judge. Open the Review Panel (top-right) to override verdicts and add notes.' },
-  { target: '[data-tour="appendix-tabs"]', text: 'Detailed evidence tabs: Journeys shows per-persona walkthroughs with patience tracking. Usability has 7-dimension scores. Fix History shows before/after screenshots of what changed. Design Compliance checks PatternFly guidelines. What Changed shows the MR file delta.' },
+  { target: '[data-tour="appendix-tabs"]', text: 'Detailed evidence tabs: Journeys shows per-persona walkthroughs with patience tracking. Usability has 7-dimension scores. Fix History shows before/after screenshots of what the eval fixed. Consistency checks PatternFly guidelines.' },
   { target: '[data-tour="personas"]', text: 'Persona cards show who navigated the prototype. Each ran independently at their own skill level. Click to see their full step-by-step trace.', action: function() { switchAppendixTab('journeys'); } },
   { target: '[data-tour="usability"]', text: 'Seven usability dimensions scored 0-3 per persona. Composite score averages across personas. The INF vs TA comparison below shows whether real persona navigation matched structural analysis.', action: function() { switchAppendixTab('usability'); } },
   { target: '[data-tour="tab-fix-history"]', text: 'Iteration timeline showing what the evaluator found broken and fixed. The before/after screenshot comparison shows the visual difference.', action: function() { switchAppendixTab('fix-history'); } },
-  { target: '[data-tour="tab-design-compliance"]', text: 'PatternFly design guideline compliance. Checks source code patterns (icon styles, table conventions, color tokens) against the consistency-checker ruleset.', action: function() { switchAppendixTab('design-compliance'); } },
-  { target: '[data-tour="tab-pipeline"]', text: 'Shows which files were added or modified in the merge request, categorized by type (pages, components, routes, feature flags). Helps understand the scope of what\'s being evaluated.', action: function() { switchAppendixTab('pipeline'); } }
+  { target: '[data-tour="tab-design-compliance"]', text: 'PatternFly design guideline consistency. Checks source code patterns (icon styles, table conventions, color tokens) against the consistency-checker ruleset.', action: function() { switchAppendixTab('design-compliance'); } }
 ];
 var tourCurrentStep = 0;
 window._tourActive = false;

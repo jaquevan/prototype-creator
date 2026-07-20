@@ -32,6 +32,11 @@ Phase 4 of the eval pipeline. Renders the final HTML report from JSON/CSV artifa
 
 ## Procedure
 
+**This skill is a thin wrapper around a shell script.** For direct invocation:
+```bash
+bash .claude/skills/eval/scripts/generate-report.sh .artifacts/<KEY>/ --note="Phase A: all_pass"
+```
+
 ### Step 1: Verify artifacts exist
 
 Before rendering, confirm the minimum required files are present:

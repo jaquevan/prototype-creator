@@ -1,15 +1,17 @@
 ---
 name: eval-consistency
-description: Check PatternFly design guideline compliance against prototype source code and screenshots. Optional eval phase.
+description: Check PatternFly design guideline compliance against prototype source code and screenshots. Required eval phase.
 user-invocable: false
 allowed-tools: Read, Write, Bash, Glob, Grep
 ---
+
+<!-- Model: Sonnet-tier for source mode (pattern matching). Visual mode needs vision capability but not deep reasoning. -->
 
 # eval-consistency
 
 Runs PatternFly design consistency checks against the prototype using vendored guidelines from Beau Morley's [consistency-checker](https://gitlab.cee.redhat.com/bmorley/consistency-checker).
 
-**Skip this entire skill if `.context/consistency-checker/` does not exist.** Write `{"skipped": true, "reason": "consistency-checker not bootstrapped"}` to `consistency-report.json` and exit.
+**REQUIRED: `.context/consistency-checker/` must exist.** If it does not, stop and instruct the user to run `bash .claude/skills/eval/scripts/bootstrap-consistency-checker.sh` before proceeding. Do NOT skip this skill or write a skipped report — consistency checking is mandatory for all evaluations.
 
 ## Execution Modes
 
@@ -17,7 +19,7 @@ eval-consistency runs in two modes, invoked separately by the orchestrator:
 
 - **`--mode=source`** (Phase A setup): Runs deterministic source-code checks against MR delta files. Fast, no screenshots needed. Produces initial `consistency-report.json` and appends to `refinement-suggestions.json`. Called before eval-classify.
 - **`--mode=visual`** (post-journey): Runs AI-powered visual checks against journey screenshots. Appends visual findings to the existing `consistency-report.json`. Called after eval-verify captures screenshots.
-- **`--mode=both`** (legacy): Runs source then visual sequentially. Use when both inputs are available.
+- **`--mode=both`** (legacy): Runs source then visual sequentially. Use when both inputs are available. (legacy — not used by the orchestrator. eval-iterate calls --mode=source and --mode=visual separately)
 
 When called without `--mode`, defaults to `both` (legacy behavior).
 
@@ -67,6 +69,8 @@ HAS_LAYOUTS=$(echo "$DELTA_CONTENT" | grep -l '<Page\|<PageSection\|<Stack\|<Spl
 ```
 
 **Only load guideline `.md` files from categories that matched.** For example, if `HAS_TABLES` and `HAS_BUTTONS` matched but nothing else, only read files from `guidelines/tables/` and `guidelines/buttons/`.
+
+**Minimum coverage rule:** If the pre-filter matches fewer than 3 guideline categories, expand to always include `labels/`, `buttons/`, and `layouts/` regardless of whether they appeared in the MR delta. These are universal enough that checking them on any prototype is valuable — status labels, button ordering, and page layout patterns appear in virtually every RHOAI feature.
 
 If NO categories match (rare — usually at least buttons or layouts), fall back to loading ALL guidelines.
 

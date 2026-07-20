@@ -18,8 +18,8 @@ Executes Playwright walkthroughs for each journey defined by eval-extract. Opera
 | `.artifacts/<KEY>/mr-delta.json` | Changed files (for nav gap detection) | No |
 | Prototype URL | Live URL to test against (e.g., `http://localhost:4200`) | Yes |
 | `--rerun-only` | Comma-separated AC IDs — only run journeys testing these ACs | No |
-| `--capture-only` | Re-capture screenshots without changing verdicts | No |
-| `--all-journeys` | Run all journeys (not just rerun set) | No |
+| `--capture-only` | Re-walk journeys and capture screenshots without modifying verdicts or the CSV | No |
+| `--all-journeys` | Run all journeys regardless of `--rerun-only` filter | No |
 | `tests/fixtures/manifest.json` | Test fixtures for file uploads and chat input | No |
 
 ## Outputs
@@ -42,37 +42,7 @@ The x-ray evaluator has full workspace access and uses it for speed. The goal is
 - No brute-force expansion, no persona simulation, no exploration phase
 - Screenshots are evidence of PASS/FAIL only
 
-```javascript
-// Generated script MUST start with this setup:
-const browser = await firefox.launch({ headless: true });
-const context = await browser.newContext({ viewport: { width: 1920, height: 900 } });
-const page = await context.newPage();
-
-// Ensure "All projects" is selected (prototypes often default to an empty project)
-async function ensureAllProjects(page) {
-  const dropdown = page.locator('.pf-v6-c-menu-toggle, [data-testid="project-selector"]').first();
-  if (await dropdown.isVisible({ timeout: 2000 }).catch(() => false)) {
-    const currentText = await dropdown.textContent().catch(() => '');
-    if (!currentText.includes('All projects')) {
-      await dropdown.click();
-      const allOpt = page.locator('text=All projects').first();
-      if (await allOpt.isVisible({ timeout: 2000 }).catch(() => false)) {
-        await allOpt.click();
-        await page.waitForTimeout(1000);
-      }
-    }
-  }
-}
-
-async function navigateInformed(page, route, selector) {
-  await page.goto(`${baseUrl}${route}`);
-  await page.waitForLoadState('domcontentloaded');
-  if (selector) {
-    await page.waitForSelector(selector, { timeout: 5000 }).catch(() => null);
-  }
-  await page.waitForTimeout(1000);
-}
-```
+Use the browser setup from the **PF6 Script Template** section below (Firefox, viewport `1920x900`, `addInitScript` for localStorage pre-seeding, `navigateTo` for route navigation).
 
 ## Visual Truth Rule
 
@@ -103,13 +73,7 @@ fi
 
 **Browser selection:** Use Firefox by default (more reliable CSS rendering for PatternFly expandable components). Fall back to Chromium if Firefox is not installed.
 
-```javascript
-import { firefox } from 'playwright';
-const browser = await firefox.launch({ headless: true });
-// MANDATORY: 1920x900 viewport. Default 800x600 truncates table columns. 1440 is insufficient for tables with 10+ columns (e.g., Kueue scheduling adds Queue + Scheduling + expand toggle).
-const context = await browser.newContext({ viewport: { width: 1920, height: 900 } });
-const page = await context.newPage();
-```
+Use the browser setup from the **PF6 Script Template** section below. MANDATORY: 1920x900 viewport — default 800x600 truncates table columns, 1440 is insufficient for tables with 10+ columns.
 
 **Viewport validation:** After generating `journey-test.mjs`, verify the script contains `viewport` before running it:
 ```bash
@@ -141,24 +105,17 @@ const primaryRoute = componentMap ? componentMap.target_page : inferPrimaryRoute
 // PAIRED with eval-discover Step 7b (baseline-after.png).
 // Both captures MUST use identical addInitScript setup so the only
 // visual difference is actual code changes, not browser state drift.
-const context = await browser.newContext({ viewport: { width: 1920, height: 900 } });
-const page = await context.newPage();
-await page.addInitScript(() => {
-  try { localStorage.setItem('selectedProject', JSON.stringify('All projects')); } catch {}
-  try {
-    const flags = JSON.parse(localStorage.getItem('featureFlags') || '{}');
-    flags._lastModified = new Date().toISOString();
-    localStorage.setItem('featureFlags', JSON.stringify(flags));
-  } catch {}
-});
+// Use the browser/context/addInitScript setup from the PF6 Script Template section below.
+
 await page.goto(`${baseUrl}${primaryRoute || ''}`);
-await page.waitForSelector('tbody tr', { timeout: 8000 }).catch(() => null);
+const readySelector = componentMap?.content_ready_selector || 'body';
+await page.waitForSelector(readySelector, { timeout: 8000 }).catch(() => null);
 await page.waitForTimeout(2000);
 await page.screenshot({ path: '.artifacts/<KEY>/screenshots/baseline-before.png', fullPage: false });
 await context.close();
 ```
 
-**If the page is still empty after content wait**, capture it anyway — it may indicate a build issue that the report should show. Do NOT use `ensureAllProjects()` here — the click-based approach opens a dropdown that can cover data rows. The `addInitScript` pre-seeding handles project selection before React mounts.
+**If the page is still empty after content wait**, capture it anyway — it may indicate a build issue that the report should show. Do NOT use click-based project selection here — it opens a dropdown that can cover data rows. The `addInitScript` pre-seeding handles project selection before React mounts.
 
 This baseline captures the prototype's main feature page before eval-fix applies any changes. It's used in the report's Fix History tab and Summary section for before/after comparison.
 
@@ -168,47 +125,132 @@ This baseline captures the prototype's main feature page before eval-fix applies
 
 **Before generating any Playwright script**, read the target component files from `mr-delta.json` and write a structured JSON file that the script generator MUST reference.
 
-Read workspace source files (`modified_files` and `new_files` from `mr-delta.json`) and extract:
+Read workspace source files and identify the UI type. Write a component-map.json with the appropriate schema for that UI type. The script generator reads `ui_type` to select the right interaction pool builder and `content_ready_selector` for page-load waits.
 
-- **target_page**: The route where the feature lives (e.g., `/ai-hub/models/deployments`)
-- **table_columns**: Actual `<Th>` labels or column config array values in order
-- **ac_column_mapping**: For each AC, which column it actually maps to (AC text may say "Status column" but the feature is in "Scheduling")
-- **interactive_elements**: Tooltips (`<Tooltip content=`), expandable rows (`<Tr isExpanded`), popovers, modals — with the component that wraps them
-- **feature_flags**: Conditional rendering gates and what they show/hide
-- **status_values**: Actual string values that appear as labels (from mock data or enums)
+#### Schema
 
-Write to `.artifacts/<KEY>/component-map.json`:
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `ui_type` | `"table"` \| `"form"` \| `"wizard"` \| `"dashboard"` \| `"mixed"` | Yes | Discriminator — determines which interaction pool builder and utilities the script generator uses |
+| `target_page` | string | Yes | Route where the feature lives |
+| `content_ready_selector` | string | Yes | What selector indicates page content has loaded |
+| `table_columns` | string[] | Table only | Column header labels in order |
+| `ac_element_mapping` | object | Yes | Maps each AC to the element it tests (selector + interaction_type) |
+| `data_entries` | array | Yes | Generic array of visible data items (rows, cards, list items) |
+| `interactive_elements` | array | Yes | Array of interactive components with type, selector, trigger |
+| `initialization` | object | Yes | Pre-seed config: `local_storage`, `feature_flags`, `url_params` |
+| `status_values` | array | No | Status indicators with value, selector, and optional label |
+
+**`content_ready_selector` by UI type:**
+- Table: `tbody tr`
+- Form: `form input, form .pf-v6-c-form__group`
+- Wizard: `.pf-v6-c-wizard__step-content`
+- Dashboard: `.pf-v6-c-card`
+
+**`interactive_elements[].type` values:** `tooltip`, `expandable_row`, `dropdown`, `toggle`, `modal`, `tab`, `accordion`, `checkbox`, `radio`, `text_input`, `select`, `slider`, `switch`, `link`, `popover`
+
+#### Example 1: Table (deployment scheduling)
 
 ```json
 {
+  "ui_type": "table",
   "target_page": "/ai-hub/models/deployments",
-  "table_columns": ["Model deployment name", "Project", "Serving runtime", "Inference endpoints", "API protocol", "Last deployed", "Status", "Queue", "Scheduling"],
-  "ac_column_mapping": {
-    "AC-1": { "column": "Scheduling", "index": 8, "reason": "AC says Status column but Kueue states are in Scheduling" },
-    "AC-6": { "interaction": "hover", "target": "Label in Scheduling column", "tooltip_wrapper": "Tooltip", "expected_content": "GPU, CPU, Memory" }
+  "content_ready_selector": "tbody tr",
+  "table_columns": ["Name", "Project", "Status", "Queue", "Scheduling"],
+  "ac_element_mapping": {
+    "AC-1": { "selector": "thead th:nth-child(8)", "interaction_type": "verify_visible", "description": "Queue column header" },
+    "AC-6": { "selector": ".scheduling-label", "interaction_type": "hover", "expected_content": "resource allocation details" }
   },
-  "feature_flags": { "kueueEnabled": "gates columns Queue + Scheduling + expandable row" },
-  "status_values": ["Admitted", "Pending", "Running", "Suspended", "Scaling", "Unmanaged"],
-  "interactive_elements": {
-    "tooltips": [{ "wraps": "Label in Scheduling", "content": "resourceTooltip" }],
-    "expandable_rows": [{ "content": "Queue Details, Resource Allocation, Timing" }]
-  }
+  "data_entries": [
+    { "name": "Llama-3.1-8B", "selector": "tr:has-text('Llama-3.1-8B')", "properties": { "has_expandable": true } },
+    { "name": "Granite-3B", "selector": "tr:has-text('Granite-3B')" }
+  ],
+  "interactive_elements": [
+    { "type": "tooltip", "selector": ".pf-v6-c-tooltip__content", "trigger_selector": ".scheduling-label", "expected_content": "GPU, CPU, Memory" },
+    { "type": "expandable_row", "selector": ".pf-v6-c-table__expandable-row-content", "trigger_selector": "td:first-child button" }
+  ],
+  "initialization": {
+    "local_storage": { "selectedProject": "\"All projects\"" }
+  },
+  "status_values": [
+    { "value": "Admitted", "selector": "[data-status='admitted']" },
+    { "value": "Pending", "selector": "[data-status='pending']" }
+  ]
+}
+```
+
+#### Example 2: Form (role creation)
+
+```json
+{
+  "ui_type": "form",
+  "target_page": "/settings/roles/create",
+  "content_ready_selector": "form .pf-v6-c-form__group",
+  "ac_element_mapping": {
+    "AC-1": { "selector": "#role-name-input", "interaction_type": "fill", "test_value": "Custom Admin" },
+    "AC-2": { "selector": ".permission-checkboxes input[type='checkbox']", "interaction_type": "check", "description": "Permission checkboxes" },
+    "AC-3": { "selector": "button[type='submit']", "interaction_type": "click", "description": "Submit button" }
+  },
+  "data_entries": [],
+  "interactive_elements": [
+    { "type": "text_input", "selector": "#role-name-input", "trigger_selector": null },
+    { "type": "checkbox", "selector": ".permission-checkboxes input", "trigger_selector": null },
+    { "type": "dropdown", "selector": ".pf-v6-c-select", "trigger_selector": ".pf-v6-c-select__toggle" },
+    { "type": "modal", "selector": ".pf-v6-c-modal-box", "trigger_selector": "button:has-text('Confirm')" }
+  ],
+  "initialization": {},
+  "status_values": []
+}
+```
+
+#### Example 3: Wizard (multi-step creation)
+
+```json
+{
+  "ui_type": "wizard",
+  "target_page": "/pipelines/create",
+  "content_ready_selector": ".pf-v6-c-wizard__step-content",
+  "ac_element_mapping": {
+    "AC-1": { "selector": ".pf-v6-c-wizard__step:nth-child(1)", "interaction_type": "verify_visible" },
+    "AC-2": { "selector": ".pf-v6-c-wizard__nav-link", "interaction_type": "click", "description": "Step navigation" }
+  },
+  "data_entries": [],
+  "interactive_elements": [
+    { "type": "tab", "selector": ".pf-v6-c-wizard__nav-link", "trigger_selector": null },
+    { "type": "text_input", "selector": "#pipeline-name", "trigger_selector": null },
+    { "type": "select", "selector": ".runtime-select", "trigger_selector": ".pf-v6-c-select__toggle" }
+  ],
+  "initialization": {},
+  "status_values": []
 }
 ```
 
 **The Playwright script generator in Step 3 MUST read `component-map.json` and use its data for:**
-- Column indices (never guess from AC text — use `ac_column_mapping`)
-- Interaction types (hover vs click — use `interactive_elements`)
-- Expected values (use `status_values` to know what to look for)
+- Element selectors (never construct from domain terms — use `ac_element_mapping`)
+- Interaction types (hover vs click vs fill — use `interactive_elements`)
+- Page-load waits (use `content_ready_selector`)
 - Target page route (use `target_page` for navigation)
+- Initialization (use `initialization.local_storage` for pre-seeding)
 
 **Validation:** If `component-map.json` does not exist when Step 3 starts, STOP and go back to Step 2b. Do not generate a script without a component map.
 
 ### Step 3: Generate and run Playwright script
 
-Generate `.artifacts/<KEY>/journey-test.mjs` using the component map from Step 2b and the PF6 script template below.
+**Preferred: use the deterministic script generator** to create the base `journey-test.mjs`:
+
+```bash
+node .claude/skills/eval/scripts/generate-journey-script.js .artifacts/<KEY>/ <prototype-url>
+```
+
+This reads `component-map.json` + `extract-state.json` and emits a complete `.mjs` file with unique interactions per journey (the Interaction Budget). Review the generated script — if any journey needs FLAGGED narrative logic or a custom interaction that the generator couldn't infer, edit the generated file before running it.
+
+**Fallback:** If the generator fails or the component-map structure is unusual, generate `.artifacts/<KEY>/journey-test.mjs` manually using the component map from Step 2b and the PF6 script template below.
 
 **Journey skip check (when `--rerun-only` set):** For each journey, check if ANY of its `ac_ids` are in `--rerun-only`. If none are, skip the journey — carry forward its previous `journey-log.json` entry and screenshots.
+
+**Flag behavior:**
+- `--capture-only`: Re-walk all journeys and capture screenshots without modifying verdicts or the CSV. Used by eval-iterate's N+1 final-state capture.
+- `--all-journeys`: Run all journeys regardless of `--rerun-only` filter. Used with `--capture-only` to ensure complete screenshot coverage.
 
 #### Journey Completeness Rule
 
@@ -221,19 +263,57 @@ Verify before running: `journey_count_in_script == len(extract-state.journey_def
 
 #### Visual Differentiation Rule (MANDATORY)
 
-**Each journey MUST produce a screenshot showing a UNIQUE visual state.** Never screenshot the same default table view for multiple journeys. Before capturing the final screenshot, each journey must perform at least one interaction that visibly changes the page:
+**Each journey MUST produce a screenshot showing a UNIQUE visual state.** Never screenshot the same default table view for multiple journeys. Before capturing the final screenshot, each journey must perform at least one interaction that visibly changes the page.
+
+**Only ONE journey may use the default table view.** All others — including "absence" checks and "error" checks — must perform a distinguishing interaction. An error-absence journey can hover a status label (proves the page is clean AND produces a unique screenshot). A feature-absence journey can scroll to a specific row.
 
 | AC type | Required interaction before screenshot |
 |---|---|
-| Feature visibility (columns, labels) | Default table view is acceptable for ONE journey only |
-| Tooltip content ("hover over X") | `page.hover()` → screenshot WITH tooltip visible on screen |
-| Expandable row ("details", "resource info") | Click expand toggle → screenshot showing expanded content |
-| Feature absence ("when disabled", "no indicators") | Source verification → FLAGGED (can't toggle in prototype) |
-| Error absence ("no errors", "graceful degradation") | Check DOM for errors → screenshot (can share default view if no errors) |
-| Unmanaged/alternative state | Scroll to or highlight the specific row showing different state |
-| Multiple resource types | Expand a row showing the specific type, or navigate to a detail view |
+| Feature visibility (columns, labels) | Default table view — allowed for exactly ONE journey |
+| Tooltip content ("hover over X") | `page.hover()` on a SPECIFIC status label → screenshot WITH tooltip visible |
+| Expandable row ("details", "resource info") | Click expand toggle on a SPECIFIC row → screenshot showing expanded content |
+| Feature absence ("when disabled") | Source verification → FLAGGED verdict. Still hover a DIFFERENT status label for the screenshot |
+| Error absence ("no errors", "graceful degradation") | Check DOM for errors, then hover a DIFFERENT status label for the screenshot |
+| Unmanaged/alternative state | Scroll to and highlight the specific row showing different state |
+| Multiple resource types | Expand a DIFFERENT row than other expand journeys |
 
-**Enforcement:** After generating the script, verify that no two journey functions produce screenshots at the same page state. If journeys 1, 3, and 4 all just call `navigateToDeployments()` and screenshot the same table, the script is INVALID — add interactions (hover, expand, scroll) to differentiate them.
+#### Interaction Budget (MANDATORY — do this BEFORE generating journey functions)
+
+Before writing any journey function, build an **interaction assignment table** from `component-map.json`:
+
+1. **Enumerate the interaction pool** from `component-map.json`:
+   - One hover target per `interactive_elements` entry with `type: "tooltip"` (using its `trigger_selector`)
+   - One expand target per entry in `data_entries` that has `properties.has_expandable: true`
+   - One scroll target per `data_entries` entry without expandable
+   - One default view (budget: 1)
+
+2. **Assign each journey a unique interaction** from the pool:
+   - Match by AC type first (tooltip AC → hover, expand AC → expand, column AC → default)
+   - For "absence" and "error" ACs, assign an UNUSED hover target (the hover proves the page works AND produces a unique visual)
+   - No two journeys may share the same interaction target
+
+3. **Write the assignment as a comment block** at the top of `journey-test.mjs`:
+   ```
+   // INTERACTION BUDGET:
+   // journey-1 (AC-1, visibility): DEFAULT VIEW (the one allowed)
+   // journey-2 (AC-2, disabled): FLAGGED + hover first tooltip trigger
+   // journey-3 (AC-3, alternative state): scroll to data_entry[1]
+   // journey-4 (AC-5, RBAC): hover second tooltip trigger
+   // journey-5 (AC-6, tooltip): hover third tooltip trigger
+   // journey-6 (AC-1+7, expand): expand first data_entry row
+   // journey-7 (AC-4+7, coverage): expand second data_entry row
+   ```
+
+4. **Validate: count unique interaction targets.** If `unique_targets < journey_count`, the budget is invalid — reassign until every journey has a distinct target.
+
+**Enforcement:** After generating the script, verify uniqueness:
+```bash
+# Count unique screenshot contexts (must equal journey count)
+grep -c "screenshot(" .artifacts/<KEY>/journey-test.mjs
+# Verify no two journey functions have identical interaction sequences
+```
+
+If journeys share the same default table view screenshot, the script is INVALID. Go back to the interaction budget and reassign.
 
 #### PF6 Script Template
 
@@ -256,17 +336,20 @@ const page = await context.newPage();
 
 // --- PF6 UTILITIES (tested, do not modify) ---
 
-// Pre-set project to "All projects" before React loads
-await page.addInitScript(() => {
-  try { localStorage.setItem('selectedProject', JSON.stringify('All projects')); } catch {}
-});
+// Pre-seed initialization from component map
+const initLS = componentMap.initialization?.local_storage || {};
+await page.addInitScript((ls) => {
+  for (const [key, value] of Object.entries(ls)) {
+    try { localStorage.setItem(key, value); } catch {}
+  }
+}, initLS);
 
 async function navigateTo(route) {
   await page.goto(`${BASE_URL}${route}`);
   await page.waitForLoadState('domcontentloaded');
   await page.waitForTimeout(2000);
-  // Verify data loaded
-  await page.waitForSelector('tbody tr', { timeout: 8000 }).catch(() => null);
+  const readySelector = componentMap.content_ready_selector || 'body';
+  await page.waitForSelector(readySelector, { timeout: 8000 }).catch(() => null);
 }
 
 async function expandRow(rowText) {
@@ -330,9 +413,7 @@ async function main() {
   // <AGENT CALLS EACH JOURNEY FUNCTION HERE>
 
   await browser.close();
-
-  // Write results to journey artifacts
-  writeFileSync(`${ARTIFACTS}/journey-results.json`, JSON.stringify(results, null, 2));
+  console.log('All journeys complete.');
 }
 
 main().catch(console.error);
@@ -348,7 +429,7 @@ Do NOT rewrite the utilities. Do NOT change the browser/context setup. Only fill
 
 #### Journey Step Relevance Rule
 
-Every step MUST be necessary to verify the AC. If an AC describes a disabled/alternative state (e.g., "when Kueue is not enabled"):
+Every step MUST be necessary to verify the AC. If an AC describes a disabled/alternative state (e.g., "when feature X is not enabled"):
 - Verify the conditional rendering exists in source code
 - Mark the journey **FLAGGED** — cannot visually verify disabled state in this prototype
 
@@ -373,9 +454,9 @@ Every step MUST be necessary to verify the AC. If an AC describes a disabled/alt
 | AC describes absent/disabled state AND current UI matches | PASS |
 | No errors/403s on page when AC tests graceful degradation | PASS |
 
-**Default-state ACs:** If an AC describes what should happen when a feature is absent or disabled (e.g., "no Kueue indicators when disabled", "normal status with no Kueue indicators", "no error indicators"), and the current prototype state matches that description, the verdict is **PASS** — not FLAGGED. The AC is satisfied by the current visible state. Only FLAG if the AC requires demonstrating a STATE TRANSITION (enabled → disabled) that the prototype can't toggle.
+**Default-state ACs:** If an AC describes what should happen when a feature is absent or disabled (e.g., "no feature indicators when disabled", "normal state with no extra indicators", "no error indicators"), and the current prototype state matches that description, the verdict is **PASS** — not FLAGGED. The AC is satisfied by the current visible state. Only FLAG if the AC requires demonstrating a STATE TRANSITION (enabled → disabled) that the prototype can't toggle.
 
-**Example:** AC-3 says "InferenceService with no associated Workload CR displays normal KServe-derived status with no Kueue indicators." If the table has rows showing "Unmanaged" with standard status and no Kueue columns for that row, that IS the AC being satisfied — PASS, not FLAGGED.
+**Example:** AC-3 says "Items without the feature display normal default status with no extra indicators." If the UI shows items in their default state without the feature's indicators, that IS the AC being satisfied — PASS, not FLAGGED.
 
 Run the script:
 ```bash
@@ -416,6 +497,8 @@ Never use `page.evaluate()` or `.textContent()` alone as proof — PatternFly's 
 **Screenshot budget:** `baseline-before.png` + 1 per AC = typically 8-10 total screenshots for eval-verify. This is significantly fewer than the 15+ persona screenshots from eval-discover.
 
 ### Step 5: Determine final verdicts and write to BOTH CSV and journey-log
+
+**If the generated script already wrote `journey-log.json`** (deterministic script generator does this automatically), skip to the verdict cross-checking step below. Only build journey-log manually if using the fallback LLM-generated script.
 
 **CRITICAL: The CSV is the source of truth for the report.** The report renders verdicts from the CSV, not the journey-log. If the CSV says FAIL but journey-log says PASS, the report shows FAIL.
 
@@ -462,6 +545,8 @@ Verify every AC has a non-empty verdict:
 
 ### Step 7: Write journey-log.json
 
+**If using the deterministic script generator**, `journey-log.json` is written automatically by the generated script. Only write manually if using the fallback LLM-generated script.
+
 The output MUST match this exact schema. `render-report.js` reads these specific field names.
 
 ```json
@@ -472,9 +557,9 @@ The output MUST match this exact schema. `render-report.js` reads these specific
   "journeys": [
     {
       "id": "journey-1",
-      "title": "View Kueue Scheduling Status on Model Deployments",
-      "persona": "Platform Operator",
-      "source": "Inferred from AC-1: Given Kueue is enabled...",
+      "title": "Verify primary feature visibility on target page",
+      "persona": "End User",
+      "source": "Inferred from AC-1: Given the feature is enabled...",
       "ac_ids": ["AC-1", "AC-4"],
       "verdict": "PASS",
       "steps_expected": 4,
@@ -483,11 +568,11 @@ The output MUST match this exact schema. `render-report.js` reads these specific
         {
           "step": 1,
           "action": "navigate",
-          "target": "AI Hub > Models > Deployments",
+          "target": "Target page from component-map",
           "result": "success",
           "timestamp_ms": 0,
           "screenshot": "screenshots/journey-1-step-1.png",
-          "narration": "Navigated to Model Deployments overview. Table shows 6 rows with Kueue status labels."
+          "narration": "Navigated to target page. Content loaded and feature elements are visible."
         }
       ]
     }
@@ -504,7 +589,17 @@ The output MUST match this exact schema. `render-report.js` reads these specific
 
 ### Step 8: Generate refinement suggestions for FAILs
 
+**Plain-language rule for `human_action` (FLAGGED items):** When writing the `human_action` column in the CSV for FLAGGED verdicts, write for a designer, not an engineer. The designer reading this has no terminal access and may not know Kubernetes terminology. Use action-oriented language describing what to do in the UI.
+
+| Bad (too technical) | Good (plain language) |
+|---|---|
+| Verify feature flag correctly hides optional columns when disabled | Go to Settings, toggle the feature off, and check that the extra columns disappear from the table |
+| Validate RBAC graceful degradation with 403 response | Check that the page loads normally for a user who doesn't have admin permissions |
+| Confirm WebSocket real-time updates within 5s | Watch the status labels — do they update automatically when something changes, or do you need to refresh? |
+
 For each FAIL verdict, write to `.artifacts/<KEY>/refinement-suggestions.json`:
+
+**Note:** This file may already exist from eval-consistency (source mode). Append to the existing array, don't overwrite it. If the file doesn't exist, create it as a new JSON array.
 
 ```json
 {
