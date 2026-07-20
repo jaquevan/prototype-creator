@@ -1,0 +1,79 @@
+{
+  "ui_type": "form",
+  "target_page": "/projects/new-project123",
+  "content_ready_selector": "#project-detail-tabs",
+  "roles_tab_selector": "#roles-tab",
+  "roles_tab_eventkey": 6,
+  "ac_element_mapping": {
+    "AC-1": {
+      "selector": "#create-role-form",
+      "interaction_type": "verify_visible",
+      "description": "Form-based UI for defining custom roles",
+      "nav_steps": ["click #roles-tab", "click #roles-create-button"]
+    },
+    "AC-2": {
+      "selector": "#rules-editor-table",
+      "interaction_type": "fill",
+      "description": "Select API groups, resources, and verbs without manual typing",
+      "nav_steps": ["click #roles-tab", "click #roles-create-button", "interact with rule inputs and verb buttons"]
+    },
+    "AC-3": {
+      "selector": "#role-template-select",
+      "interaction_type": "select",
+      "description": "Select OOTB template and verify form pre-population",
+      "nav_steps": ["click #roles-tab", "click #roles-create-button", "open template selector", "select template"]
+    },
+    "AC-4": {
+      "selector": "#create-role-submit-button",
+      "interaction_type": "click",
+      "description": "Validate inputs and submit role creation form",
+      "nav_steps": ["click #roles-tab", "click #roles-create-button", "fill form", "click Create"]
+    },
+    "AC-5": {
+      "selector": "#role-yaml-modal",
+      "interaction_type": "click",
+      "description": "View role YAML in read-only modal",
+      "nav_steps": ["click #roles-tab", "click View YAML link on a role row"]
+    },
+    "AC-6": {
+      "selector": "#yaml-preview-code",
+      "interaction_type": "verify_visible",
+      "description": "Verify opendatahub.io/dashboard=true label in YAML preview",
+      "nav_steps": ["click #roles-tab", "click #roles-create-button", "fill name", "check YAML preview for label"]
+    }
+  },
+  "data_entries": [
+    {
+      "name": "workbench-editor",
+      "selector": "#roles-row-workbench-editor",
+      "properties": { "has_yaml_view": true }
+    },
+    {
+      "name": "pipeline-viewer",
+      "selector": "#roles-row-pipeline-viewer",
+      "properties": { "has_yaml_view": true }
+    }
+  ],
+  "interactive_elements": [
+    { "type": "tab", "selector": "#roles-tab", "trigger_selector": "#roles-tab" },
+    { "type": "text_input", "selector": "#role-name-input", "trigger_selector": null },
+    { "type": "text_input", "selector": "#role-description-input", "trigger_selector": null },
+    { "type": "select", "selector": "#role-template-select", "trigger_selector": "#role-template-toggle" },
+    { "type": "text_input", "selector": "[id^='rule-apigroup-input']", "trigger_selector": null },
+    { "type": "text_input", "selector": "[id^='rule-resource-input']", "trigger_selector": null },
+    { "type": "toggle", "selector": "[id^='rule-verb-']", "trigger_selector": null, "description": "Verb toggle buttons" },
+    { "type": "link", "selector": "#add-rule-button", "trigger_selector": null },
+    { "type": "modal", "selector": "#role-yaml-modal", "trigger_selector": "[id^='roles-view-yaml']" },
+    { "type": "link", "selector": "[id^='roles-view-link']", "trigger_selector": null }
+  ],
+  "initialization": {
+    "local_storage": {}
+  },
+  "templates": [
+    { "id": "workbench-user", "name": "Workbench User", "rules_count": 4 },
+    { "id": "workbench-viewer", "name": "Workbench Viewer", "rules_count": 2 },
+    { "id": "pipeline-operator", "name": "Pipeline Operator", "rules_count": 3 },
+    { "id": "model-deployer", "name": "Model Deployer", "rules_count": 2 }
+  ],
+  "status_values": []
+}

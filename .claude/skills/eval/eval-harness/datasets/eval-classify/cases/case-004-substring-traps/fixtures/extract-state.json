@@ -1,0 +1,9 @@
+{
+  "acceptance_criteria": [
+    {"id": "AC-1", "text": "The database schema validates request body format before processing", "source": "jira"},
+    {"id": "AC-2", "text": "The backend service performs data transformation via the API endpoint and establishes a stable connection", "source": "jira"},
+    {"id": "AC-3", "text": "The backend service informs the caller about rate limit status via HTTP headers", "source": "jira"},
+    {"id": "AC-4", "text": "The page displays a table with sortable columns and a filter dropdown", "source": "jira"},
+    {"id": "AC-5", "text": "Server-side payload validation rejects notable malformed requests", "source": "jira"}
+  ]
+}

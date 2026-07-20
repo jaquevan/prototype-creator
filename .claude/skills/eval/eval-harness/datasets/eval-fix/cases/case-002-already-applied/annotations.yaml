@@ -1,0 +1,4 @@
+expected_apply_count: 1
+expected_skip_count: 0
+expected_deferred_count: 0
+already_applied_should_skip: ["icon-style-consistency"]

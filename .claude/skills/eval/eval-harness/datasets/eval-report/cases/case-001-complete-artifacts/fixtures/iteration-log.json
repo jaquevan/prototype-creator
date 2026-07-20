@@ -1,0 +1,233 @@
+{
+  "key": "RHAISTRAT-432",
+  "max_iterations": 3,
+  "iterations": [
+    {
+      "iteration": 1,
+      "phase": "a",
+      "timestamp": "2026-07-15T18:09:31.676Z",
+      "pass_count": 6,
+      "fail_count": 0,
+      "flagged_count": 1,
+      "total_criteria": 7,
+      "suggestions_generated": 3,
+      "consistency_fixes": 3,
+      "details": {
+        "AC-1": {
+          "verdict": "PASS",
+          "tier": "T1"
+        },
+        "AC-2": {
+          "verdict": "FLAGGED",
+          "tier": "T1"
+        },
+        "AC-3": {
+          "verdict": "PASS",
+          "tier": "T1"
+        },
+        "AC-4": {
+          "verdict": "PASS",
+          "tier": "T1"
+        },
+        "AC-5": {
+          "verdict": "PASS",
+          "tier": "T1"
+        },
+        "AC-6": {
+          "verdict": "PASS",
+          "tier": "T1"
+        },
+        "AC-7": {
+          "verdict": "PASS",
+          "tier": "T1"
+        }
+      },
+      "journey_coverage": {
+        "AC-1": {
+          "journey_id": "journey-6",
+          "journey_title": "Verify expandable row with queue details and resource allocation",
+          "verdict": "PASS",
+          "steps_completed": 4
+        },
+        "AC-2": {
+          "journey_id": "journey-2",
+          "journey_title": "Verify no Kueue indicators when feature disabled",
+          "verdict": "FLAGGED",
+          "steps_completed": 4
+        },
+        "AC-3": {
+          "journey_id": "journey-3",
+          "journey_title": "Verify unmanaged deployment shows normal status",
+          "verdict": "PASS",
+          "steps_completed": 4
+        },
+        "AC-5": {
+          "journey_id": "journey-4",
+          "journey_title": "Verify no error indicators for RBAC-limited user",
+          "verdict": "PASS",
+          "steps_completed": 4
+        },
+        "AC-6": {
+          "journey_id": "journey-5",
+          "journey_title": "Verify resource tooltip on scheduling status hover",
+          "verdict": "PASS",
+          "steps_completed": 4
+        },
+        "AC-7": {
+          "journey_id": "journey-7",
+          "journey_title": "Verify coverage across deployment types with expanded details",
+          "verdict": "PASS",
+          "steps_completed": 4
+        }
+      },
+      "consistency_summary": {
+        "violations": 0,
+        "warnings": 3,
+        "passes": 2
+      }
+    },
+    {
+      "iteration": 1,
+      "phase": "a",
+      "timestamp": "2026-07-15T18:09:52.388Z",
+      "pass_count": 6,
+      "fail_count": 0,
+      "flagged_count": 1,
+      "total_criteria": 7,
+      "suggestions_generated": 3,
+      "consistency_fixes": 2,
+      "details": {
+        "AC-1": {
+          "verdict": "PASS",
+          "tier": "T1"
+        },
+        "AC-2": {
+          "verdict": "FLAGGED",
+          "tier": "T1"
+        },
+        "AC-3": {
+          "verdict": "PASS",
+          "tier": "T1"
+        },
+        "AC-4": {
+          "verdict": "PASS",
+          "tier": "T3"
+        },
+        "AC-5": {
+          "verdict": "PASS",
+          "tier": "T1"
+        },
+        "AC-6": {
+          "verdict": "PASS",
+          "tier": "T1"
+        },
+        "AC-7": {
+          "verdict": "PASS",
+          "tier": "T1"
+        }
+      },
+      "journey_coverage": {
+        "AC-1": {
+          "journey_id": "journey-6",
+          "journey_title": "Verify expandable row with queue details and resource allocation",
+          "verdict": "PASS",
+          "steps_completed": 4
+        },
+        "AC-2": {
+          "journey_id": "journey-2",
+          "journey_title": "Verify no Kueue indicators when feature disabled",
+          "verdict": "FLAGGED",
+          "steps_completed": 4
+        },
+        "AC-3": {
+          "journey_id": "journey-3",
+          "journey_title": "Verify unmanaged deployment shows normal status",
+          "verdict": "PASS",
+          "steps_completed": 4
+        },
+        "AC-5": {
+          "journey_id": "journey-4",
+          "journey_title": "Verify no error indicators for RBAC-limited user",
+          "verdict": "PASS",
+          "steps_completed": 4
+        },
+        "AC-6": {
+          "journey_id": "journey-5",
+          "journey_title": "Verify resource tooltip on scheduling status hover",
+          "verdict": "PASS",
+          "steps_completed": 4
+        },
+        "AC-7": {
+          "journey_id": "journey-7",
+          "journey_title": "Verify coverage across deployment types with expanded details",
+          "verdict": "PASS",
+          "steps_completed": 4
+        }
+      },
+      "consistency_summary": {
+        "violations": 0,
+        "warnings": 3,
+        "passes": 2
+      }
+    }
+  ],
+  "exit_reason": "pending",
+  "total_criteria_fixed": 0,
+  "total_regressions": 0,
+  "phase_b": {
+    "phase": "b",
+    "timestamp": "2026-07-15T18:19:57.727Z",
+    "usability_score": "14/18",
+    "personas_evaluated": [
+      "maude-experienced",
+      "maude-junior"
+    ],
+    "dimension_scores": {
+      "workflow_continuity": 2.5,
+      "cross_persona_handoffs": null,
+      "scalability_progressive_complexity": 2.5,
+      "system_status_observability": 2.5,
+      "technical_abstraction": 2.5,
+      "mental_model_fidelity": 2,
+      "accessibility_inclusion": 2
+    },
+    "persona_summary": [
+      {
+        "persona": "maude-experienced",
+        "patience_end": 100,
+        "confusion_events": 0,
+        "abandoned": false
+      },
+      {
+        "persona": "maude-experienced",
+        "patience_end": 100,
+        "confusion_events": 0,
+        "abandoned": false
+      },
+      {
+        "persona": "maude-experienced",
+        "patience_end": 100,
+        "confusion_events": 0,
+        "abandoned": false
+      },
+      {
+        "persona": "maude-junior",
+        "patience_end": 75,
+        "confusion_events": 3,
+        "abandoned": false
+      },
+      {
+        "persona": "maude-junior",
+        "patience_end": 90,
+        "confusion_events": 1,
+        "abandoned": false
+      },
+      {
+        "persona": "maude-junior",
+        "patience_end": 80,
+        "confusion_events": 2,
+        "abandoned": false
+      }
+    ]
+  }
+}

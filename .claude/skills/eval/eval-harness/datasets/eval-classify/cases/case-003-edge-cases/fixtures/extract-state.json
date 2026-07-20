@@ -1,0 +1,9 @@
+{
+  "acceptance_criteria": [
+    {"id": "AC-1", "text": "The API endpoint returns data that displays in the table on the page", "source": "jira"},
+    {"id": "AC-2", "text": "The backend rate limit shows a clear error message to the user", "source": "jira"},
+    {"id": "AC-3", "text": "The interface is user-friendly with clear button labels and intuitive dropdown menus", "source": "jira"},
+    {"id": "AC-4", "text": "The catalog YAML validation produces appropriate feedback", "source": "jira"},
+    {"id": "AC-5", "text": "The design looks polished and professional overall", "source": "jira"}
+  ]
+}

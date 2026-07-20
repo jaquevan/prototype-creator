@@ -1,0 +1,446 @@
+[
+  {
+    "persona": "maude-experienced",
+    "persona_name": "Maude - Experienced MLOps Engineer",
+    "task_index": 1,
+    "task": "Find out why your model deployment is queued and when it will be ready",
+    "covers_acs": [
+      "AC-1",
+      "AC-6",
+      "AC-7"
+    ],
+    "trace": [
+      {
+        "step": 1,
+        "what_i_see": "The RHOAI dashboard homepage with a sidebar navigation containing AI Hub section with Models submenu.",
+        "what_im_thinking": "I need to find the model deployments list to check scheduling status. AI Hub > Models should have a Deployments view.",
+        "action": "Click AI Hub > Models > Deployments in the sidebar navigation",
+        "confidence": "high",
+        "patience": 100,
+        "screenshot": ".artifacts/RHAISTRAT-432/screenshots/persona-maude-experienced-task-1-step-1.png",
+        "evidence_for_acs": [
+          "AC-1"
+        ]
+      },
+      {
+        "step": 2,
+        "what_i_see": "A deployments table with columns: Name, Project, Status, Queue, Scheduling. Six deployments visible with various scheduling states (Admitted, Running, Pending, Suspended, Scaling, Unmanaged).",
+        "what_im_thinking": "I can see the Kueue scheduling states directly in the table. I need to find a queued deployment — looks like 'Granite-3B-Code-Instruct' shows Pending status. Let me check why it's queued by hovering for the resource tooltip.",
+        "action": "Hover over the Pending scheduling status label for Granite-3B-Code-Instruct",
+        "confidence": "high",
+        "patience": 100,
+        "screenshot": ".artifacts/RHAISTRAT-432/screenshots/persona-maude-experienced-task-1-step-2.png",
+        "evidence_for_acs": [
+          "AC-1",
+          "AC-6"
+        ]
+      },
+      {
+        "step": 3,
+        "what_i_see": "A tooltip appears showing resource allocation: GPU 2 requested / 0 admitted, CPU 8 requested / 0 admitted, Memory 32Gi requested / 0 admitted. This tells me it's waiting for resource admission.",
+        "what_im_thinking": "Clear — it's pending because the Kueue admission controller hasn't allocated resources yet. No GPUs admitted means the cluster queue doesn't have capacity. Let me expand the row for more details on timing and queue position.",
+        "action": "Click the expand toggle on the Granite-3B-Code-Instruct row",
+        "confidence": "high",
+        "patience": 100,
+        "screenshot": null,
+        "evidence_for_acs": [
+          "AC-6",
+          "AC-7"
+        ]
+      },
+      {
+        "step": 4,
+        "what_i_see": "Expanded row shows Queue Details (LocalQueue: gpu-inference-queue, ClusterQueue: gpu-cluster-queue, PriorityClass: default-priority), Resource Allocation breakdown, and Timing section showing queue position and estimated wait.",
+        "what_im_thinking": "This is exactly what I need. I can see the ClusterQueue is gpu-cluster-queue with default priority, so it's queued behind higher-priority workloads. The timing section shows when it was submitted and estimated wait. Task complete — I know why it's queued (insufficient GPU capacity in the cluster queue) and have timing information.",
+        "action": "Read the timing information and confirm understanding of queue position",
+        "confidence": "high",
+        "patience": 100,
+        "screenshot": ".artifacts/RHAISTRAT-432/screenshots/persona-maude-experienced-task-1-step-4.png",
+        "evidence_for_acs": [
+          "AC-1",
+          "AC-6",
+          "AC-7"
+        ]
+      }
+    ],
+    "screenshots": [
+      ".artifacts/RHAISTRAT-432/screenshots/persona-maude-experienced-task-1-step-1.png",
+      ".artifacts/RHAISTRAT-432/screenshots/persona-maude-experienced-task-1-step-2.png",
+      ".artifacts/RHAISTRAT-432/screenshots/persona-maude-experienced-task-1-step-4.png"
+    ],
+    "patience_start": 100,
+    "patience_end": 100,
+    "confusion_events": 0,
+    "dead_ends": 0,
+    "recoveries": 0,
+    "assisted": false,
+    "would_complete": true,
+    "outcome": "completed"
+  },
+  {
+    "persona": "maude-experienced",
+    "persona_name": "Maude - Experienced MLOps Engineer",
+    "task_index": 2,
+    "task": "Check if there is any scheduling or queue information visible for your deployments",
+    "covers_acs": [
+      "AC-1",
+      "AC-3",
+      "AC-5"
+    ],
+    "trace": [
+      {
+        "step": 1,
+        "what_i_see": "The Model Deployments table with Queue and Scheduling columns clearly visible. All six deployments show their queue assignment and scheduling state.",
+        "what_im_thinking": "Queue information is immediately visible in the table without any extra clicks. I can see which deployments are Kueue-managed (have queue names) and which are Unmanaged. The Scheduling column shows the current Kueue state for each.",
+        "action": "Scan the table to identify scheduling and queue information patterns",
+        "confidence": "high",
+        "patience": 100,
+        "screenshot": ".artifacts/RHAISTRAT-432/screenshots/persona-maude-experienced-task-2-step-1.png",
+        "evidence_for_acs": [
+          "AC-1",
+          "AC-3"
+        ]
+      },
+      {
+        "step": 2,
+        "what_i_see": "The Queue column shows queue names (gpu-inference-queue, cpu-batch-queue) for managed deployments and is empty for the Unmanaged one. The Scheduling column shows states: Admitted, Running, Pending, Suspended, Scaling, Unmanaged.",
+        "what_im_thinking": "Good differentiation between managed and unmanaged deployments. The 'Unmanaged' label in Scheduling is clear — it means no Workload CR exists, so no Kueue scheduling applies. No error indicators for any deployment, which confirms RBAC handling is clean.",
+        "action": "Verify the Unmanaged deployment (Project Y Llama-3.1-8B-Instruct) shows no Kueue indicators",
+        "confidence": "high",
+        "patience": 100,
+        "screenshot": ".artifacts/RHAISTRAT-432/screenshots/persona-maude-experienced-task-2-step-2.png",
+        "evidence_for_acs": [
+          "AC-1",
+          "AC-3",
+          "AC-5"
+        ]
+      },
+      {
+        "step": 3,
+        "what_i_see": "The Unmanaged deployment shows Ready status with no queue name and Unmanaged scheduling label. No error banners or broken UI anywhere on the page.",
+        "what_im_thinking": "Task complete. Scheduling and queue information is clearly visible for all deployments. Kueue-managed ones show their queue and state, unmanaged ones are clearly labeled without false error indicators.",
+        "action": "Confirm all scheduling information is visible and correct across deployment types",
+        "confidence": "high",
+        "patience": 100,
+        "screenshot": null,
+        "evidence_for_acs": [
+          "AC-3",
+          "AC-5"
+        ]
+      }
+    ],
+    "screenshots": [
+      ".artifacts/RHAISTRAT-432/screenshots/persona-maude-experienced-task-2-step-1.png",
+      ".artifacts/RHAISTRAT-432/screenshots/persona-maude-experienced-task-2-step-2.png"
+    ],
+    "patience_start": 100,
+    "patience_end": 100,
+    "confusion_events": 0,
+    "dead_ends": 0,
+    "recoveries": 0,
+    "assisted": false,
+    "would_complete": true,
+    "outcome": "completed"
+  },
+  {
+    "persona": "maude-experienced",
+    "persona_name": "Maude - Experienced MLOps Engineer",
+    "task_index": 3,
+    "task": "Look at the details of a specific deployment to understand its resource allocation and queue position",
+    "covers_acs": [
+      "AC-6",
+      "AC-7"
+    ],
+    "trace": [
+      {
+        "step": 1,
+        "what_i_see": "The deployments table. I can see Llama-3.1-8B-Instruct with Admitted scheduling state and an expand toggle on the row.",
+        "what_im_thinking": "I want to see detailed resource allocation and queue position. The expand toggle should reveal the queue details panel. Let me expand the Llama-3.1-8B-Instruct row since it's Admitted — meaning resources have been allocated.",
+        "action": "Click the expand toggle on the Llama-3.1-8B-Instruct row",
+        "confidence": "high",
+        "patience": 100,
+        "screenshot": ".artifacts/RHAISTRAT-432/screenshots/persona-maude-experienced-task-3-step-1.png",
+        "evidence_for_acs": [
+          "AC-7"
+        ]
+      },
+      {
+        "step": 2,
+        "what_i_see": "Expanded row panel shows three sections: Queue Details (LocalQueue: gpu-inference-queue, ClusterQueue: gpu-cluster-queue, PriorityClass: high-priority), Resource Allocation (GPU: 1 requested / 1 admitted, CPU: 4 requested / 4 admitted, Memory: 16Gi requested / 16Gi admitted), and Timing (submitted, admitted timestamps).",
+        "what_im_thinking": "This is comprehensive. I can see the full Kueue resource picture — the deployment requested 1 GPU and got it admitted, it's in the gpu-cluster-queue with high priority. The timing section confirms when it was admitted. This covers both resource allocation details and queue position perfectly.",
+        "action": "Read and verify resource allocation details and queue position information",
+        "confidence": "high",
+        "patience": 100,
+        "screenshot": ".artifacts/RHAISTRAT-432/screenshots/persona-maude-experienced-task-3-step-2.png",
+        "evidence_for_acs": [
+          "AC-6",
+          "AC-7"
+        ]
+      },
+      {
+        "step": 3,
+        "what_i_see": "All resource allocation data is present: GPU, CPU, Memory with requested vs admitted values. Queue hierarchy is clear: LocalQueue → ClusterQueue → PriorityClass.",
+        "what_im_thinking": "Task complete. The expanded row gives me everything I need: resource allocation breakdown showing requested vs admitted for all resource types, and queue position via the queue hierarchy and priority class. This matches what I'd see from kubectl describe workload.",
+        "action": "Confirm understanding of resource allocation and queue position",
+        "confidence": "high",
+        "patience": 100,
+        "screenshot": null,
+        "evidence_for_acs": [
+          "AC-6",
+          "AC-7"
+        ]
+      }
+    ],
+    "screenshots": [
+      ".artifacts/RHAISTRAT-432/screenshots/persona-maude-experienced-task-3-step-1.png",
+      ".artifacts/RHAISTRAT-432/screenshots/persona-maude-experienced-task-3-step-2.png"
+    ],
+    "patience_start": 100,
+    "patience_end": 100,
+    "confusion_events": 0,
+    "dead_ends": 0,
+    "recoveries": 0,
+    "assisted": false,
+    "would_complete": true,
+    "outcome": "completed"
+  },
+  {
+    "persona": "maude-junior",
+    "persona_name": "Maude - Junior MLOps Engineer",
+    "task_index": 1,
+    "task": "Find out why your model deployment is queued and when it will be ready",
+    "covers_acs": [
+      "AC-1",
+      "AC-6",
+      "AC-7"
+    ],
+    "trace": [
+      {
+        "step": 1,
+        "what_i_see": "The RHOAI dashboard homepage with a sidebar navigation. I can see AI Hub section with Models submenu.",
+        "what_im_thinking": "I need to find where my model deployments are. The sidebar has AI Hub > Models which probably has a Deployments page. Let me click there.",
+        "action": "Click AI Hub > Models > Deployments in the sidebar navigation",
+        "confidence": "medium",
+        "patience": 100,
+        "screenshot": ".artifacts/RHAISTRAT-432/screenshots/persona-maude-junior-task-1-step-1.png",
+        "evidence_for_acs": [
+          "AC-1"
+        ]
+      },
+      {
+        "step": 2,
+        "what_i_see": "A table of deployments with columns: Name, Project, Status, Queue, Scheduling. I see statuses like 'Admitted', 'Running', 'Pending', 'Suspended'. The Scheduling column has labels I'm not sure about — 'Admitted'? What does that mean for a deployment?",
+        "what_im_thinking": "I can see my deployments but some of these scheduling states are confusing. 'Admitted' — admitted to what? This isn't a standard Kubernetes status I've seen before. It must be related to this 'Queue' column but I'm not sure what system manages this. Let me try hovering on one to get more info.",
+        "action": "Hover over the 'Admitted' scheduling status label for Llama-3.1-8B-Instruct",
+        "confidence": "low",
+        "patience": 90,
+        "confusion_event": true,
+        "confusion_detail": "The term 'Admitted' is unfamiliar — not a standard K8s status in my experience (pods, deployments, namespaces). Appears to be Kueue-specific terminology.",
+        "screenshot": ".artifacts/RHAISTRAT-432/screenshots/persona-maude-junior-task-1-step-2.png",
+        "evidence_for_acs": [
+          "AC-1",
+          "AC-6"
+        ]
+      },
+      {
+        "step": 3,
+        "what_i_see": "A tooltip appeared showing: GPU 1 requested / 1 admitted, CPU 4 requested / 4 admitted, Memory 16Gi requested / 16Gi admitted. The tooltip also mentions 'Workload CR' in its header.",
+        "what_im_thinking": "'Workload CR'? I know what a CR is in theory (Custom Resource) but I've never worked with a 'Workload' CR specifically. And 'admitted' resources — is that different from allocated? This tooltip gives me numbers but I'm not sure what system is doing the admitting. I think I need to look at a queued one to understand why it's waiting.",
+        "action": "Hover over the 'Pending' scheduling status label for Granite-3B-Code-Instruct",
+        "confidence": "low",
+        "patience": 80,
+        "confusion_event": true,
+        "confusion_detail": "The tooltip references 'Workload CR' — a Kueue-specific Custom Resource that is outside basic K8s knowledge. The concept of resources being 'admitted' vs just allocated is unfamiliar.",
+        "screenshot": null,
+        "evidence_for_acs": [
+          "AC-6"
+        ]
+      },
+      {
+        "step": 4,
+        "what_i_see": "Tooltip for Pending shows: GPU 2 requested / 0 admitted, CPU 8 requested / 0 admitted, Memory 32Gi requested / 0 admitted. Zero admitted means it hasn't been given resources yet.",
+        "what_im_thinking": "OK so '0 admitted' means it's waiting for resources. I can piece together that 'Pending' means it's in a queue waiting for something to approve its resource request. The deployment is queued because resources haven't been admitted yet. I don't fully understand the mechanism but I can see it's waiting. I can't tell exactly when it will be ready though — there's no ETA visible in the tooltip.",
+        "action": "Look for additional details — try expanding the row for timing information",
+        "confidence": "medium",
+        "patience": 70,
+        "confusion_event": true,
+        "confusion_detail": "The 'Suspended' label visible for another deployment — in Kueue context this means the workload is held by the admission controller, but for someone with basic K8s knowledge 'Suspended' could mean many things.",
+        "screenshot": null,
+        "evidence_for_acs": [
+          "AC-6",
+          "AC-7"
+        ]
+      },
+      {
+        "step": 5,
+        "what_i_see": "I found an expand toggle and clicked it. The expanded row shows sections including Queue Details and Timing. I can partially understand the timing — it shows when it was submitted.",
+        "what_im_thinking": "I can see there's timing info here. The deployment was submitted at a certain time and is still pending. I can tell my manager 'it's waiting for GPU resources' even if I don't fully understand the Kueue queue system behind it. Task mostly complete — I know WHY it's queued (needs GPU resources) but the exact 'when' is unclear.",
+        "action": "Read timing section to determine when deployment might be ready",
+        "confidence": "medium",
+        "patience": 75,
+        "recovery": true,
+        "screenshot": null,
+        "evidence_for_acs": [
+          "AC-7"
+        ]
+      }
+    ],
+    "screenshots": [
+      ".artifacts/RHAISTRAT-432/screenshots/persona-maude-junior-task-1-step-1.png",
+      ".artifacts/RHAISTRAT-432/screenshots/persona-maude-junior-task-1-step-2.png"
+    ],
+    "patience_start": 100,
+    "patience_end": 75,
+    "confusion_events": 3,
+    "dead_ends": 0,
+    "recoveries": 1,
+    "assisted": false,
+    "would_complete": true,
+    "outcome": "completed"
+  },
+  {
+    "persona": "maude-junior",
+    "persona_name": "Maude - Junior MLOps Engineer",
+    "task_index": 2,
+    "task": "Check if there is any scheduling or queue information visible for your deployments",
+    "covers_acs": [
+      "AC-1",
+      "AC-3",
+      "AC-5"
+    ],
+    "trace": [
+      {
+        "step": 1,
+        "what_i_see": "The Model Deployments table with Queue and Scheduling columns. I can see queue names like 'gpu-inference-queue' and scheduling states.",
+        "what_im_thinking": "Yes, there's clearly scheduling and queue information here. The Queue column shows queue names and the Scheduling column shows states. I can see 'Admitted', 'Running', 'Pending', 'Suspended', 'Scaling', and 'Unmanaged'. The Queue and Scheduling column headers make sense to me — those are basic terms.",
+        "action": "Scan the table to identify all scheduling and queue information",
+        "confidence": "medium",
+        "patience": 100,
+        "screenshot": ".artifacts/RHAISTRAT-432/screenshots/persona-maude-junior-task-2-step-1.png",
+        "evidence_for_acs": [
+          "AC-1"
+        ]
+      },
+      {
+        "step": 2,
+        "what_i_see": "One deployment (Project Y Llama-3.1-8B-Instruct) shows 'Unmanaged' in the Scheduling column and has no queue name. Other deployments have queue names assigned.",
+        "what_im_thinking": "'Unmanaged' — does this mean something is wrong? Or does it just mean this deployment isn't using the queue system? It's showing a normal 'Ready' status so it seems fine. I think 'Unmanaged' means it's not part of whatever queue system the others are using. That's a bit confusing as a label choice though — 'unmanaged' sounds like something might be misconfigured.",
+        "action": "Verify that the Unmanaged deployment appears healthy despite the label",
+        "confidence": "medium",
+        "patience": 90,
+        "confusion_event": true,
+        "confusion_detail": "The 'Unmanaged' label in Kueue context implies no Workload CR exists, but for a junior this reads as potentially misconfigured rather than intentionally outside queue management.",
+        "screenshot": ".artifacts/RHAISTRAT-432/screenshots/persona-maude-junior-task-2-step-2.png",
+        "evidence_for_acs": [
+          "AC-3",
+          "AC-5"
+        ]
+      },
+      {
+        "step": 3,
+        "what_i_see": "The Unmanaged deployment shows Ready status with no error indicators. The page has no error banners or warning alerts. All deployments render cleanly.",
+        "what_im_thinking": "OK, the Unmanaged one seems fine — Ready status, no errors. So 'Unmanaged' just means it's not in the queue system. I can confirm scheduling and queue information IS visible for my deployments. The managed ones show their queue and state, and the unmanaged one is clearly labeled differently.",
+        "action": "Confirm that scheduling and queue information is visible for all deployments",
+        "confidence": "high",
+        "patience": 90,
+        "screenshot": null,
+        "evidence_for_acs": [
+          "AC-1",
+          "AC-3",
+          "AC-5"
+        ]
+      }
+    ],
+    "screenshots": [
+      ".artifacts/RHAISTRAT-432/screenshots/persona-maude-junior-task-2-step-1.png",
+      ".artifacts/RHAISTRAT-432/screenshots/persona-maude-junior-task-2-step-2.png"
+    ],
+    "patience_start": 100,
+    "patience_end": 90,
+    "confusion_events": 1,
+    "dead_ends": 0,
+    "recoveries": 0,
+    "assisted": false,
+    "would_complete": true,
+    "outcome": "completed"
+  },
+  {
+    "persona": "maude-junior",
+    "persona_name": "Maude - Junior MLOps Engineer",
+    "task_index": 3,
+    "task": "Look at the details of a specific deployment to understand its resource allocation and queue position",
+    "covers_acs": [
+      "AC-6",
+      "AC-7"
+    ],
+    "trace": [
+      {
+        "step": 1,
+        "what_i_see": "The deployments table with expand toggles visible on the Kueue-managed rows. I want to look at details for Llama-3.1-8B-Instruct which shows Admitted status.",
+        "what_im_thinking": "I see there are expand toggles on some rows. Let me click to expand Llama-3.1-8B-Instruct to see its details. The 'Admitted' status still doesn't fully click for me but expanding should show more.",
+        "action": "Click the expand toggle on the Llama-3.1-8B-Instruct row",
+        "confidence": "medium",
+        "patience": 100,
+        "screenshot": ".artifacts/RHAISTRAT-432/screenshots/persona-maude-junior-task-3-step-1.png",
+        "evidence_for_acs": [
+          "AC-7"
+        ]
+      },
+      {
+        "step": 2,
+        "what_i_see": "The expanded panel shows Queue Details with fields: LocalQueue (gpu-inference-queue), ClusterQueue (gpu-cluster-queue), PriorityClass (high-priority). There's also Resource Allocation and Timing sections.",
+        "what_im_thinking": "'ClusterQueue'? 'PriorityClass'? I know what a Kubernetes PriorityClass is conceptually but 'ClusterQueue' is not something I've encountered — is this a cluster-level resource? And 'LocalQueue' vs 'ClusterQueue' — why are there two levels? This seems like a specific operator or controller's terminology that I haven't used before.",
+        "action": "Read the Resource Allocation section for more understandable data",
+        "confidence": "low",
+        "patience": 90,
+        "confusion_event": true,
+        "confusion_detail": "'ClusterQueue' is a Kueue-specific CRD — not part of basic Kubernetes vocabulary. The two-level queue hierarchy (LocalQueue → ClusterQueue) is specific to the Kueue admission controller.",
+        "screenshot": ".artifacts/RHAISTRAT-432/screenshots/persona-maude-junior-task-3-step-2.png",
+        "evidence_for_acs": [
+          "AC-6",
+          "AC-7"
+        ]
+      },
+      {
+        "step": 3,
+        "what_i_see": "Resource Allocation section shows: GPU 1 requested / 1 admitted, CPU 4 requested / 4 admitted, Memory 16Gi requested / 16Gi admitted. This part makes sense to me — it's showing resource requests and what was granted.",
+        "what_im_thinking": "The resource allocation part I understand — it's like resource requests and limits in a pod spec, just with different terminology ('admitted' instead of 'allocated'). But 'PriorityClass: high-priority' in the queue details — I know PriorityClass exists in K8s but here it seems to control queue ordering, not just pod scheduling. The overall structure is readable but the terminology assumes I know this specific queuing system.",
+        "action": "Try to piece together the queue position from the available information",
+        "confidence": "medium",
+        "patience": 80,
+        "confusion_event": true,
+        "confusion_detail": "'PriorityClass' in Kueue context controls workload admission ordering, distinct from K8s pod PriorityClass which controls preemption. Junior conflates the two concepts.",
+        "screenshot": null,
+        "evidence_for_acs": [
+          "AC-6",
+          "AC-7"
+        ]
+      },
+      {
+        "step": 4,
+        "what_i_see": "I can see the Timing section with submission and admission timestamps. The resource numbers make sense (I can tell 1/1 GPU means it got what it asked for).",
+        "what_im_thinking": "I can understand the resource allocation — requested vs admitted makes sense even if I don't know the full system. Queue position... I can see it's in 'gpu-cluster-queue' with 'high-priority' which probably means it goes first. I got enough information to answer the question even if I don't fully grok the underlying Kueue architecture. Task complete-ish.",
+        "action": "Confirm understanding of resource allocation and approximate queue position",
+        "confidence": "medium",
+        "patience": 80,
+        "screenshot": null,
+        "evidence_for_acs": [
+          "AC-6",
+          "AC-7"
+        ]
+      }
+    ],
+    "screenshots": [
+      ".artifacts/RHAISTRAT-432/screenshots/persona-maude-junior-task-3-step-1.png",
+      ".artifacts/RHAISTRAT-432/screenshots/persona-maude-junior-task-3-step-2.png"
+    ],
+    "patience_start": 100,
+    "patience_end": 80,
+    "confusion_events": 2,
+    "dead_ends": 0,
+    "recoveries": 0,
+    "assisted": false,
+    "would_complete": true,
+    "outcome": "completed"
+  }
+]

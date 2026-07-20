@@ -1,0 +1,478 @@
+name: eval-iterate
+description: Evaluate eval-iterate skill — full pipeline orchestrator (Phase A + Phase B end-to-end)
+skill: eval-iterate
+
+execution:
+  mode: case
+  arguments: "{strat_key} {prototype_url} --workspace={workspace}"
+  timeout: 1800
+  max_budget_usd: 15.00
+
+runner:
+  type: claude-code
+  effort: high
+
+models:
+  skill: claude-opus-4-6
+  judge: claude-opus-4-6
+
+mlflow:
+  experiment: prototype-creator-eval
+
+permissions:
+  allow: ["Skill"]
+  deny: ["mcp__*"]
+
+dataset:
+  path: .claude/skills/eval/eval-harness/datasets/eval-iterate/cases
+  schema: |
+    Each case directory contains:
+    - input.yaml: YAML with fields:
+      - strat_key: ([EXTERNAL: Jira] — real RHAISTRAT key)
+      - prototype_url: URL of the running prototype (e.g. http://localhost:9000)
+      - workspace: path to the prototype repo checkout
+    - annotations.yaml: Ground truth:
+      - expected_pass_count: integer count of ACs that should PASS
+      - expected_fail_count: integer count of ACs that should FAIL
+      - expected_max_iterations: max iterations before convergence
+      - expected_exit_reason: string (all_pass/max_iterations/budget_exhausted)
+      - expected_html_produced: boolean (true)
+    Workspace reset fields (added to input.yaml for reproducibility):
+    - workspace_branch: git branch to checkout before running
+    - workspace_commit: exact short SHA to reset to (pre-fix state)
+    - workspace_reset: boolean flag indicating the harness should run
+      scripts/reset-workspace.sh before executing the skill
+
+inputs:
+  tools:
+    - match: Any Jira interaction via MCP tools or scripts
+      prompt: |
+        Allow Jira reads for the ticket specified in input.yaml.
+        Block writes (comments, status changes) during eval.
+
+outputs:
+  - path: artifacts
+    schema: |
+      Full pipeline artifacts produced by eval-iterate:
+      - evaluation-report.html: Final HTML report
+      - evaluation-report.csv: Complete CSV with Section 1 + Section 2
+      - journey-log.json: Journey log with verdicts and usability_dimensions
+      - iteration-log.json: Iteration tracking with:
+        - iterations[]: array of {iteration, phase, pass_count, fail_count, fixes_applied}
+        - exit_reason: string (all_pass/max_iterations/budget_exhausted/patience_exhausted)
+      - persona-results.json: Phase B persona walkthrough results
+      - evaluation-summary.json: Machine-readable summary
+      - screenshots/: All captured screenshots
+
+traces:
+  stdout: true
+  stderr: true
+  events: true
+  metrics: true
+
+judges:
+  - name: iteration_log_exists
+    description: Validates iteration-log.json exists with iterations[] and exit_reason
+    check: |
+      import json
+      files = outputs.get("files", {})
+      log_files = [v for k, v in files.items() if k.endswith("iteration-log.json")]
+      if not log_files:
+          return (False, "iteration-log.json not produced")
+      log = json.loads(log_files[0])
+      if "iterations" not in log:
+          return (False, "iteration-log.json missing iterations[]")
+      if not isinstance(log["iterations"], list):
+          return (False, "iterations should be an array")
+      if "exit_reason" not in log:
+          return (False, "iteration-log.json missing exit_reason")
+      iters = log["iterations"]
+      return (True, f"{len(iters)} iterations, exit_reason: {log['exit_reason']}")
+
+  - name: html_report_produced
+    description: Validates evaluation-report.html is produced (skipped in no-report mode)
+    check: |
+      annotations = outputs.get("annotations", {})
+      no_report = annotations.get("expected_html_produced")
+      if no_report is False:
+          files = outputs.get("files", {})
+          html_files = [v for k, v in files.items() if k.endswith("evaluation-report.html")]
+          if html_files:
+              return (False, "HTML report produced but --no-report was expected")
+          return (True, "No HTML report (--no-report mode confirmed)")
+      files = outputs.get("files", {})
+      html_files = [v for k, v in files.items() if k.endswith("evaluation-report.html")]
+      if not html_files:
+          return (False, "evaluation-report.html not produced")
+      if len(html_files[0].strip()) < 500:
+          return (False, "HTML report too short — likely empty")
+      return (True, f"HTML report produced ({len(html_files[0])} chars)")
+
+  - name: consistency_in_pipeline
+    description: Verifies consistency-report.json was produced and not skipped during the pipeline run
+    check: |
+      import json
+      files = outputs.get("files", {})
+      cr_files = [v for k, v in files.items() if k.endswith("consistency-report.json")]
+      if not cr_files:
+          return (False, "consistency-report.json missing from pipeline output — consistency checking is mandatory")
+      report = json.loads(cr_files[0])
+      if report.get("skipped"):
+          return (False, "Consistency was skipped during pipeline — no longer allowed")
+      sm = report.get("source_mode", {})
+      if not sm.get("ran"):
+          return (False, "Consistency source mode did not run")
+      total = report.get("summary", {}).get("total_guidelines_checked", 0)
+      return (True, f"Consistency ran: {total} guidelines checked")
+
+  - name: csv_verdicts
+    description: Validates pass/fail counts in CSV match expectations
+    check: |
+      import csv, io, json
+      annotations = outputs.get("annotations", {})
+      expected_pass = annotations.get("expected_pass_count")
+      expected_fail = annotations.get("expected_fail_count")
+      if expected_pass is None and expected_fail is None:
+          return (True, "No ground truth counts — skipping")
+      files = outputs.get("files", {})
+      csv_files = [v for k, v in files.items() if k.endswith("evaluation-report.csv")]
+      if not csv_files:
+          return (False, "evaluation-report.csv missing")
+      reader = csv.DictReader(io.StringIO(
+          "\n".join(l for l in csv_files[0].splitlines() if not l.startswith("#"))
+      ))
+      counts = {"PASS": 0, "FAIL": 0, "FLAGGED": 0}
+      for row in reader:
+          verdict = row.get("verdict", "")
+          if verdict in counts:
+              counts[verdict] += 1
+      issues = []
+      if expected_pass is not None and counts["PASS"] < expected_pass:
+          issues.append(f"PASS: {counts['PASS']} < expected {expected_pass}")
+      if expected_fail is not None and counts["FAIL"] > expected_fail:
+          issues.append(f"FAIL: {counts['FAIL']} > expected {expected_fail}")
+      if issues:
+          return (False, f"Verdict count issues: {'; '.join(issues)}")
+      return (True, f"Verdicts: {counts['PASS']} PASS, {counts['FAIL']} FAIL, {counts['FLAGGED']} FLAGGED")
+
+  - name: final_report_quality
+    description: LLM judge for overall report quality and accuracy
+    prompt: |
+      You are evaluating the quality of a full evaluation pipeline run.
+
+      ## Evaluation Summary
+      {{ outputs.files | selectattr("0", "match", ".*evaluation-summary.json") | map(attribute="1") | first | default("Not found") }}
+
+      ## Iteration Log
+      {{ outputs.files | selectattr("0", "match", ".*iteration-log.json") | map(attribute="1") | first | default("Not found") }}
+
+      ## HTML Report (first 3000 chars)
+      {{ (outputs.files | selectattr("0", "match", ".*evaluation-report.html") | map(attribute="1") | first | default("Not found"))[:3000] }}
+
+      ## Scoring
+      - Score 1.0 if pipeline completed cleanly, report is comprehensive, iterations converged
+      - Score 0.7 if pipeline completed but report has minor gaps or iteration count seems high
+      - Score 0.4 if pipeline completed but with significant issues
+      - Score 0.0 if pipeline failed or report is broken
+
+      Return a JSON object: {"score": <float>, "rationale": "<explanation>"}
+
+  - name: iteration_efficiency
+    description: Checks iteration count from iteration-log.json against expected max
+    check: |
+      import json
+      annotations = outputs.get("annotations", {})
+      expected_max = annotations.get("expected_max_iterations")
+      if expected_max is None:
+          return (True, "No expected_max_iterations — skipping")
+      files = outputs.get("files", {})
+      log_files = [v for k, v in files.items() if k.endswith("iteration-log.json")]
+      if not log_files:
+          return (False, "iteration-log.json missing")
+      log = json.loads(log_files[0])
+      actual = len(log.get("iterations", []))
+      if actual > expected_max:
+          return (False, f"Too many iterations: {actual} > expected max {expected_max}")
+      return (True, f"Efficient: {actual} iterations (max {expected_max})")
+
+  - name: overall_quality_assessment
+    description: Assesses whether the pipeline verdict aligns with expected lo-fi quality level based on pass rate and usability score
+    check: |
+      import json, csv, io
+      files = outputs.get("files", {})
+      csv_files = [v for k, v in files.items() if k.endswith("evaluation-report.csv")]
+      log_files = [v for k, v in files.items() if k.endswith("journey-log.json")]
+      if not csv_files:
+          return (False, "No CSV to assess")
+      raw = csv_files[0]
+      section1_raw = raw.split("# USABILITY")[0] if "# USABILITY" in raw else raw
+      lines = [l for l in section1_raw.splitlines() if l.strip() and not l.startswith("#")]
+      verdicts = {"PASS":0,"FAIL":0,"FLAGGED":0}
+      rows = []
+      if len(lines) >= 2:
+          reader = csv.DictReader(io.StringIO("\n".join(lines)))
+          for r in reader:
+              rows.append(r)
+              v = r.get("verdict","")
+              if v in verdicts: verdicts[v] += 1
+      if log_files and sum(verdicts.values()) < 3:
+          log_check = json.loads(log_files[0])
+          for j in log_check.get("journeys",[]):
+              v = j.get("verdict","")
+              if v in verdicts: verdicts[v] += 1
+      total = sum(verdicts.values())
+      pass_rate = verdicts["PASS"] / total if total else 0
+      fail_count = verdicts["FAIL"]
+      usability = 0
+      dims_data = []
+      if log_files:
+          log = json.loads(log_files[0])
+          ud = log.get("usability_dimensions",{})
+          score_str = ud.get("overall_score","")
+          if score_str:
+              parts = str(score_str).split("/")
+              if len(parts) == 2:
+                  try: usability = float(parts[0]) / float(parts[1])
+                  except: pass
+          if not usability and ud.get("dimensions"):
+              dims_data = ud["dimensions"]
+              scores = [d.get("composite_score",0) for d in dims_data if isinstance(d.get("composite_score"), (int,float))]
+              if scores:
+                  max_possible = len(scores) * 3
+                  usability = sum(scores) / max_possible if max_possible else 0
+      has_nav_fail = False
+      for r in rows:
+          cid = r.get("criterion_id","")
+          if cid.startswith("NAV") and r.get("verdict") == "FAIL":
+              has_nav_fail = True
+      if not has_nav_fail and log_files:
+          log = json.loads(log_files[0])
+          for j in log.get("journeys",[]):
+              if j.get("verdict") == "FAIL" and any(w in j.get("title","").lower() for w in ["nav","sidebar","find","browse","reachable"]):
+                  has_nav_fail = True
+      if not has_nav_fail:
+          nh_files = [v for k, v in files.items() if k.endswith("navigation-hints.json")]
+          delta_files = [v for k, v in files.items() if k.endswith("mr-delta.json")]
+          if nh_files and delta_files:
+              nh = json.loads(nh_files[0])
+              delta = json.loads(delta_files[0])
+              new_f = delta.get("new_files",[])
+              has_new_routes = any("route" in f.lower() or "/app/" in f for f in new_f)
+              nav_sections = nh.get("nav_sections",{})
+              if has_new_routes and not nav_sections:
+                  has_nav_fail = True
+      has_design_quality_issue = False
+      check_dims = dims_data if dims_data else []
+      if not check_dims and log_files:
+          log_data = json.loads(log_files[0])
+          check_dims = log_data.get("usability_dimensions", {}).get("dimensions", [])
+      low_dims = [d for d in check_dims if isinstance(d.get("composite_score"), (int,float)) and d["composite_score"] <= 1]
+      flagged_count = verdicts.get("FLAGGED", 0)
+      if log_files:
+          jl_flagged = sum(1 for j in json.loads(log_files[0]).get("journeys",[]) if j.get("verdict") == "FLAGGED")
+          flagged_count = max(flagged_count, jl_flagged)
+      if low_dims and flagged_count >= 2:
+          has_design_quality_issue = True
+      lofi_pass = pass_rate >= 0.7 and fail_count <= 1 and usability >= 0.5 and not has_nav_fail and not has_design_quality_issue
+      quality = "Lo-fi PASS" if lofi_pass else "Lo-fi FAIL"
+      detail = f"pass_rate={pass_rate:.0%}, fails={fail_count}, usability={usability:.0%}"
+      annotations = outputs.get("annotations", {})
+      expected = annotations.get("expected_lofi_verdict")
+      if expected:
+          match = (quality.lower().endswith("pass") == (expected.lower() == "pass"))
+          if not match:
+              return (False, f"Pipeline says {quality} but ground truth says Lo-fi {expected}. {detail}")
+          return (True, f"Pipeline agrees with ground truth: {quality}. {detail}")
+      return (True, f"Pipeline assessment: {quality}. {detail}")
+
+  - name: usability_in_journey_log
+    description: Verifies usability_dimensions was written to journey-log.json (eval-discover Step 8)
+    check: |
+      import json
+      files = outputs.get("files", {})
+      jl_files = [v for k, v in files.items() if k.endswith("journey-log.json")]
+      pr_files = [v for k, v in files.items() if k.endswith("persona-results.json")]
+      if not jl_files:
+          return (False, "No journey-log.json")
+      jl = json.loads(jl_files[0])
+      ud = jl.get("usability_dimensions")
+      if pr_files and not ud:
+          return (False, "persona-results.json exists but journey-log has no usability_dimensions — eval-discover Step 8 was skipped")
+      if ud:
+          if not ud.get("personas_evaluated"):
+              return (False, "usability_dimensions missing personas_evaluated")
+          dims = ud.get("dimensions", [])
+          if len(dims) < 6:
+              return (False, f"Only {len(dims)} dimensions scored (expected 6-7)")
+          return (True, f"{len(ud.get('personas_evaluated',[]))} personas, {len(dims)} dimensions scored")
+      return (True, "No persona data — Phase B may not have run")
+
+  - name: persona_ids_present
+    description: Verifies persona-results.json entries have non-null persona IDs
+    check: |
+      import json
+      files = outputs.get("files", {})
+      pr_files = [v for k, v in files.items() if k.endswith("persona-results.json")]
+      if not pr_files:
+          return (True, "No persona-results — skipping")
+      pr = json.loads(pr_files[0])
+      # Tolerate the {evaluated_at, personas: [...]} nested shape seen in some
+      # older eval-discover runs, in addition to the canonical flat array.
+      if isinstance(pr, dict) and isinstance(pr.get("personas"), list):
+          pr = pr["personas"]
+      if not isinstance(pr, list):
+          return (False, "persona-results.json is not an array (and has no personas[] wrapper)")
+      # Canonical schema field is "persona" (SKILL.md Step 6), but several
+      # historical runs wrote "persona_id" instead — accept either.
+      null_ids = [i for i, e in enumerate(pr) if not (e.get("persona") or e.get("persona_id"))]
+      if null_ids:
+          return (False, f"{len(null_ids)} entries have null/missing persona ID (indices: {null_ids[:5]})")
+      return (True, f"All {len(pr)} entries have persona IDs")
+
+  - name: all_artifacts_valid
+    description: Validates every JSON/CSV/YAML artifact file is well-formed
+    check: |
+      import json, csv, io, os
+      case_dir = outputs.get("case_dir", "")
+      if not case_dir or not os.path.isdir(case_dir):
+          files = outputs.get("files", {})
+          issues = []
+          for fname, content in files.items():
+              if fname.endswith(".json"):
+                  try: json.loads(content)
+                  except Exception as e: issues.append(f"{fname}: invalid JSON")
+              elif fname.endswith(".csv"):
+                  lines = [l for l in content.splitlines() if l.strip() and not l.startswith("#")]
+                  if len(lines) < 2:
+                      issues.append(f"{fname}: no data rows")
+          if issues:
+              return (False, f"Invalid artifacts: {issues[:5]}")
+          return (True, f"{len(files)} artifacts validated")
+      issues = []
+      for f in os.listdir(case_dir):
+          fp = os.path.join(case_dir, f)
+          if not os.path.isfile(fp): continue
+          if f.endswith(".json"):
+              try: json.load(open(fp))
+              except Exception as e: issues.append(f"{f}: {e}")
+          elif f.endswith(".csv"):
+              try:
+                  raw = open(fp).read()
+                  lines = [l for l in raw.splitlines() if l.strip() and not l.startswith("#")]
+                  if len(lines) < 2: issues.append(f"{f}: no data rows")
+              except Exception as e: issues.append(f"{f}: {e}")
+      if issues:
+          return (False, f"Invalid artifacts: {issues[:5]}")
+      count = len([f for f in os.listdir(case_dir) if os.path.isfile(os.path.join(case_dir, f))])
+      return (True, f"{count} artifacts all valid")
+
+  - name: no_duplicate_data
+    description: Detects duplicate entries in journey-log, persona-results, and CSV
+    check: |
+      import json
+      files = outputs.get("files", {})
+      issues = []
+      jl_files = [v for k, v in files.items() if k.endswith("journey-log.json")]
+      if jl_files:
+          jl = json.loads(jl_files[0])
+          j_ids = [j.get("id") for j in jl.get("journeys", [])]
+          dupes = [x for x in j_ids if j_ids.count(x) > 1]
+          if dupes:
+              issues.append(f"Duplicate journey IDs: {set(dupes)}")
+          ud = jl.get("usability_dimensions", {})
+          po = ud.get("persona_overlays", [])
+          po_keys = [f"{p.get('persona')}-{p.get('task_index')}" for p in po]
+          po_dupes = [x for x in po_keys if po_keys.count(x) > 1]
+          if po_dupes:
+              issues.append(f"Duplicate persona_overlays: {set(po_dupes)}")
+          ta = ud.get("think_aloud", {}).get("traces", [])
+          ta_keys = [f"{t.get('persona')}-{t.get('task_index')}" for t in ta]
+          ta_dupes = [x for x in ta_keys if ta_keys.count(x) > 1]
+          if ta_dupes:
+              issues.append(f"Duplicate think_aloud traces: {set(ta_dupes)}")
+      pr_files = [v for k, v in files.items() if k.endswith("persona-results.json")]
+      if pr_files:
+          pr = json.loads(pr_files[0])
+          if isinstance(pr, list):
+              pr_keys = [f"{e.get('persona')}-{e.get('task_index')}" for e in pr]
+              pr_dupes = [x for x in pr_keys if pr_keys.count(x) > 1]
+              if pr_dupes:
+                  issues.append(f"Duplicate persona-results: {set(pr_dupes)}")
+      if issues:
+          return (False, f"Duplicates found: {issues}")
+      return (True, "No duplicate entries detected")
+
+  - name: ac_coverage_phase_b
+    description: Flags when more than 30% of ACs are excluded from Phase B persona walkthroughs
+    check: |
+      import json
+      files = outputs.get("files", {})
+      state_files = [v for k, v in files.items() if k.endswith("extract-state.json")]
+      if not state_files:
+          return (True, "No extract-state — skipping")
+      state = json.loads(state_files[0])
+      acs = state.get("ac_list", state.get("acceptance_criteria", []))
+      total_acs = len(acs)
+      phase_a_only = state.get("phase_a_only_acs", [])
+      if not phase_a_only:
+          return (True, f"All {total_acs} ACs covered by Phase B tasks")
+      excluded_pct = len(phase_a_only) / total_acs if total_acs else 0
+      if excluded_pct > 0.3:
+          return (False, f"{len(phase_a_only)}/{total_acs} ACs ({excluded_pct:.0%}) excluded from Phase B — only x-ray verified")
+      return (True, f"{len(phase_a_only)}/{total_acs} ACs Phase-A-only ({excluded_pct:.0%}, within 30% threshold)")
+
+  - name: exit_reason_matches
+    description: Validates exit_reason matches ground truth annotation when provided
+    check: |
+      import json
+      annotations = outputs.get("annotations", {})
+      expected = annotations.get("expected_exit_reason")
+      if not expected:
+          return (True, "No expected_exit_reason — skipping")
+      files = outputs.get("files", {})
+      log_files = [v for k, v in files.items() if k.endswith("iteration-log.json")]
+      state_files = [v for k, v in files.items() if k.endswith("eval-state.yaml")]
+      actual = None
+      if log_files:
+          log = json.loads(log_files[0])
+          actual = log.get("exit_reason")
+      if not actual and state_files:
+          for line in state_files[0].splitlines():
+              if line.strip().startswith("exit_reason:"):
+                  actual = line.split(":", 1)[1].strip()
+      if not actual:
+          return (False, "Could not find exit_reason in artifacts")
+      if actual != expected:
+          return (False, f"exit_reason: {actual} != expected {expected}")
+      return (True, f"exit_reason matches: {actual}")
+
+  - name: budget_check
+    builtin: cost_budget
+    arguments:
+      max_cost_usd: 15.00
+
+thresholds:
+  iteration_log_exists:
+    min_pass_rate: 1.0
+  html_report_produced:
+    min_pass_rate: 1.0
+  csv_verdicts:
+    min_pass_rate: 0.8
+  final_report_quality:
+    min_score: 0.6
+  iteration_efficiency:
+    min_pass_rate: 0.8
+  consistency_in_pipeline:
+    min_pass_rate: 1.0
+  overall_quality_assessment:
+    min_pass_rate: 0.8
+  all_artifacts_valid:
+    min_pass_rate: 1.0
+  no_duplicate_data:
+    min_pass_rate: 1.0
+  ac_coverage_phase_b:
+    min_pass_rate: 0.8
+  exit_reason_matches:
+    min_pass_rate: 1.0
+  budget_check:
+    min_pass_rate: 1.0

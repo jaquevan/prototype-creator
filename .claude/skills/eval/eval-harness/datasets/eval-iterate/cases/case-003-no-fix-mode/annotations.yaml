@@ -1,0 +1,10 @@
+expected_exit_reason: no_fix
+expected_phase_a_pass: false
+expected_ac_pass_count: 6
+expected_ac_fail_count: 0
+expected_ac_flagged_count: 3
+expected_iteration_count: 1
+expected_html_produced: true
+expected_personas: [deena-junior, deena-senior]
+expected_usability_dimensions: 7
+expected_max_cost_usd: 10.00

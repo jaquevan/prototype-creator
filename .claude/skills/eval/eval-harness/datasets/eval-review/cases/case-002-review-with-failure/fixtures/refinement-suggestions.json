@@ -1,0 +1,23 @@
+[
+  {
+    "type": "consistency",
+    "guideline_id": "buttons-toggle-pattern",
+    "severity": "warning",
+    "file": "src/app/Projects/screens/detail/roles/CreateRole.tsx",
+    "line": 259,
+    "current": "Button variants primary/secondary used as toggle for verb selection",
+    "fix": "Use PatternFly ToggleGroup or Chip components for multi-select verb toggles",
+    "pf_doc_url": "https://www.patternfly.org/components/toggle-group",
+    "source": "source_mode"
+  },
+  {
+    "type": "ac_failure",
+    "criterion_id": "AC-4",
+    "criterion_text": "Given a user has filled out the role creation form, when they submit or review their inputs, then the UI validates the inputs to ensure the resulting RBAC is valid within the cluster, measured by invalid role names being caught by the existing ODH name validation component and Kubernetes API server errors being surfaced to the user.",
+    "verdict": "FAIL",
+    "rationale": "Submit button validation works (disabled when name empty). But success alert auto-dismisses after 1.5s via setTimeout, making confirmation transient. The alert was not captured by the evaluator.",
+    "fix_action": "Increase the setTimeout delay in handleSubmit from 1500ms to at least 3000ms, or replace the auto-dismiss with a persistent success state that only clears on explicit user action.",
+    "fix_file": "src/app/Projects/screens/detail/roles/CreateRole.tsx",
+    "confidence": "high"
+  }
+]

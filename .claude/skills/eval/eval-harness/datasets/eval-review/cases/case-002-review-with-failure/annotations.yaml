@@ -1,0 +1,6 @@
+expected_pass_count: 5
+expected_fail_count: 1
+expected_flagged_count: 0
+should_mention_failing_ac: AC-4
+should_route_to_fix: true
+should_use_plain_english: true

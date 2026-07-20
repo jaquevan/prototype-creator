@@ -1,0 +1,6 @@
+expected_personas: [paula-platform-engineer, deena-junior]
+expected_dimension_count: 6
+dimension_2_na: true
+expected_overall_score_format: "X/18"
+expected_min_confusion_events_junior: 1
+expected_tasks_count: 2

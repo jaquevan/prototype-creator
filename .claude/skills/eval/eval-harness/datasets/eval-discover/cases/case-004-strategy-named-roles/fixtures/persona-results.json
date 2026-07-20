@@ -1,0 +1,28 @@
+[
+  {
+    "persona": "platform-admin",
+    "task_index": 1,
+    "task": "Create a new tenant and configure its identity realm",
+    "would_complete": true,
+    "patience_end": 100,
+    "confusion_events": 0,
+    "trace": [
+      {"step": 1, "action": "Navigate to Settings > Tenants", "what_i_see": "Tenant management page with Create button"},
+      {"step": 2, "action": "Click Create Tenant", "what_i_see": "Form with name, description, namespace fields"},
+      {"step": 3, "action": "Fill form and submit", "what_i_see": "Success message, redirected to tenant details"}
+    ]
+  },
+  {
+    "persona": "model-deployer",
+    "task_index": 1,
+    "task": "Find where to deploy a model into your assigned tenant",
+    "would_complete": false,
+    "patience_end": 30,
+    "confusion_events": 2,
+    "trace": [
+      {"step": 1, "action": "Navigate to tenant detail page", "what_i_see": "Tabs: Overview, Shared Models, Usage, Settings - all admin-facing"},
+      {"step": 2, "action": "Check each tab for deployment option", "what_i_see": "No deployment flow found, only infrastructure controls"},
+      {"step": 3, "action": "Dead end - no model deployment path exists", "what_i_see": "Stuck, no clear next step", "confusion_event": true}
+    ]
+  }
+]

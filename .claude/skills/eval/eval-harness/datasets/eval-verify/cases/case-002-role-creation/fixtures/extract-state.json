@@ -1,0 +1,236 @@
+{
+  "key": "RHAISTRAT-1536",
+  "title": "Granular Role Creation UI",
+  "extracted_at": "2026-07-16T15:05:00.000Z",
+  "ac_content_hash": "placeholder_hash_rhaistrat_1536",
+  "ac_list": [
+    {
+      "criterion_id": "AC-1",
+      "source": "jira",
+      "source_ticket": "RHAISTRAT-1536",
+      "text": "Given a user is in the RHOAI dashboard, when they access the role creation feature from the Roles tab within a Data Science Project, then they are presented with a form-based UI for defining custom roles.",
+      "references": []
+    },
+    {
+      "criterion_id": "AC-2",
+      "source": "jira",
+      "source_ticket": "RHAISTRAT-1536",
+      "text": "Given a user is creating a custom role, when they need to specify permissions, then they can select API groups, resources, and verbs (permissions) without manual typing.",
+      "references": []
+    },
+    {
+      "criterion_id": "AC-3",
+      "source": "jira",
+      "source_ticket": "RHAISTRAT-1536",
+      "text": "Given a user is creating a role, when they want to start from a common pattern, then they can select templates shipped OOTB and the form is pre-populated with the template's rules, which they can then edit.",
+      "references": []
+    },
+    {
+      "criterion_id": "AC-4",
+      "source": "jira",
+      "source_ticket": "RHAISTRAT-1536",
+      "text": "Given a user has filled out the role creation form, when they submit or review their inputs, then the UI validates the inputs to ensure the resulting RBAC is valid within the cluster, measured by invalid role names being caught by the existing ODH name validation component and Kubernetes API server errors being surfaced to the user.",
+      "references": []
+    },
+    {
+      "criterion_id": "AC-5",
+      "source": "jira",
+      "source_ticket": "RHAISTRAT-1536",
+      "text": "Given the user is viewing the role list view on the Roles tab, when they select a role to view, then the corresponding YAML is displayed in read-only mode.",
+      "references": []
+    },
+    {
+      "criterion_id": "AC-6",
+      "source": "jira",
+      "source_ticket": "RHAISTRAT-1536",
+      "text": "Given the user created a custom role through the form, then the Role resource in Kubernetes has the opendatahub.io/dashboard=true label present on it, measured by kubectl get role <name> -n <namespace> -o yaml showing the label.",
+      "references": []
+    }
+  ],
+  "feature_context": {
+    "background": "Currently, creating custom roles for granular permissions in OpenShift AI (RHOAI) requires manual YAML configuration or deep Kubernetes RBAC expertise. This presents a significant barrier for non-K8s expert users—such as Data Science leads or project administrators—who need to define specific access levels.",
+    "problem_statement": "There is no streamlined, visual interface within the RHOAI dashboard to manage these permissions, forcing users to either use default roles that may be too broad or navigate complex Kubernetes structures.",
+    "user_stories": [
+      "As a RHOAI project admin, I want a form-based UI in the RHOAI dashboard for defining custom roles, so that I can create roles without manual YAML configuration or deep Kubernetes RBAC expertise.",
+      "As a RHOAI project admin, I want to be able to select API groups, resources, and verbs (permissions) without manual typing, so that I can assign granular permissions safely and efficiently.",
+      "As a RHOAI project admin, I want the role creation interface to be inspired by the ACM role creation UI in look-and-feel and workflow, so that there is visual consistency across the Red Hat portfolio.",
+      "As a RHOAI project admin, I want to be able to leverage templates to define common multi-rule roles for Workbench usage patterns and subsequently be able to edit the content after loading."
+    ],
+    "ui_enhancements": "Implement a dedicated Role Creation UI within the RHOAI dashboard that enables users to visually construct custom roles. The Role Creator is a single form (not a wizard) accessed from a new Roles tab within Data Science Projects. Contains: Role Metadata (name, description), Rules (API group, resource, verbs), Template Selector, and YAML Preview.",
+    "source_ticket": "RHAISTRAT-1536"
+  },
+  "journey_definitions": [
+    {
+      "id": "journey-1",
+      "title": "Access role creation form from Roles tab",
+      "persona": "rhoai-project-admin",
+      "source": "AC-1: Given a user is in the RHOAI dashboard, when they access the role creation feature from the Roles tab within a Data Science Project",
+      "ac_ids": [
+        "AC-1"
+      ],
+      "expected_path": [
+        "Navigate to Data Science Projects",
+        "Open a project",
+        "Click on the Roles tab",
+        "Click Create role button",
+        "Verify form-based UI is displayed"
+      ]
+    },
+    {
+      "id": "journey-2",
+      "title": "Create custom role with granular permissions",
+      "persona": "rhoai-project-admin",
+      "source": "AC-2: Given a user is creating a custom role, when they need to specify permissions",
+      "ac_ids": [
+        "AC-2"
+      ],
+      "expected_path": [
+        "Open the role creation form",
+        "Add a rule",
+        "Select API group without manual typing",
+        "Select resource without manual typing",
+        "Select verbs (permissions) without manual typing"
+      ]
+    },
+    {
+      "id": "journey-3",
+      "title": "Create role from OOTB template",
+      "persona": "rhoai-project-admin",
+      "source": "AC-3: Given a user is creating a role, when they want to start from a common pattern",
+      "ac_ids": [
+        "AC-3"
+      ],
+      "expected_path": [
+        "Open the role creation form",
+        "Select a template from template selector",
+        "Verify form is pre-populated with template rules",
+        "Edit a pre-populated rule",
+        "Verify edits are reflected"
+      ]
+    },
+    {
+      "id": "journey-4",
+      "title": "Submit role and verify validation",
+      "persona": "rhoai-project-admin",
+      "source": "AC-4: Given a user has filled out the role creation form, when they submit or review their inputs",
+      "ac_ids": [
+        "AC-4"
+      ],
+      "expected_path": [
+        "Fill out role metadata (name, description)",
+        "Add rules with permissions",
+        "Review YAML preview",
+        "Submit the form",
+        "Verify validation feedback appears for invalid inputs"
+      ]
+    },
+    {
+      "id": "journey-5",
+      "title": "View existing roles and YAML in read-only mode",
+      "persona": "rhoai-project-admin",
+      "source": "AC-5: Given the user is viewing the role list view on the Roles tab",
+      "ac_ids": [
+        "AC-5"
+      ],
+      "expected_path": [
+        "Navigate to Roles tab",
+        "View role list",
+        "Select a role to view details",
+        "Verify YAML is displayed in read-only mode"
+      ]
+    },
+    {
+      "id": "journey-6",
+      "title": "Verify dashboard label on created role",
+      "persona": "rhoai-project-admin",
+      "source": "AC-6: Given the user created a custom role through the form",
+      "ac_ids": [
+        "AC-6"
+      ],
+      "expected_path": [
+        "Create a role through the form",
+        "Verify the role carries opendatahub.io/dashboard=true label"
+      ]
+    }
+  ],
+  "breadcrumb": {
+    "outcome": {
+      "key": "RHAISTRAT-898",
+      "title": "Deliver Role Based Access Control for RHOAI components",
+      "url": "https://redhat.atlassian.net/browse/RHAISTRAT-898",
+      "validated": true
+    },
+    "rfe": {
+      "key": "RHAIRFE-1277",
+      "title": "Granular Role Creation UI",
+      "url": "https://issues.redhat.com/browse/RHAIRFE-1277",
+      "validated": true
+    },
+    "strat": {
+      "key": "RHAISTRAT-1536",
+      "title": "Granular Role Creation UI",
+      "url": "https://redhat.atlassian.net/browse/RHAISTRAT-1536",
+      "validated": true
+    },
+    "prototype": {
+      "branch": "mr-171",
+      "url": "https://gitlab.cee.redhat.com/uxd/prototypes/rhoai/-/merge_requests/171"
+    },
+    "mr": {
+      "number": 171,
+      "url": "https://gitlab.cee.redhat.com/uxd/prototypes/rhoai/-/merge_requests/171/diffs"
+    }
+  },
+  "persona_selection": {
+    "selected": [
+      "rhoai-project-admin"
+    ],
+    "target_audience_text": "Data Science Platform Administrators and Lead Data Scientists who are not necessarily Kubernetes experts but are responsible for project-level security. Staff Engineer corrected to RHOAI Project Admins.",
+    "reasoning": "The ticket explicitly states the persona is RHOAI Project Admins who need to manage roles without K8s expertise."
+  },
+  "rfe_key": "RHAIRFE-1277",
+  "raw_parent": {
+    "key": "RHAISTRAT-898",
+    "title": "Deliver Role Based Access Control for RHOAI components",
+    "type": "Outcome"
+  },
+  "raw_issuelinks": [
+    {
+      "type": "Cloners",
+      "direction": "outward",
+      "key": "RHAIRFE-1277",
+      "title": "Granular Role Creation UI"
+    }
+  ],
+  "decision_context": {
+    "has_decisions": false,
+    "deliberate_descopes": [
+      "ClusterRole support",
+      "Left-hand nav Role menu item",
+      "User-defined templates",
+      "BFF support for templates",
+      "Bi-directional YAML sync"
+    ]
+  },
+  "tasks_to_be_done": [
+    {
+      "task": "Create a custom role that lets a team member manage workbenches but not delete pipelines",
+      "source": "Outcome problem statement: Non-K8s expert admins need to define specific access levels without YAML",
+      "covers_acs": [
+        "AC-1",
+        "AC-2",
+        "AC-3",
+        "AC-4",
+        "AC-6"
+      ]
+    },
+    {
+      "task": "Check what roles already exist in your project and look at how one is configured",
+      "source": "HLR: As a RHOAI project admin, view existing roles and their YAML definitions",
+      "covers_acs": [
+        "AC-5"
+      ]
+    }
+  ],
+  "phase_a_only_acs": []
+}

@@ -1,0 +1,5 @@
+strat_key: RHAISTRAT-TEST-FIX-001
+workspace: /Users/ejaquez/Desktop/rhoai-prototypes
+workspace_branch: mr-174
+workspace_commit: fa9b250
+workspace_reset: true

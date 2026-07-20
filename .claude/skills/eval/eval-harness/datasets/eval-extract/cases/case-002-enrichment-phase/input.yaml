@@ -1,0 +1,7 @@
+strat_key: RHAISTRAT-1536
+prototype_url: http://localhost:9000
+workspace: /Users/ejaquez/Desktop/rhoai-prototypes
+phase: core
+workspace_branch: mr-171
+workspace_commit: a202379
+workspace_reset: true

@@ -1,0 +1,188 @@
+{
+  "key": "RHAISTRAT-432",
+  "title": "Integrate Kueue Workload Scheduling Information in Model Deployments Overview",
+  "extracted_at": "2026-07-15T18:05:00Z",
+  "ac_content_hash": "a1b2c3d4e5f6",
+  "ac_list": [
+    {
+      "criterion_id": "AC-1",
+      "source": "jira",
+      "source_ticket": "RHAISTRAT-432",
+      "text": "Given Kueue is enabled in the DSC and the current namespace has the kueue.x-k8s.io/managed: \"true\" label, when a Kueue-managed InferenceService is in the pre-admission phase (Workload CR exists, Admitted condition is not True), then the Status column displays a Kueue-specific scheduling state (e.g., \"Queued\", \"Quota Pending\") rather than a generic \"Pending\", measured by the status element containing text derived from Workload CR conditions.",
+      "references": []
+    },
+    {
+      "criterion_id": "AC-2",
+      "source": "jira",
+      "source_ticket": "RHAISTRAT-432",
+      "text": "Given Kueue is not enabled in the DSC or the namespace is not Kueue-managed, when a user views the model deployments overview, then no Kueue-related indicators are displayed and the overview renders identically to today, measured by DOM comparison against the non-Kueue baseline.",
+      "references": []
+    },
+    {
+      "criterion_id": "AC-3",
+      "source": "jira",
+      "source_ticket": "RHAISTRAT-432",
+      "text": "Given an InferenceService with no associated Workload CR, when it appears alongside Kueue-managed InferenceServices, then it displays its normal KServe-derived status with no Kueue indicators, measured by the absence of Kueue-specific status text for that row.",
+      "references": []
+    },
+    {
+      "criterion_id": "AC-4",
+      "source": "jira",
+      "source_ticket": "RHAISTRAT-432",
+      "text": "Given a Kueue-managed InferenceService whose scheduling status changes (e.g., Pending → Admitted), when the user is viewing the model deployments overview, then the status updates within 5 seconds without page refresh, measured by observing the status change after the Workload CR condition update.",
+      "references": []
+    },
+    {
+      "criterion_id": "AC-5",
+      "source": "jira",
+      "source_ticket": "RHAISTRAT-432",
+      "text": "Given a user who lacks RBAC permission to read Workload CRs in the namespace, when viewing the model deployments overview, then deployments render with normal KServe-derived status and no error indicators, measured by the absence of 403 error messages or broken UI elements.",
+      "references": []
+    },
+    {
+      "criterion_id": "AC-6",
+      "source": "jira",
+      "source_ticket": "RHAISTRAT-432",
+      "text": "When a user hovers over the scheduling status indicator for a Kueue-managed InferenceService, then a tooltip displays the requested and admitted CPU, memory, and GPU resources, measured by the tooltip content including numeric resource values from the Workload CR.",
+      "references": []
+    },
+    {
+      "criterion_id": "AC-7",
+      "source": "jira",
+      "source_ticket": "RHAISTRAT-432",
+      "text": "The Kueue integration covers both InferenceService and LLMInferenceService resource types, with correlation logic handling the different pod discovery labels for each type.",
+      "references": []
+    }
+  ],
+  "feature_context": {
+    "background": "The current model deployments overview displays essential information including model deployment name, project, serving runtime, inference endpoint, API protocol, and deployment status. However, when Kueue is deployed for workload management of inference services, users lack visibility into queue assignment, resource quotas, scheduling state, and deployment delays.",
+    "problem_statement": "ML engineers and platform operators need better visibility into inference service scheduling when Kueue manages distributed model deployment workloads.",
+    "user_stories": [
+      "As an ML Engineer, I want to see if my model deployment is queued so I understand deployment delays",
+      "As an ML Engineer, I want to know which GPU queue my inference service is assigned to",
+      "As a Platform Operator, I want to see GPU queue utilization across all model deployments",
+      "As a Platform Operator, I want to identify resource bottlenecks preventing model deployments"
+    ],
+    "ui_enhancements": "New Columns (when Kueue enabled): Queue (assigned queue name with priority indicator), Scheduling Status (Admitted | Pending | Running | Suspended | Scaling). Status Indicators with color-coded labels. Detailed View with Queue Details Panel, Resource Breakdown, and Timing information via expandable rows. Resource tooltip on hover showing GPU/CPU/Memory.",
+    "source_ticket": "RHAISTRAT-432"
+  },
+  "journey_definitions": [
+    {
+      "id": "journey-1",
+      "title": "Verify Kueue scheduling columns visible in deployments table",
+      "persona": "Platform Operator",
+      "source": "Inferred from AC-1: Kueue-specific scheduling state displays in table",
+      "ac_ids": ["AC-1"],
+      "expected_path": ["/ai-hub/models/deployments"]
+    },
+    {
+      "id": "journey-2",
+      "title": "Verify no Kueue indicators when feature disabled",
+      "persona": "Platform Operator",
+      "source": "Inferred from AC-2: No Kueue-related indicators when disabled",
+      "ac_ids": ["AC-2"],
+      "expected_path": ["/ai-hub/models/deployments"]
+    },
+    {
+      "id": "journey-3",
+      "title": "Verify unmanaged deployment shows normal status",
+      "persona": "ML Engineer",
+      "source": "Inferred from AC-3: InferenceService with no Workload CR displays normal status",
+      "ac_ids": ["AC-3"],
+      "expected_path": ["/ai-hub/models/deployments"]
+    },
+    {
+      "id": "journey-4",
+      "title": "Verify no error indicators for RBAC-limited user",
+      "persona": "Platform Operator",
+      "source": "Inferred from AC-5: No error indicators when lacking RBAC permission",
+      "ac_ids": ["AC-5"],
+      "expected_path": ["/ai-hub/models/deployments"]
+    },
+    {
+      "id": "journey-5",
+      "title": "Verify resource tooltip on scheduling status hover",
+      "persona": "ML Engineer",
+      "source": "Inferred from AC-6: Tooltip displays CPU, memory, GPU resources on hover",
+      "ac_ids": ["AC-6"],
+      "expected_path": ["/ai-hub/models/deployments"]
+    },
+    {
+      "id": "journey-6",
+      "title": "Verify expandable row with queue details and resource allocation",
+      "persona": "Platform Operator",
+      "source": "Inferred from AC-1, AC-7: Queue details panel with resource breakdown",
+      "ac_ids": ["AC-1", "AC-7"],
+      "expected_path": ["/ai-hub/models/deployments"]
+    },
+    {
+      "id": "journey-7",
+      "title": "Verify coverage across deployment types with expanded details",
+      "persona": "Platform Operator",
+      "source": "Inferred from AC-7: Integration covers both InferenceService and LLMInferenceService",
+      "ac_ids": ["AC-7"],
+      "expected_path": ["/ai-hub/models/deployments"]
+    }
+  ],
+  "breadcrumb": {
+    "outcome": {
+      "key": "RHAISTRAT-1446",
+      "title": "Delivering GPUaaS and Kueue Experience in OpenShift AI",
+      "url": "https://issues.redhat.com/browse/RHAISTRAT-1446",
+      "validated": true
+    },
+    "rfe": {
+      "key": "RHAIRFE-630",
+      "title": "Integrate Kueue Workload Scheduling Information in Model Deployments Overview",
+      "url": "https://issues.redhat.com/browse/RHAIRFE-630",
+      "validated": true
+    },
+    "strat": {
+      "key": "RHAISTRAT-432",
+      "title": "Integrate Kueue Workload Scheduling Information in Model Deployments Overview",
+      "url": "https://issues.redhat.com/browse/RHAISTRAT-432",
+      "validated": true
+    },
+    "prototype": {
+      "branch": "mr-174",
+      "commit": "fa9b250"
+    },
+    "mr": null
+  },
+  "persona_selection": {
+    "selected": ["maude-experienced", "maude-junior"],
+    "target_audience_text": "MLOps, platform operators, ML engineers",
+    "reasoning": "Target audience includes platform operators and ML engineers managing model deployments with Kueue scheduling. Maude personas (MLOps) cover both experience levels."
+  },
+  "rfe_key": "RHAIRFE-630",
+  "raw_parent": {
+    "key": "RHAISTRAT-1446",
+    "summary": "Delivering GPUaaS and Kueue Experience in OpenShift AI"
+  },
+  "raw_issuelinks": [],
+  "decision_context": {
+    "has_decisions": false,
+    "deliberate_descopes": []
+  },
+  "tasks_to_be_done": [
+    {
+      "task": "Find out why your model deployment is queued and when it will be ready",
+      "source": "User story: ML Engineer wants to understand deployment delays and see queue status",
+      "covers_acs": ["AC-1", "AC-6", "AC-7"]
+    },
+    {
+      "task": "Check if there is any scheduling or queue information visible for your deployments",
+      "source": "User story: Platform Operator wants to see GPU queue utilization across all model deployments",
+      "covers_acs": ["AC-1", "AC-3", "AC-5"]
+    },
+    {
+      "task": "Look at the details of a specific deployment to understand its resource allocation and queue position",
+      "source": "UI enhancement: Queue Details Panel with Resource Breakdown and Timing",
+      "covers_acs": ["AC-6", "AC-7"]
+    }
+  ],
+  "phase_a_only_acs": [
+    { "criterion_id": "AC-2", "reason": "Requires toggling feature flag — not demonstrable via Playwright" },
+    { "criterion_id": "AC-4", "reason": "Backend-only: real-time WebSocket updates" }
+  ]
+}

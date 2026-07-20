@@ -1,0 +1,8 @@
+{
+  "acceptance_criteria": [
+    {"id": "AC-1", "text": "The page displays a table with columns for Name, Status, and Actions", "source": "jira"},
+    {"id": "AC-2", "text": "A modal dialog shows confirmation before deleting a model", "source": "jira"},
+    {"id": "AC-3", "text": "The sidebar navigation renders a badge showing notification count", "source": "jira"},
+    {"id": "AC-4", "text": "Error messages display in a banner at the top of the form", "source": "jira"}
+  ]
+}

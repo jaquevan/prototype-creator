@@ -1,0 +1,137 @@
+name: eval-nav-context
+description: Evaluate eval-nav-context skill — workspace source scanning for routes and nav hierarchy
+skill: eval-nav-context
+
+execution:
+  mode: case
+  arguments: "{strat_key} --workspace={workspace}"
+  timeout: 60
+  max_budget_usd: 1.00
+
+runner:
+  type: claude-code
+  effort: medium
+
+models:
+  skill: claude-sonnet-4-6
+  judge: claude-opus-4-6
+
+mlflow:
+  experiment: prototype-creator-eval
+
+permissions:
+  allow: []
+  deny: ["mcp__*"]
+
+dataset:
+  path: .claude/skills/eval/eval-harness/datasets/eval-nav-context/cases
+  schema: |
+    Each case directory contains:
+    - input.yaml: YAML with fields:
+      - strat_key: Jira key (used for artifact path lookup)
+      - workspace: path to the prototype repo checkout
+    - fixtures/mr-delta.json: Pre-built MR delta with file lists to scan
+    - annotations.yaml: Ground truth:
+      - expected_route_count: integer count of expected routes
+      - expected_route_paths: list of route paths (e.g. ["/settings", "/clusters"])
+      - expected_nav_sections: list of nav section names
+      - no_removed_fields: list of fields that must NOT appear (e.g. ["css_selectors", "page_structure", "feature_flags"])
+    Workspace reset fields (added to input.yaml for reproducibility):
+    - workspace_branch: git branch to checkout before running
+    - workspace_commit: exact short SHA to reset to (pre-fix state)
+    - workspace_reset: boolean flag indicating the harness should run
+      scripts/reset-workspace.sh before executing the skill
+
+outputs:
+  - path: artifacts
+    schema: |
+      Artifacts produced by eval-nav-context:
+      - navigation-hints.json: Navigation context with:
+        - routes[]: array of {path, file, line} route entries
+        - nav_sections: object with section names as keys, each containing children[]
+
+traces:
+  stdout: true
+  stderr: true
+  metrics: true
+
+judges:
+  - name: nav_hints_schema
+    description: Validates navigation-hints.json schema with routes[] and nav_sections{}
+    check: |
+      import json
+      files = outputs.get("files", {})
+      hint_files = [v for k, v in files.items() if k.endswith("navigation-hints.json")]
+      if not hint_files:
+          return (False, "navigation-hints.json not produced")
+      hints = json.loads(hint_files[0])
+      routes = hints.get("routes", [])
+      if not routes:
+          return (False, "No routes[] in navigation-hints.json")
+      for i, route in enumerate(routes):
+          required = ["path", "file", "line"]
+          missing = [f for f in required if f not in route]
+          if missing:
+              return (False, f"routes[{i}] missing fields: {missing}")
+      nav = hints.get("nav_sections")
+      if nav is None:
+          return (False, "No nav_sections in navigation-hints.json")
+      if not isinstance(nav, dict):
+          return (False, "nav_sections should be an object")
+      for section, data in nav.items():
+          if "children" not in data:
+              return (False, f"nav_sections.{section} missing children[]")
+      return (True, f"{len(routes)} routes, {len(nav)} nav sections")
+
+  - name: no_removed_fields
+    description: Ensures removed fields (css_selectors, page_structure, feature_flags) are absent
+    check: |
+      import json
+      files = outputs.get("files", {})
+      hint_files = [v for k, v in files.items() if k.endswith("navigation-hints.json")]
+      if not hint_files:
+          return (False, "navigation-hints.json missing")
+      hints = json.loads(hint_files[0])
+      forbidden = ["css_selectors", "page_structure", "feature_flags"]
+      annotations = outputs.get("annotations", {})
+      custom_forbidden = annotations.get("no_removed_fields", [])
+      if custom_forbidden:
+          forbidden = custom_forbidden
+      found = [f for f in forbidden if f in hints]
+      if found:
+          return (False, f"Removed fields still present: {found}")
+      return (True, f"No forbidden fields in output")
+
+  - name: routes_match_source
+    description: Validates routes correspond to actual workspace source files
+    check: |
+      import json
+      annotations = outputs.get("annotations", {})
+      expected_paths = annotations.get("expected_route_paths", [])
+      if not expected_paths:
+          return (True, "No ground truth route paths — skipping")
+      files = outputs.get("files", {})
+      hint_files = [v for k, v in files.items() if k.endswith("navigation-hints.json")]
+      if not hint_files:
+          return (False, "navigation-hints.json missing")
+      hints = json.loads(hint_files[0])
+      actual_paths = [r.get("path") for r in hints.get("routes", [])]
+      missing = [p for p in expected_paths if p not in actual_paths]
+      if missing:
+          return (False, f"Expected routes missing: {missing}")
+      return (True, f"All {len(expected_paths)} expected routes found")
+
+  - name: budget_check
+    builtin: cost_budget
+    arguments:
+      max_cost_usd: 1.00
+
+thresholds:
+  nav_hints_schema:
+    min_pass_rate: 1.0
+  no_removed_fields:
+    min_pass_rate: 1.0
+  routes_match_source:
+    min_pass_rate: 0.9
+  budget_check:
+    min_pass_rate: 1.0

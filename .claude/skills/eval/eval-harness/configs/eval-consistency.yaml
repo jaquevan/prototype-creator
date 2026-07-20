@@ -1,0 +1,209 @@
+name: eval-consistency
+description: Evaluate eval-consistency skill — PatternFly design guideline compliance checking
+skill: eval-consistency
+
+execution:
+  mode: case
+  arguments: "{strat_key} --workspace={workspace}"
+  timeout: 120
+  max_budget_usd: 2.00
+
+runner:
+  type: claude-code
+  effort: medium
+
+models:
+  skill: claude-sonnet-4-6
+  judge: claude-opus-4-6
+
+mlflow:
+  experiment: prototype-creator-eval
+
+permissions:
+  allow: []
+  deny: ["mcp__*"]
+
+dataset:
+  path: .claude/skills/eval/eval-harness/datasets/eval-consistency/cases
+  schema: |
+    Each case directory contains:
+    - input.yaml: YAML with fields:
+      - strat_key: Jira key (used for artifact path lookup)
+      - workspace: path to the prototype repo checkout
+    - fixtures/mr-delta.json: Pre-built MR delta with file lists
+    - fixtures/screenshots/: Optional pre-captured screenshots for visual mode
+    - annotations.yaml: Ground truth:
+      - expected_violation_count: integer count of expected violations
+      - expected_guideline_ids: list of guideline IDs that should trigger
+      - expected_violation_count_source: integer count of source-mode violations
+      - expected_violation_count_visual: integer count of visual-mode violations
+    Workspace reset fields (added to input.yaml for reproducibility):
+    - workspace_branch: git branch to checkout before running
+    - workspace_commit: exact short SHA to reset to (pre-fix state)
+    - workspace_reset: boolean flag indicating the harness should run
+      scripts/reset-workspace.sh before executing the skill
+
+outputs:
+  - path: artifacts
+    schema: |
+      Artifacts produced by eval-consistency:
+      - consistency-report.json: Report with sections:
+        - source_mode: {ran: bool, violations[]: {guideline_id, file, line, check_method, message}}
+        - visual_mode: {ran: bool, violations[]: {guideline_id, screenshot, check_method, message}}
+        - summary: {total_guidelines_checked, total_violations, pass_rate}
+      - refinement-suggestions.json: Entries with type:"consistency"
+
+traces:
+  stdout: true
+  stderr: true
+  metrics: true
+
+judges:
+  - name: report_schema
+    description: Validates consistency-report.json schema with source_mode, visual_mode, summary
+    check: |
+      import json
+      files = outputs.get("files", {})
+      report_files = [v for k, v in files.items() if k.endswith("consistency-report.json")]
+      if not report_files:
+          return (False, "consistency-report.json not produced")
+      report = json.loads(report_files[0])
+      if report.get("skipped"):
+          return (False, "Consistency checker was skipped — this is no longer allowed. Bootstrap .context/consistency-checker/ and re-run.")
+      required = ["source_mode", "visual_mode", "summary"]
+      missing = [f for f in required if f not in report]
+      if missing:
+          return (False, f"Report missing sections: {missing}")
+      for mode in ["source_mode", "visual_mode"]:
+          if "ran" not in report[mode]:
+              return (False, f"{mode} missing 'ran' field")
+      summary = report.get("summary", {})
+      if "total_guidelines_checked" not in summary:
+          return (False, "summary missing total_guidelines_checked")
+      return (True, f"Report valid: {summary.get('total_guidelines_checked')} guidelines checked")
+
+  - name: violation_fields
+    description: Validates violations have guideline_id, file, line, check_method
+    check: |
+      import json
+      files = outputs.get("files", {})
+      report_files = [v for k, v in files.items() if k.endswith("consistency-report.json")]
+      if not report_files:
+          return (False, "No report")
+      report = json.loads(report_files[0])
+      if report.get("skipped"):
+          return (True, "Skipped — no violations to check")
+      issues = []
+      for mode in ["source_mode", "visual_mode"]:
+          violations = report.get(mode, {}).get("violations", [])
+          for i, v in enumerate(violations):
+              required = ["guideline_id", "check_method"]
+              if mode == "source_mode":
+                  required.extend(["file", "line"])
+              missing = [f for f in required if f not in v]
+              if missing:
+                  issues.append(f"{mode}[{i}] missing: {missing}")
+      if issues:
+          return (False, f"Violation field issues: {issues[:5]}")
+      total = (len(report.get("source_mode", {}).get("violations", []))
+               + len(report.get("visual_mode", {}).get("violations", [])))
+      return (True, f"{total} violations with correct fields")
+
+  - name: consistency_required
+    description: Fails if consistency-report.json is missing or was skipped — consistency checking is mandatory
+    check: |
+      import json
+      files = outputs.get("files", {})
+      report_files = [v for k, v in files.items() if k.endswith("consistency-report.json")]
+      if not report_files:
+          return (False, "consistency-report.json missing — consistency checking is mandatory. Run make context to bootstrap.")
+      report = json.loads(report_files[0])
+      if report.get("skipped"):
+          return (False, "Consistency was skipped — no longer allowed. Bootstrap .context/consistency-checker/ and re-run.")
+      sm = report.get("source_mode", {})
+      if not sm.get("ran"):
+          return (False, "Source mode did not run — consistency source checks are required")
+      return (True, f"Consistency ran: {report.get('summary',{}).get('total_guidelines_checked',0)} guidelines checked")
+
+  - name: refinement_suggestions_type
+    description: Validates refinement-suggestions.json has type:"consistency" entries
+    check: |
+      import json
+      files = outputs.get("files", {})
+      sugg_files = [v for k, v in files.items() if k.endswith("refinement-suggestions.json")]
+      if not sugg_files:
+          return (True, "No refinement-suggestions.json — may be zero violations")
+      suggestions = json.loads(sugg_files[0])
+      if not isinstance(suggestions, list):
+          suggestions = suggestions.get("suggestions", [])
+      consistency_entries = [s for s in suggestions if s.get("type") == "consistency"]
+      if not consistency_entries and suggestions:
+          return (False, "Suggestions exist but none have type:'consistency'")
+      return (True, f"{len(consistency_entries)} consistency suggestions")
+
+  - name: violation_accuracy
+    description: Compares detected violations against ground truth
+    prompt: |
+      You are evaluating whether the consistency checker correctly identified
+      PatternFly guideline violations.
+
+      ## Ground Truth
+      Expected guideline IDs from annotations:
+      {{ outputs.annotations.expected_guideline_ids | default("No ground truth provided") }}
+      Expected violation count: {{ outputs.annotations.expected_violation_count | default("Unknown") }}
+
+      ## Actual Results
+      {{ outputs.files | selectattr("0", "match", ".*consistency-report.json") | map(attribute="1") | first | default("Not found") }}
+
+      ## Scoring
+      - Score 1.0 if all expected violations found with no false positives
+      - Score 0.8 if most violations found, minor false positives acceptable
+      - Score 0.5 if roughly half the violations correctly identified
+      - Score 0.0 if violations mostly wrong or missing
+
+      Return a JSON object: {"score": <float>, "rationale": "<explanation>"}
+
+  - name: consistency_coverage
+    description: Checks what proportion of available guidelines were actually tested
+    check: |
+      import json, os
+      files = outputs.get("files", {})
+      cr_files = [v for k, v in files.items() if k.endswith("consistency-report.json")]
+      if not cr_files:
+          return (False, "No consistency report")
+      report = json.loads(cr_files[0])
+      checked = report.get("summary", {}).get("total_guidelines_checked", 0)
+      guidelines_dir = ".context/consistency-checker/guidelines"
+      total_available = 0
+      if os.path.isdir(guidelines_dir):
+          for cat in os.listdir(guidelines_dir):
+              cat_dir = os.path.join(guidelines_dir, cat)
+              if os.path.isdir(cat_dir):
+                  total_available += len([f for f in os.listdir(cat_dir) if f.endswith(".md")])
+      if total_available == 0:
+          return (True, f"{checked} guidelines checked (cannot count available)")
+      coverage = checked / total_available
+      if coverage < 0.3:
+          return (False, f"Only {checked}/{total_available} guidelines checked ({coverage:.0%}) — too low")
+      return (True, f"{checked}/{total_available} guidelines checked ({coverage:.0%})")
+
+  - name: budget_check
+    builtin: cost_budget
+    arguments:
+      max_cost_usd: 2.00
+
+thresholds:
+  report_schema:
+    min_pass_rate: 1.0
+  violation_fields:
+    min_pass_rate: 1.0
+  consistency_required:
+    min_pass_rate: 1.0
+  refinement_suggestions_type:
+    min_pass_rate: 0.9
+  violation_accuracy:
+    min_score: 0.6
+  consistency_coverage:
+    min_pass_rate: 0.8
+  budget_check:
+    min_pass_rate: 1.0

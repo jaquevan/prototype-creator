@@ -1,0 +1,491 @@
+name: eval-discover
+description: Evaluate eval-discover skill — Phase B persona walkthroughs with usability scoring
+skill: eval-discover
+
+execution:
+  mode: case
+  arguments: "{strat_key} {prototype_url} --workspace={workspace}"
+  timeout: 600
+  parallelism: 2
+  max_budget_usd: 8.00
+
+runner:
+  type: claude-code
+  effort: high
+
+models:
+  skill: claude-opus-4-6
+  judge: claude-opus-4-6
+
+mlflow:
+  experiment: prototype-creator-eval
+
+permissions:
+  allow: ["Skill"]
+  deny: ["mcp__*"]
+
+dataset:
+  path: .claude/skills/eval/eval-harness/datasets/eval-discover/cases
+  schema: |
+    Each case directory contains:
+    - input.yaml: YAML with fields:
+      - strat_key: ([EXTERNAL: Jira] — real RHAISTRAT key)
+      - prototype_url: URL of the running prototype (e.g. http://localhost:9000)
+      - workspace: path to the prototype repo checkout
+    - fixtures/extract-state.json: Pre-built extraction with acceptance_criteria[], persona_selection
+    - fixtures/journey-log.json: Pre-built Phase A journey log with verdicts
+    - fixtures/evaluation-report.csv: Phase A CSV with Section 1 populated
+    - annotations.yaml: Ground truth:
+      - expected_persona_ids: list of persona IDs that should be evaluated
+      - expected_dimension_count: number of usability dimensions (7)
+      - expected_thinkaloud_count: minimum number of think-aloud files
+      - expected_differentiation: boolean — should junior/senior traces differ
+
+outputs:
+  - path: artifacts
+    schema: |
+      Artifacts produced by eval-discover:
+      - persona-results.json: Array of persona-task results
+        Each entry: {persona_id, task_id, trace[], scores{}, think_aloud_file}
+      - usability-thinkaloud-<persona-id>-task-<N>.md: Think-aloud trace files
+        Format: STEP N: / What I see: / What I'm thinking: / Patience: sections
+      - screenshots/persona-<id>-task-<N>-step-<M>.png: Per-step screenshots
+      - journey-log.json: Updated with usability_dimensions section
+        Added fields: personas_evaluated, dimensions[].composite_score, think_aloud.traces
+      - evaluation-report.csv: Updated with Section 2 (USABILITY DIMENSIONS)
+      - refinement-suggestions.json: Usability suggestions for scores 0-1
+
+traces:
+  stdout: true
+  stderr: true
+  events: true
+  metrics: true
+
+judges:
+  - name: persona_results_schema
+    description: Validates persona-results.json is array with non-empty trace[] per entry
+    check: |
+      import json
+      files = outputs.get("files", {})
+      pr_files = [v for k, v in files.items() if k.endswith("persona-results.json")]
+      if not pr_files:
+          return (False, "persona-results.json not produced")
+      results = json.loads(pr_files[0])
+      if not isinstance(results, list):
+          return (False, "persona-results.json is not an array")
+      if not results:
+          return (False, "persona-results.json is empty")
+      empty_traces = []
+      for entry in results:
+          pid = entry.get("persona_id", "?")
+          trace = entry.get("trace", [])
+          if not trace:
+              empty_traces.append(pid)
+      if empty_traces:
+          return (False, f"Empty traces for personas: {empty_traces}")
+      return (True, f"{len(results)} persona-task results, all with traces")
+
+  - name: thinkaloud_format
+    description: Validates think-aloud files exist and match expected format
+    check: |
+      import re
+      files = outputs.get("files", {})
+      ta_files = {k: v for k, v in files.items() if "usability-thinkaloud-" in k and k.endswith(".md")}
+      if not ta_files:
+          return (False, "No think-aloud files produced")
+      issues = []
+      for fname, content in ta_files.items():
+          has_step = bool(re.search(r"STEP \d+:", content))
+          has_see = "What I see:" in content
+          has_think = "What I'm thinking:" in content
+          has_patience = "Patience:" in content
+          missing = []
+          if not has_step: missing.append("STEP N:")
+          if not has_see: missing.append("What I see:")
+          if not has_think: missing.append("What I'm thinking:")
+          if not has_patience: missing.append("Patience:")
+          if missing:
+              issues.append(f"{fname}: missing {missing}")
+      if issues:
+          return (False, f"Format issues: {issues}")
+      return (True, f"{len(ta_files)} think-aloud files with correct format")
+
+  - name: patience_formula
+    description: Verifies patience decay follows formula (High=-5%, Medium=-10%, Low=-15% per confusion)
+    check: |
+      import re, json
+      files = outputs.get("files", {})
+      ta_files = {k: v for k, v in files.items() if "usability-thinkaloud-" in k and k.endswith(".md")}
+      if not ta_files:
+          return (False, "No think-aloud files to check")
+      sample = list(ta_files.values())[0]
+      patience_values = re.findall(r"Patience:\s*(\d+)%", sample)
+      if len(patience_values) < 2:
+          return (True, "Not enough patience values to verify formula — skipping")
+      values = [int(v) for v in patience_values]
+      if values[0] != 100:
+          return (False, f"Initial patience should be 100%, got {values[0]}%")
+      decreasing = all(values[i] >= values[i+1] for i in range(len(values)-1))
+      if not decreasing:
+          return (False, f"Patience not monotonically decreasing: {values}")
+      return (True, f"Patience decay valid: {values}")
+
+  - name: journey_log_usability
+    description: Validates journey-log.json has usability_dimensions section
+    check: |
+      import json
+      files = outputs.get("files", {})
+      log_files = [v for k, v in files.items() if k.endswith("journey-log.json")]
+      if not log_files:
+          return (False, "journey-log.json missing")
+      log = json.loads(log_files[0])
+      ud = log.get("usability_dimensions")
+      if not ud:
+          return (False, "journey-log.json missing usability_dimensions section")
+      missing = []
+      if not ud.get("personas_evaluated"):
+          missing.append("personas_evaluated")
+      dims = ud.get("dimensions", [])
+      if not dims:
+          missing.append("dimensions[]")
+      else:
+          for d in dims:
+              if "composite_score" not in d:
+                  missing.append(f"dimensions[].composite_score")
+                  break
+      ta = ud.get("think_aloud", {})
+      if not ta.get("traces"):
+          missing.append("think_aloud.traces")
+      if missing:
+          return (False, f"usability_dimensions missing: {missing}")
+      return (True, f"{len(dims)} dimensions, {len(ud['personas_evaluated'])} personas")
+
+  - name: csv_section2
+    description: Validates CSV has Section 2 USABILITY DIMENSIONS appended
+    check: |
+      files = outputs.get("files", {})
+      csv_files = [v for k, v in files.items() if k.endswith("evaluation-report.csv")]
+      if not csv_files:
+          return (False, "evaluation-report.csv missing")
+      content = csv_files[0]
+      if "USABILITY DIMENSIONS" not in content:
+          return (False, "CSV missing Section 2 USABILITY DIMENSIONS")
+      return (True, "CSV has Section 2 USABILITY DIMENSIONS")
+
+  - name: screenshot_uniqueness
+    description: Checks screenshot uniqueness via MD5 for step-2+ across tasks
+    check: |
+      import hashlib
+      files = outputs.get("files", {})
+      screenshots = {k: v for k, v in files.items()
+                     if "screenshots/" in k and "persona-" in k and k.endswith(".png")}
+      if len(screenshots) < 2:
+          return (True, f"Only {len(screenshots)} screenshots — skipping uniqueness check")
+      hashes = {}
+      duplicates = []
+      for fname, content in screenshots.items():
+          h = hashlib.md5(content.encode() if isinstance(content, str) else content).hexdigest()
+          if h in hashes:
+              duplicates.append(f"{fname} == {hashes[h]}")
+          hashes[h] = fname
+      if duplicates:
+          return (False, f"Duplicate screenshots: {duplicates[:5]}")
+      return (True, f"{len(screenshots)} unique screenshots")
+
+  - name: persona_differentiation
+    description: Checks that junior vs senior personas produce meaningfully different traces
+    prompt: |
+      You are evaluating whether different personas (e.g., junior vs senior) produce
+      meaningfully different think-aloud traces during usability walkthroughs.
+
+      ## Persona Results
+      {{ outputs.files | selectattr("0", "match", ".*persona-results.json") | map(attribute="1") | first | default("Not found") }}
+
+      ## Think-Aloud Files
+      {% for key, value in outputs.files.items() if "usability-thinkaloud-" in key %}
+      ### {{ key }}
+      {{ value[:2000] }}
+      {% endfor %}
+
+      ## Scoring
+      - Score 1.0 if personas show clearly different behaviors, concerns, and patience levels
+      - Score 0.7 if there is some differentiation but traces feel similar
+      - Score 0.3 if traces are nearly identical across personas
+      - Score 0.0 if all personas produce the same trace (no differentiation)
+
+      Return a JSON object: {"score": <float>, "rationale": "<explanation>"}
+
+  - name: persona_selection_quality
+    description: Validates persona selection reasoning is descriptive (not one-liner)
+    check: |
+      import json
+      files = outputs.get("files", {})
+      jl_files = [v for k, v in files.items() if k.endswith("journey-log.json")]
+      if not jl_files:
+          return (True, "No journey-log — skipping")
+      jl = json.loads(jl_files[0])
+      ud = jl.get("usability_dimensions", {})
+      ps = ud.get("persona_selection", {})
+      if not ps:
+          return (False, "No persona_selection in journey-log usability_dimensions")
+      reasoning = ps.get("reasoning", "")
+      if len(reasoning) < 50:
+          return (False, f"Persona selection reasoning too short ({len(reasoning)} chars): '{reasoning[:40]}'")
+      if "mapped to" in reasoning.lower() and len(reasoning) < 100:
+          return (False, f"Reasoning is a generic mapping, not an explanation: '{reasoning[:60]}'")
+      has_why = any(w in reasoning.lower() for w in ["because", "since", "targets", "relevant", "knowledge", "experience"])
+      if not has_why:
+          return (False, f"Reasoning doesn't explain WHY these personas were chosen")
+      considered = ps.get("considered_but_rejected", [])
+      return (True, f"Reasoning: {len(reasoning)} chars, considered_rejected: {len(considered)}")
+
+  - name: persona_screenshot_coverage
+    description: Validates that every persona trace step has a screenshot reference
+    check: |
+      import json
+      files = outputs.get("files", {})
+      pr_files = [v for k, v in files.items() if k.endswith("persona-results.json")]
+      if not pr_files:
+          return (True, "No persona-results — skipping")
+      pr = json.loads(pr_files[0])
+      total = 0
+      missing = 0
+      gaps = []
+      for entry in (pr if isinstance(pr, list) else []):
+          pid = entry.get("persona", "?")
+          tidx = entry.get("task_index", "?")
+          for s in entry.get("trace", []):
+              total += 1
+              ss = s.get("screenshot")
+              if not ss or ss == "None" or str(ss) == "None":
+                  missing += 1
+                  if missing <= 3:
+                      gaps.append(f"{pid} task-{tidx} step {s.get('step')}")
+      if total == 0:
+          return (True, "No trace steps")
+      coverage = (total - missing) / total
+      if coverage < 0.8:
+          return (False, f"Only {total-missing}/{total} persona steps have screenshots ({coverage:.0%}). Gaps: {gaps}")
+      return (True, f"{total-missing}/{total} persona steps have screenshots ({coverage:.0%})")
+
+  - name: screenshot_not_blank_personas
+    description: Checks persona screenshots have real content (not blank captures)
+    check: |
+      import os, json
+      files = outputs.get("files", {})
+      case_dir = outputs.get("case_dir", "")
+      pr_files = [v for k, v in files.items() if k.endswith("persona-results.json")]
+      if not pr_files:
+          return (True, "No persona-results — skipping")
+      pr = json.loads(pr_files[0])
+      blank = []
+      checked = 0
+      for entry in (pr if isinstance(pr, list) else []):
+          for step in entry.get("trace", []):
+              ss = step.get("screenshot", "")
+              if not ss:
+                  continue
+              ss_path = os.path.join(case_dir, ss) if case_dir else ss
+              if os.path.exists(ss_path):
+                  size = os.path.getsize(ss_path)
+                  checked += 1
+                  if size < 10000:
+                      blank.append(f"{ss} ({size}B)")
+      if not checked:
+          return (True, "No persona screenshot files accessible")
+      if blank:
+          return (False, f"{len(blank)} potentially blank persona screenshots: {blank[:3]}")
+      return (True, f"{checked} persona screenshots have real content")
+
+  - name: screenshot_narration_consistency
+    description: Validates narrations describe visible UI elements and are not generic or disconnected from screenshots
+    check: |
+      import json
+      files = outputs.get("files", {})
+      pr_files = [v for k, v in files.items() if k.endswith("persona-results.json")]
+      if not pr_files:
+          return (True, "No persona-results — skipping")
+      pr = json.loads(pr_files[0])
+      issues = []
+      generic_phrases = ["i see a page", "i see the page", "i see the application", "the page loads", "page is loading"]
+      for entry in (pr if isinstance(pr, list) else []):
+          persona = entry.get("persona", "?")
+          trace = entry.get("trace", [])
+          if not trace:
+              issues.append(f"{persona}: empty trace")
+              continue
+          for step in [trace[0], trace[-1]] if len(trace) > 1 else trace:
+              see = step.get("what_i_see", "")
+              ss = step.get("screenshot", "")
+              if ss and not see:
+                  issues.append(f"{persona} step {step.get('step')}: screenshot without narration")
+              elif see and not ss:
+                  issues.append(f"{persona} step {step.get('step')}: narration without screenshot")
+              elif see and len(see) < 20:
+                  issues.append(f"{persona} step {step.get('step')}: narration too short ({len(see)} chars)")
+              elif see and any(g in see.lower() for g in generic_phrases):
+                  has_specific = any(w in see.lower() for w in ["table", "card", "button", "form", "sidebar", "tab", "modal", "menu", "dropdown", "input", "label", "column"])
+                  if not has_specific:
+                      issues.append(f"{persona} step {step.get('step')}: generic narration, no specific UI elements")
+      if issues:
+          return (False, f"Narration quality issues: {issues[:5]}")
+      sampled = sum(min(2, len(e.get("trace",[]))) for e in (pr if isinstance(pr, list) else []))
+      return (True, f"{sampled} steps sampled, narrations describe specific UI elements")
+
+  - name: screenshot_visual_differentiation
+    description: Verifies different tasks for the same persona produce visually different screenshots
+    check: |
+      import os, hashlib, json
+      files = outputs.get("files", {})
+      case_dir = outputs.get("case_dir", "")
+      pr_files = [v for k, v in files.items() if k.endswith("persona-results.json")]
+      if not pr_files:
+          return (True, "No persona-results — skipping")
+      pr = json.loads(pr_files[0])
+      by_persona = {}
+      for entry in (pr if isinstance(pr, list) else []):
+          pid = entry.get("persona", "?")
+          task_idx = entry.get("task_index", 0)
+          trace = entry.get("trace", [])
+          step2_screenshots = [s.get("screenshot","") for s in trace if s.get("step",0) >= 2 and s.get("screenshot")]
+          if step2_screenshots:
+              by_persona.setdefault(pid, []).append((task_idx, step2_screenshots[0]))
+      duplicates = []
+      for pid, tasks in by_persona.items():
+          hashes = {}
+          for task_idx, ss_path in tasks:
+              full_path = os.path.join(case_dir, ss_path) if case_dir else ss_path
+              if os.path.exists(full_path):
+                  h = hashlib.md5(open(full_path, "rb").read()).hexdigest()
+                  if h in hashes:
+                      duplicates.append(f"{pid}: task-{task_idx} identical to task-{hashes[h]}")
+                  hashes[h] = task_idx
+      if duplicates:
+          return (False, f"Identical screenshots across tasks: {duplicates}")
+      checked = sum(len(tasks) for tasks in by_persona.values())
+      return (True, f"{checked} task screenshots checked, all visually distinct")
+
+  - name: patience_formula_strict
+    description: Recomputes patience from trace events and validates against stored values
+    check: |
+      import json
+      files = outputs.get("files", {})
+      pr_files = [v for k, v in files.items() if k.endswith("persona-results.json")]
+      if not pr_files:
+          return (True, "No persona-results — skipping")
+      pr = json.loads(pr_files[0])
+      issues = []
+      for entry in (pr if isinstance(pr, list) else []):
+          pid = entry.get("persona", "?")
+          tidx = entry.get("task_index", "?")
+          trace = entry.get("trace", [])
+          if not trace:
+              continue
+          stored_end = entry.get("patience_end", 100)
+          last_trace_p = trace[-1].get("patience", 100) if trace else 100
+          if stored_end != last_trace_p:
+              issues.append(f"{pid} task-{tidx}: patience_end={stored_end} but last trace step={last_trace_p}")
+          prev = 100
+          for s in trace:
+              sp = s.get("patience")
+              if sp is not None and s.get("confusion_event") and sp >= prev and prev > 0:
+                  issues.append(f"{pid} task-{tidx} step {s.get('step')}: confusion but patience didn't decrease ({prev}->{sp})")
+              if sp is not None:
+                  prev = sp
+      if issues:
+          return (False, f"Patience mismatches: {issues[:5]}")
+      checked = sum(1 for e in (pr if isinstance(pr, list) else []) if e.get("trace"))
+      return (True, f"{checked} persona-tasks checked, all patience values consistent")
+
+  - name: persona_confusion_minimum
+    description: Junior personas encountering technical terms must log confusion events
+    check: |
+      import json
+      files = outputs.get("files", {})
+      pr_files = [v for k, v in files.items() if k.endswith("persona-results.json")]
+      if not pr_files:
+          return (True, "No persona-results — skipping")
+      pr = json.loads(pr_files[0])
+      issues = []
+      specialized_terms = ["autorag","mcp","inferenceservice","clusterqueue","workloadcr",
+          "priorityclass","crd","kueue","kserve","guardrail","pipeline","operator",
+          "pvc","statefulset","kuberay","volcano","admission","ga","tech preview",
+          "dev preview","api group","verbs","rbac","configmap"]
+      for entry in (pr if isinstance(pr, list) else []):
+          pid = entry.get("persona", "?")
+          if "junior" not in pid.lower():
+              continue
+          trace = entry.get("trace", [])
+          confusion_count = sum(1 for s in trace if s.get("confusion_event"))
+          total_steps = len(trace)
+          narration = " ".join(s.get("what_i_see","") + " " + s.get("what_im_thinking","") for s in trace).lower()
+          term_hits = sum(1 for t in specialized_terms if t in narration)
+          if total_steps >= 3 and confusion_count == 0 and term_hits >= 3:
+              issues.append(f"{pid} task-{entry.get('task_index','?')}: {total_steps} steps, {term_hits} specialized terms but 0 confusion events")
+      if issues:
+          return (False, f"Persona constraint leakage: {issues}")
+      return (True, "Junior personas have appropriate confusion events")
+
+  - name: would_complete_enforcement
+    description: Validates would_complete is false when dead ends or very low patience occurred
+    check: |
+      import json
+      files = outputs.get("files", {})
+      pr_files = [v for k, v in files.items() if k.endswith("persona-results.json")]
+      if not pr_files:
+          return (True, "No persona-results — skipping")
+      pr = json.loads(pr_files[0])
+      issues = []
+      for entry in (pr if isinstance(pr, list) else []):
+          pid = entry.get("persona", "?")
+          tidx = entry.get("task_index", "?")
+          wc = entry.get("would_complete", True)
+          p_end = entry.get("patience_end", 100)
+          has_dead_end = any(s.get("dead_end") for s in entry.get("trace", []))
+          outcome = entry.get("outcome", "completed")
+          if wc and has_dead_end:
+              issues.append(f"{pid} task-{tidx}: would_complete=true but has dead_end")
+          if wc and p_end <= 30:
+              issues.append(f"{pid} task-{tidx}: would_complete=true but patience={p_end}%")
+          if wc and outcome == "abandoned":
+              issues.append(f"{pid} task-{tidx}: would_complete=true but outcome=abandoned")
+      if issues:
+          return (False, f"would_complete inconsistencies: {issues}")
+      return (True, "All would_complete values consistent with trace evidence")
+
+  - name: budget_check
+    builtin: cost_budget
+    arguments:
+      max_cost_usd: 8.00
+
+thresholds:
+  persona_results_schema:
+    min_pass_rate: 1.0
+  thinkaloud_format:
+    min_pass_rate: 1.0
+  patience_formula:
+    min_pass_rate: 0.9
+  journey_log_usability:
+    min_pass_rate: 1.0
+  csv_section2:
+    min_pass_rate: 1.0
+  screenshot_uniqueness:
+    min_pass_rate: 0.8
+  persona_differentiation:
+    min_score: 0.6
+  persona_screenshot_coverage:
+    min_pass_rate: 0.8
+  screenshot_not_blank_personas:
+    min_pass_rate: 1.0
+  screenshot_narration_consistency:
+    min_pass_rate: 1.0
+  screenshot_visual_differentiation:
+    min_pass_rate: 0.8
+  patience_formula_strict:
+    min_pass_rate: 1.0
+  persona_confusion_minimum:
+    min_pass_rate: 0.8
+  would_complete_enforcement:
+    min_pass_rate: 1.0
+  budget_check:
+    min_pass_rate: 1.0
