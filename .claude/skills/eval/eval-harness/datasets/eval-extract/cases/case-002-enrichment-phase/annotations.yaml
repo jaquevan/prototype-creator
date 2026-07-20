@@ -1,6 +1,0 @@
-expected_ac_count: 6
-expected_ac_ids: [AC-1, AC-2, AC-3, AC-4, AC-5, AC-6]
-expected_persona_names: [paula-platform-engineer, deena-junior]
-expected_mr_files_count: 6
-has_linked_rfe: false
-has_parent_outcome: false

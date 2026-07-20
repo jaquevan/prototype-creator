@@ -1,7 +1,0 @@
-expected_html_produced: true
-expected_summary_keys: [key, timestamp, status, ac_verdicts, counts, usability]
-expected_overall_score_format: "X/21"
-expected_pass_count: 6
-expected_fail_count: 0
-expected_flagged_count: 1
-has_screenshots: false

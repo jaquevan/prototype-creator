@@ -41,11 +41,8 @@ htmlcov/
 # Test fixtures — oversized files (>20MB) excluded from git
 .claude/skills/eval/tests/fixtures/images/oversized-test.png
 
-# Eval harness integration — track configs, datasets, and judges; ignore runtime data
-.claude/skills/eval/eval-harness/mlflow.db
-.claude/skills/eval/eval-harness/mlruns/
-.claude/skills/eval/eval-harness/runs/
-.claude/skills/eval/eval-harness/STEVE-CALL-BRIEF.md
+# Eval harness integration (local testing only, not pushed)
+.claude/skills/eval/eval-harness/
 
 # Stray Playwright scripts from eval runs (should be in .artifacts/)
 .claude/skills/eval/journey-test-*.mjs

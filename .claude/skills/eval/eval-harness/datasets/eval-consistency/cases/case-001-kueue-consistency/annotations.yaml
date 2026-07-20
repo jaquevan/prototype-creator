@@ -1,8 +1,0 @@
-expected_violation_count: 3
-expected_severity: warning
-expected_categories: [labels]
-checker_should_run: true
-source_mode_ran: true
-visual_mode_ran: false
-expected_guidelines_checked: 5
-expected_passes: 2

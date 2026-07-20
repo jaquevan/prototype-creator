@@ -1,7 +1,0 @@
-strat_key: RHAISTRAT-133
-prototype_url: http://localhost:8080
-workspace: /Users/ejaquez/Desktop/rhoai-prototypes
-max_iterations: 3
-workspace_branch: mr-169
-workspace_commit: 4abe4ab
-workspace_reset: true
