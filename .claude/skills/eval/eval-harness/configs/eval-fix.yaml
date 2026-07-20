@@ -1,0 +1,240 @@
+name: eval-fix
+description: Evaluate eval-fix skill — apply fixes from refinement-suggestions.json to prototype workspace
+skill: eval-fix
+
+execution:
+  mode: case
+  arguments: "{strat_key} --workspace={workspace}"
+  timeout: 180
+  parallelism: 2
+  max_budget_usd: 3.00
+
+runner:
+  type: claude-code
+  effort: high
+
+models:
+  skill: claude-opus-4-6
+  judge: claude-opus-4-6
+
+mlflow:
+  experiment: prototype-creator-eval
+
+permissions:
+  allow: ["Skill"]
+  deny: ["mcp__*"]
+
+dataset:
+  path: .claude/skills/eval/eval-harness/datasets/eval-fix/cases
+  schema: |
+    Each case directory contains:
+    - input.yaml: YAML with fields:
+      - strat_key: Jira key (used for artifact path lookup)
+      - workspace: path to the prototype repo checkout
+    - fixtures/refinement-suggestions.json: Array of suggestions with fields:
+      - id, type (ac/usability/consistency), severity, file, description, confidence
+      - Some entries with applied:true to test idempotency
+      - Some entries with low confidence to test deferred_to_human
+    - fixtures/decisions.json: Optional decision constraints that may conflict with suggestions
+    - fixtures/workspace/: Mock workspace files to be modified
+    - annotations.yaml: Ground truth:
+      - expected_applied_count: integer count of suggestions that should be applied
+      - expected_skipped_ids: list of suggestion IDs that should be skipped (decision conflicts)
+      - expected_deferred_ids: list of suggestion IDs deferred to human (low confidence)
+      - expected_already_applied_ids: list of suggestion IDs already applied (idempotency)
+      - expected_ordering: list ["consistency", "ac", "usability"] for fix application order
+    Workspace reset fields (added to input.yaml for reproducibility):
+    - workspace_branch: git branch to checkout before running
+    - workspace_commit: exact short SHA to reset to (pre-fix state)
+    - workspace_reset: boolean flag indicating the harness should run
+      scripts/reset-workspace.sh before executing the skill
+
+outputs:
+  - path: artifacts
+    schema: |
+      Artifacts produced by eval-fix:
+      - fix-log.json: Fix results with:
+        - applied[]: array of {id, type, file, change_description}
+        - skipped[]: array of {id, reason} (decision conflicts)
+        - deferred_to_human[]: array of {id, reason} (low confidence)
+      - refinement-suggestions.json: Updated with applied:true and applied_in_iteration markers
+      - Modified prototype files in workspace
+
+traces:
+  stdout: true
+  stderr: true
+  events: true
+  metrics: true
+
+judges:
+  - name: fix_log_schema
+    description: Validates fix-log.json schema has applied[], skipped[], deferred_to_human[]
+    check: |
+      import json
+      files = outputs.get("files", {})
+      log_files = [v for k, v in files.items() if k.endswith("fix-log.json")]
+      if not log_files:
+          return (False, "fix-log.json not produced")
+      log = json.loads(log_files[0])
+      required = ["applied", "skipped", "deferred_to_human"]
+      missing = [f for f in required if f not in log]
+      if missing:
+          return (False, f"fix-log.json missing fields: {missing}")
+      for field in required:
+          if not isinstance(log[field], list):
+              return (False, f"{field} should be an array")
+      total = len(log["applied"]) + len(log["skipped"]) + len(log["deferred_to_human"])
+      return (True, f"fix-log.json valid: {len(log['applied'])} applied, {len(log['skipped'])} skipped, {len(log['deferred_to_human'])} deferred ({total} total)")
+
+  - name: idempotency
+    description: Already-applied suggestions are not re-processed
+    check: |
+      import json
+      annotations = outputs.get("annotations", {})
+      already_applied = annotations.get("expected_already_applied_ids", [])
+      if not already_applied:
+          return (True, "No idempotency test IDs in annotations — skipping")
+      files = outputs.get("files", {})
+      log_files = [v for k, v in files.items() if k.endswith("fix-log.json")]
+      if not log_files:
+          return (False, "fix-log.json missing")
+      log = json.loads(log_files[0])
+      applied_ids = [e.get("id") for e in log.get("applied", [])]
+      re_applied = [eid for eid in already_applied if eid in applied_ids]
+      if re_applied:
+          return (False, f"Already-applied suggestions re-processed: {re_applied}")
+      return (True, f"Idempotency correct: {len(already_applied)} pre-applied IDs not reprocessed")
+
+  - name: low_confidence_deferred
+    description: Low-confidence suggestions end up in deferred_to_human, not applied
+    check: |
+      import json
+      annotations = outputs.get("annotations", {})
+      expected_deferred = annotations.get("expected_deferred_ids", [])
+      if not expected_deferred:
+          return (True, "No deferred test IDs in annotations — skipping")
+      files = outputs.get("files", {})
+      log_files = [v for k, v in files.items() if k.endswith("fix-log.json")]
+      if not log_files:
+          return (False, "fix-log.json missing")
+      log = json.loads(log_files[0])
+      applied_ids = [e.get("id") for e in log.get("applied", [])]
+      deferred_ids = [e.get("id") for e in log.get("deferred_to_human", [])]
+      wrongly_applied = [eid for eid in expected_deferred if eid in applied_ids]
+      if wrongly_applied:
+          return (False, f"Low-confidence suggestions applied instead of deferred: {wrongly_applied}")
+      missing_deferred = [eid for eid in expected_deferred if eid not in deferred_ids]
+      if missing_deferred:
+          return (False, f"Expected deferred IDs missing from deferred_to_human: {missing_deferred}")
+      return (True, f"All {len(expected_deferred)} low-confidence suggestions correctly deferred")
+
+  - name: decision_conflicts_skipped
+    description: Suggestions conflicting with decisions.json end up in skipped[] with reason
+    check: |
+      import json
+      annotations = outputs.get("annotations", {})
+      expected_skipped = annotations.get("expected_skipped_ids", [])
+      if not expected_skipped:
+          return (True, "No skipped test IDs in annotations — skipping")
+      files = outputs.get("files", {})
+      log_files = [v for k, v in files.items() if k.endswith("fix-log.json")]
+      if not log_files:
+          return (False, "fix-log.json missing")
+      log = json.loads(log_files[0])
+      skipped = log.get("skipped", [])
+      skipped_ids = [e.get("id") for e in skipped]
+      missing = [eid for eid in expected_skipped if eid not in skipped_ids]
+      if missing:
+          return (False, f"Expected skipped IDs not in skipped[]: {missing}")
+      no_reason = [e.get("id") for e in skipped if not e.get("reason")]
+      if no_reason:
+          return (False, f"Skipped entries without reason: {no_reason}")
+      return (True, f"All {len(expected_skipped)} decision conflicts correctly skipped with reasons")
+
+  - name: suggestions_updated
+    description: Validates refinement-suggestions.json updated with applied:true markers
+    check: |
+      import json
+      files = outputs.get("files", {})
+      sugg_files = [v for k, v in files.items() if k.endswith("refinement-suggestions.json")]
+      log_files = [v for k, v in files.items() if k.endswith("fix-log.json")]
+      if not sugg_files:
+          return (False, "refinement-suggestions.json missing")
+      if not log_files:
+          return (False, "fix-log.json missing")
+      suggestions = json.loads(sugg_files[0])
+      if not isinstance(suggestions, list):
+          suggestions = suggestions.get("suggestions", [])
+      log = json.loads(log_files[0])
+      applied_ids = {e.get("id") for e in log.get("applied", [])}
+      unmarked = []
+      for s in suggestions:
+          if s.get("id") in applied_ids:
+              if not s.get("applied"):
+                  unmarked.append(s.get("id"))
+      if unmarked:
+          return (False, f"Applied suggestions not marked applied:true: {unmarked}")
+      return (True, f"All applied suggestions correctly marked")
+
+  - name: fix_ordering
+    description: Validates fix application order (consistency before AC before usability)
+    check: |
+      import json
+      files = outputs.get("files", {})
+      log_files = [v for k, v in files.items() if k.endswith("fix-log.json")]
+      if not log_files:
+          return (False, "fix-log.json missing")
+      log = json.loads(log_files[0])
+      applied = log.get("applied", [])
+      if len(applied) < 2:
+          return (True, "Fewer than 2 fixes — ordering trivially correct")
+      type_order = {"consistency": 0, "ac": 1, "usability": 2}
+      types = [a.get("type", "unknown") for a in applied]
+      indices = [type_order.get(t, 99) for t in types]
+      for i in range(len(indices) - 1):
+          if indices[i] > indices[i + 1]:
+              return (False, f"Order violation: {types[i]} applied before {types[i+1]}")
+      return (True, f"Fix ordering correct: {types}")
+
+  - name: fix_quality
+    description: LLM judge for fix quality — do applied changes actually address the suggestions
+    prompt: |
+      You are evaluating whether fixes applied by the eval-fix skill actually
+      address the refinement suggestions they claim to fix.
+
+      ## Fix Log
+      {{ outputs.files | selectattr("0", "match", ".*fix-log.json") | map(attribute="1") | first | default("Not found") }}
+
+      ## Refinement Suggestions
+      {{ outputs.files | selectattr("0", "match", ".*refinement-suggestions.json") | map(attribute="1") | first | default("Not found") }}
+
+      ## Scoring
+      - Score 1.0 if all applied fixes directly and correctly address their suggestions
+      - Score 0.7 if most fixes are appropriate but some are partial or tangential
+      - Score 0.4 if fixes are attempted but many miss the point
+      - Score 0.0 if fixes are irrelevant or harmful
+
+      Return a JSON object: {"score": <float>, "rationale": "<explanation>"}
+
+  - name: budget_check
+    builtin: cost_budget
+    arguments:
+      max_cost_usd: 3.00
+
+thresholds:
+  fix_log_schema:
+    min_pass_rate: 1.0
+  idempotency:
+    min_pass_rate: 1.0
+  low_confidence_deferred:
+    min_pass_rate: 1.0
+  decision_conflicts_skipped:
+    min_pass_rate: 1.0
+  suggestions_updated:
+    min_pass_rate: 1.0
+  fix_ordering:
+    min_pass_rate: 0.9
+  fix_quality:
+    min_score: 0.6
+  budget_check:
+    min_pass_rate: 1.0

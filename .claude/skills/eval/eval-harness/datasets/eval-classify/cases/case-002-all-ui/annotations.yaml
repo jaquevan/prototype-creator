@@ -1,0 +1,7 @@
+expected_tiers:
+  AC-1: T1
+  AC-2: T1
+  AC-3: T1
+  AC-4: T1
+expected_t3_auto_pass: []
+expected_csv_columns: [criterion_id, source, tier, criterion_text, verdict, rationale, evidence, fix_action, fix_file, human_action]

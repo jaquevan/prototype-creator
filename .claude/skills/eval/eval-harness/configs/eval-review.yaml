@@ -1,0 +1,173 @@
+name: eval-review
+description: Evaluate eval-review skill — conversational review entry point for eval results
+skill: eval-review
+
+execution:
+  mode: case
+  arguments: "{strat_key}"
+  timeout: 90
+  parallelism: 2
+  max_budget_usd: 1.50
+
+runner:
+  type: claude-code
+  effort: medium
+
+models:
+  skill: claude-sonnet-4-6
+  judge: claude-opus-4-6
+  hook: claude-sonnet-4-6
+
+mlflow:
+  experiment: prototype-creator-eval
+
+permissions:
+  allow: ["Skill"]
+  deny: ["mcp__*"]
+
+dataset:
+  path: .claude/skills/eval/eval-harness/datasets/eval-review/cases
+  schema: |
+    Each case directory contains:
+    - input.yaml: YAML with fields:
+      - strat_key: Jira key (used for artifact path lookup)
+      - user_query: simulated user query (e.g. "What failed?", "Fix the issues", "Looks good")
+    - fixtures/evaluation-report.csv: Complete CSV with verdicts
+    - fixtures/journey-log.json: Journey log with verdicts
+    - fixtures/evaluation-summary.json: Summary with scores
+    - fixtures/refinement-suggestions.json: Available suggestions
+    - answers.yaml: Guidance for LLM answerer when handling follow-up questions
+    - annotations.yaml: Ground truth:
+      - expected_pass_count: integer count of PASSing ACs
+      - expected_fail_count: integer count of FAILing ACs
+      - expected_flagged_count: integer count of FLAGGed ACs
+      - expected_action_routing: string (fix/explain/confirm) for the user_query
+    Some cases include workspace fields for fix routing:
+    - workspace_branch: git branch for the prototype under review
+    - workspace_commit: exact commit of the original evaluation
+
+inputs:
+  tools:
+    - match: AskUserQuestion interactions
+      prompt: |
+        Answer based on the user_query in input.yaml and the answers.yaml guidance.
+        Simulate a designer reviewing eval results.
+
+outputs:
+  - path: conversation
+    schema: |
+      Conversational output — no files produced. Use {{ conversation }} in judges.
+
+traces:
+  stdout: true
+  stderr: true
+  metrics: true
+
+judges:
+  - name: plain_english
+    description: Checks that the response uses plain English, no jargon or raw file paths
+    prompt: |
+      You are evaluating whether the eval-review skill communicates results
+      in plain English suitable for a designer (not an engineer).
+
+      ## Conversation
+      {{ conversation }}
+
+      ## Check for
+      - No raw file paths (e.g. /path/to/file.json)
+      - No JSON snippets or code blocks
+      - No technical jargon (e.g. "T1 tier", "journey-log.json", "extract-state")
+      - Clear, natural language descriptions
+      - Approachable tone
+
+      ## Scoring
+      - Score 1.0 if fully plain English, designer-friendly
+      - Score 0.7 if mostly plain but occasional technical leakage
+      - Score 0.3 if heavily technical with jargon throughout
+      - Score 0.0 if reads like a log dump or debug output
+
+      Return a JSON object: {"score": <float>, "rationale": "<explanation>"}
+
+  - name: summary_accuracy
+    description: Checks that pass/fail/flagged counts in summary match CSV data
+    prompt: |
+      You are verifying that the eval-review conversation accurately reports
+      the pass/fail/flagged counts from the evaluation CSV.
+
+      ## Conversation
+      {{ conversation }}
+
+      ## Ground Truth Counts
+      Expected PASS count: {{ outputs.annotations.expected_pass_count | default("Unknown") }}
+      Expected FAIL count: {{ outputs.annotations.expected_fail_count | default("Unknown") }}
+      Expected FLAGGED count: {{ outputs.annotations.expected_flagged_count | default("Unknown") }}
+
+      ## Scoring
+      - Score 1.0 if all stated counts match ground truth exactly
+      - Score 0.7 if counts are approximately right (off by 1)
+      - Score 0.3 if counts are significantly wrong
+      - Score 0.0 if no counts mentioned or completely fabricated
+
+      Return a JSON object: {"score": <float>, "rationale": "<explanation>"}
+
+  - name: action_routing
+    description: Checks that user queries are correctly routed (Fix -> fix, Tell me more -> explain, Looks good -> confirm)
+    prompt: |
+      You are evaluating whether the eval-review skill correctly routes the
+      user's intent to the appropriate action.
+
+      ## User Query
+      {{ outputs.annotations.expected_action_routing | default("Unknown") }} routing expected
+
+      ## Conversation
+      {{ conversation }}
+
+      ## Routing Rules
+      - "Fix" / "Fix the issues" -> should offer to run fix flow
+      - "Tell me more" / "What failed?" -> should provide detailed explanation
+      - "Looks good" / "Ship it" -> should confirm and close
+
+      ## Scoring
+      - Score 1.0 if the response correctly routes to the expected action type
+      - Score 0.5 if partially correct (right direction but wrong specifics)
+      - Score 0.0 if routes to wrong action or no action offered
+
+      Return a JSON object: {"score": <float>, "rationale": "<explanation>"}
+
+  - name: offers_actions
+    description: Checks that the conversation offers actionable options
+    prompt: |
+      You are checking whether the eval-review conversation presents clear
+      action options to the user.
+
+      ## Conversation
+      {{ conversation }}
+
+      ## Check for
+      - At least 2-3 clear action options presented to the user
+      - Options should be specific (e.g. "Fix these issues", "See details", "Approve")
+      - Not just a wall of text — interactive, decision-oriented
+
+      ## Scoring
+      - Score 1.0 if clear, specific action options are offered
+      - Score 0.5 if some options mentioned but vaguely
+      - Score 0.0 if no actions offered, just a passive summary
+
+      Return a JSON object: {"score": <float>, "rationale": "<explanation>"}
+
+  - name: budget_check
+    builtin: cost_budget
+    arguments:
+      max_cost_usd: 1.50
+
+thresholds:
+  plain_english:
+    min_score: 0.7
+  summary_accuracy:
+    min_score: 0.7
+  action_routing:
+    min_score: 0.7
+  offers_actions:
+    min_score: 0.7
+  budget_check:
+    min_pass_rate: 1.0

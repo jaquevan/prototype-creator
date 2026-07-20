@@ -1,0 +1,6 @@
+strat_key: RHAISTRAT-1536
+user_query: "Fix AC-4"
+workspace: /Users/ejaquez/Desktop/rhoai-prototypes
+workspace_branch: mr-171
+workspace_commit: a202379
+workspace_reset: true

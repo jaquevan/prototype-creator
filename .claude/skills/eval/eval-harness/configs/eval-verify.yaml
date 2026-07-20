@@ -1,0 +1,420 @@
+name: eval-verify
+description: Evaluate eval-verify skill — Playwright x-ray walkthroughs for AC verification (Phase A)
+skill: eval-verify
+
+execution:
+  mode: case
+  arguments: "{strat_key} {prototype_url} --workspace={workspace}"
+  timeout: 300
+  parallelism: 2
+  max_budget_usd: 5.00
+
+runner:
+  type: claude-code
+  effort: high
+
+models:
+  skill: claude-opus-4-6
+  judge: claude-opus-4-6
+
+mlflow:
+  experiment: prototype-creator-eval
+
+permissions:
+  allow: ["Skill"]
+  deny: ["mcp__*"]
+
+dataset:
+  path: .claude/skills/eval/eval-harness/datasets/eval-verify/cases
+  schema: |
+    Each case directory contains:
+    - input.yaml: YAML with fields:
+      - strat_key: ([EXTERNAL: Jira] — real RHAISTRAT key)
+      - prototype_url: URL of the running prototype (e.g. http://localhost:9000)
+      - workspace: path to the prototype repo checkout
+    - fixtures/extract-state.json: Pre-built extraction with acceptance_criteria[]
+    - fixtures/evaluation-report.csv: Pre-classified CSV with tier assignments
+    - annotations.yaml: Ground truth:
+      - expected_verdict_map: dict mapping AC ID to expected verdict (PASS/FAIL/FLAGGED)
+      - expected_journey_count: integer count of expected journeys
+      - expected_screenshot_count: minimum number of screenshots expected
+    Workspace reset fields (added to input.yaml for reproducibility):
+    - workspace_branch: git branch to checkout before running
+    - workspace_commit: exact short SHA to reset to (pre-fix state)
+    - workspace_reset: boolean flag indicating the harness should run
+      scripts/reset-workspace.sh before executing the skill
+
+outputs:
+  - path: artifacts
+    schema: |
+      Artifacts produced by eval-verify:
+      - journey-log.json: Step log with screenshots, verdicts per AC journey
+        Fields: journeys[] with {ac_id, steps[], verdict, screenshots[], interaction_budget}
+      - journey-test.mjs: Generated Playwright test script
+      - screenshots/: Directory of captured screenshots (PNG)
+      - evaluation-report.csv: Updated CSV with PASS/FAIL/FLAGGED verdicts
+      - refinement-suggestions.json: Suggestions for FAILed ACs
+      - component-map.json: Source pre-scan with fields:
+        {ui_type, target_page, content_ready_selector, ac_element_mapping}
+
+traces:
+  stdout: true
+  stderr: true
+  events: true
+  metrics: true
+
+judges:
+  - name: journey_log_exists
+    description: Validates journey-log.json exists and has entries matching CSV AC IDs
+    check: |
+      import json
+      files = outputs.get("files", {})
+      log_files = [v for k, v in files.items() if k.endswith("journey-log.json")]
+      if not log_files:
+          return (False, "journey-log.json not produced")
+      log = json.loads(log_files[0])
+      journeys = log.get("journeys", [])
+      if not journeys:
+          return (False, "journey-log.json has no journeys")
+      ac_ids = [j.get("ac_id") for j in journeys]
+      return (True, f"{len(journeys)} journeys for ACs: {ac_ids}")
+
+  - name: validate_verdicts
+    description: Bidirectional CSV<->journey-log check — every CSV AC has a journey, every journey has a CSV row
+    check: |
+      import json, csv, io
+      files = outputs.get("files", {})
+      log_files = [v for k, v in files.items() if k.endswith("journey-log.json")]
+      csv_files = [v for k, v in files.items() if k.endswith("evaluation-report.csv")]
+      if not log_files:
+          return (False, "journey-log.json missing")
+      if not csv_files:
+          return (False, "evaluation-report.csv missing")
+      log = json.loads(log_files[0])
+      journey_ids = {j.get("ac_id") for j in log.get("journeys", [])}
+      reader = csv.DictReader(io.StringIO(
+          "\n".join(l for l in csv_files[0].splitlines() if not l.startswith("#"))
+      ))
+      csv_t1_ids = set()
+      for row in reader:
+          if row.get("tier") == "T1":
+              csv_t1_ids.add(row.get("criterion_id"))
+      missing_journeys = csv_t1_ids - journey_ids
+      orphan_journeys = journey_ids - csv_t1_ids
+      issues = []
+      if missing_journeys:
+          issues.append(f"T1 ACs without journeys: {missing_journeys}")
+      if orphan_journeys:
+          issues.append(f"Journeys without CSV rows: {orphan_journeys}")
+      if issues:
+          return (False, "; ".join(issues))
+      return (True, f"Bidirectional match: {len(csv_t1_ids)} T1 ACs")
+
+  - name: component_map_schema
+    description: Validates component-map.json has required fields
+    check: |
+      import json
+      files = outputs.get("files", {})
+      map_files = [v for k, v in files.items() if k.endswith("component-map.json")]
+      if not map_files:
+          return (False, "component-map.json not produced")
+      cmap = json.loads(map_files[0])
+      required = ["ui_type", "target_page", "content_ready_selector", "ac_element_mapping"]
+      missing = [f for f in required if f not in cmap]
+      if missing:
+          return (False, f"component-map.json missing fields: {missing}")
+      return (True, f"component-map.json valid: {list(cmap.keys())}")
+
+  - name: screenshot_coverage
+    description: Verifies screenshot count is at least equal to journey count
+    check: |
+      import json
+      files = outputs.get("files", {})
+      log_files = [v for k, v in files.items() if k.endswith("journey-log.json")]
+      if not log_files:
+          return (False, "journey-log.json missing")
+      log = json.loads(log_files[0])
+      journey_count = len(log.get("journeys", []))
+      screenshot_files = [k for k in files.keys() if "screenshots/" in k and k.endswith(".png")]
+      if len(screenshot_files) < journey_count:
+          return (False, f"Screenshots ({len(screenshot_files)}) < journeys ({journey_count})")
+      return (True, f"{len(screenshot_files)} screenshots for {journey_count} journeys")
+
+  - name: interaction_budget_uniqueness
+    description: Ensures no two journeys share the same interaction budget
+    check: |
+      import json
+      files = outputs.get("files", {})
+      log_files = [v for k, v in files.items() if k.endswith("journey-log.json")]
+      if not log_files:
+          return (False, "journey-log.json missing")
+      log = json.loads(log_files[0])
+      budgets = []
+      for j in log.get("journeys", []):
+          budget = j.get("interaction_budget")
+          if budget is not None:
+              budgets.append((j.get("ac_id"), budget))
+      seen = {}
+      duplicates = []
+      for ac_id, budget in budgets:
+          budget_key = json.dumps(budget, sort_keys=True)
+          if budget_key in seen:
+              duplicates.append(f"{ac_id} shares budget with {seen[budget_key]}")
+          seen[budget_key] = ac_id
+      if duplicates:
+          return (False, f"Duplicate budgets: {duplicates}")
+      return (True, f"{len(budgets)} unique interaction budgets")
+
+  - name: verdict_accuracy
+    description: Compares verdicts against ground truth expected_verdict_map
+    prompt: |
+      You are evaluating the accuracy of AC verdicts produced by the eval-verify skill.
+
+      ## Ground Truth
+      Expected verdict map from annotations:
+      {{ outputs.annotations.expected_verdict_map | default("No ground truth provided") }}
+
+      ## Actual Results
+      Journey log content:
+      {{ outputs.files | selectattr("0", "match", ".*journey-log.json") | map(attribute="1") | first | default("Not found") }}
+
+      ## Scoring
+      - Score 1.0 if all verdicts match ground truth exactly
+      - Score 0.8 if >80% match with minor disagreements on edge cases
+      - Score 0.5 if >50% match but some clear misclassifications
+      - Score 0.0 if verdicts are mostly wrong or missing
+
+      Return a JSON object: {"score": <float>, "rationale": "<explanation>"}
+
+  - name: nav_route_coverage
+    description: Detects orphaned pages — routes added without corresponding sidebar NavItems
+    check: |
+      import json
+      files = outputs.get("files", {})
+      delta_files = [v for k, v in files.items() if k.endswith("mr-delta.json")]
+      if not delta_files:
+          return (True, "No mr-delta — skipping nav check")
+      delta = json.loads(delta_files[0])
+      all_files = delta.get("new_files", []) + delta.get("modified_files", [])
+      cats = delta.get("categories", {})
+      for cat_files in cats.values():
+          if isinstance(cat_files, list):
+              all_files.extend(cat_files)
+      route_files = [f for f in all_files if "route" in f.lower()]
+      nav_files = [f for f in all_files if "layout" in f.lower() or "nav" in f.lower() or "sidebar" in f.lower()]
+      if route_files and not nav_files:
+          return (False, f"Routes changed ({route_files}) but no nav/layout files modified — pages may be orphaned")
+      log_files = [v for k, v in files.items() if k.endswith("journey-log.json")]
+      if log_files:
+          log = json.loads(log_files[0])
+          nav_fails = [j for j in log.get("journeys",[]) if j.get("verdict")=="FAIL" and any(w in j.get("title","").lower() for w in ["nav","sidebar","find","browse","access"])]
+          if nav_fails:
+              return (False, f"{len(nav_fails)} journeys failed on navigation: {[j['id'] for j in nav_fails]}")
+      return (True, "Routes and nav aligned, no nav-related journey failures")
+
+  - name: post_action_feedback
+    description: Checks that deploy/submit/create actions produce visible user feedback
+    check: |
+      import json
+      files = outputs.get("files", {})
+      log_files = [v for k, v in files.items() if k.endswith("journey-log.json")]
+      if not log_files:
+          return (True, "No journey-log — skipping")
+      log = json.loads(log_files[0])
+      action_journeys = [j for j in log.get("journeys",[]) if any(w in j.get("title","").lower() for w in ["deploy","submit","create","save"])]
+      if not action_journeys:
+          return (True, "No action journeys (deploy/submit/create) found")
+      issues = []
+      for j in action_journeys:
+          steps = j.get("steps",[])
+          last_step = steps[-1] if steps else {}
+          narration = last_step.get("narration","").lower()
+          if not any(w in narration for w in ["success","confirm","complete","created","deployed","saved","toast","alert","feedback"]):
+              issues.append(f"{j['id']}: last step has no success feedback in narration")
+      if issues:
+          return (False, f"Missing post-action feedback: {issues}")
+      return (True, f"{len(action_journeys)} action journeys have feedback")
+
+  - name: regression_from_predecessor
+    description: Detects design regression by comparing new component against base branch version
+    check: |
+      import json, subprocess, re
+      files = outputs.get("files", {})
+      cm_files = [v for k, v in files.items() if k.endswith("component-map.json")]
+      delta_files = [v for k, v in files.items() if k.endswith("mr-delta.json")]
+      if not cm_files or not delta_files:
+          return (True, "No component-map or mr-delta — skipping regression check")
+      cm = json.loads(cm_files[0])
+      delta = json.loads(delta_files[0])
+      workspace = delta.get("workspace", "")
+      if not workspace:
+          return (True, "No workspace path in mr-delta — skipping")
+      new_files = delta.get("new_files", [])
+      if not new_files:
+          return (True, "No new files — modification only, regression check N/A")
+      cats = delta.get("categories", {})
+      new_pages = cats.get("new_pages_components", cats.get("new_pages", []))
+      if not new_pages:
+          new_pages = [f for f in new_files if f.endswith('.tsx') and '/app/' in f]
+      if not new_pages:
+          return (True, "No new page components — not a new-feature prototype")
+      parent_dir = ""
+      for f in (new_pages if isinstance(new_pages, list) else []):
+          parts = f.rsplit("/", 1)
+          if len(parts) > 1:
+              parent_dir = parts[0]
+              break
+      if not parent_dir:
+          return (True, "Cannot determine parent directory")
+      grandparent = parent_dir.rsplit("/", 1)[0] if "/" in parent_dir else parent_dir
+      try:
+          base_files = subprocess.run(
+              ["git", "ls-tree", "-r", "--name-only", "origin/3.5", grandparent + "/"],
+              capture_output=True, text=True, cwd=workspace, timeout=5
+          ).stdout.strip().split("\n")
+          base_files = [f for f in base_files if f.strip() and f.endswith(('.tsx', '.ts'))]
+      except:
+          return (True, "Cannot read base branch — skipping")
+      if not base_files:
+          return (True, f"No predecessor in base branch at {grandparent}/ — new feature")
+      try:
+          base_imports = set()
+          for bf in base_files[:20]:
+              content = subprocess.run(
+                  ["git", "show", f"origin/3.5:{bf}"],
+                  capture_output=True, text=True, cwd=workspace, timeout=5
+              ).stdout
+              for m in re.findall(r'(FormGroup|TextInput|Select|Checkbox|NumberInput|Toggle|Radio|Switch|DatePicker|FileUpload|TextArea)', content):
+                  base_imports.add(m)
+          new_imports = set()
+          for nf in (new_pages if isinstance(new_pages, list) else []):
+              nf_content = files.get(nf, "")
+              if not nf_content:
+                  try:
+                      nf_content = open(f"{workspace}/{nf}").read()
+                  except:
+                      continue
+              for m in re.findall(r'(FormGroup|TextInput|Select|Checkbox|NumberInput|Toggle|Radio|Switch|DatePicker|FileUpload|TextArea)', nf_content):
+                  new_imports.add(m)
+          dropped = base_imports - new_imports
+          if dropped:
+              return (False, f"Regression: base has {base_imports} but new version dropped {dropped}")
+          return (True, f"No regression: new has {new_imports}, base had {base_imports}")
+      except Exception as e:
+          return (True, f"Regression check error: {e}")
+
+  - name: screenshot_step_coverage
+    description: Validates that every journey step has a screenshot (not None)
+    check: |
+      import json
+      files = outputs.get("files", {})
+      log_files = [v for k, v in files.items() if k.endswith("journey-log.json")]
+      if not log_files:
+          return (True, "No journey-log — skipping")
+      log = json.loads(log_files[0])
+      total = 0
+      missing = 0
+      gaps = []
+      for j in log.get("journeys", []):
+          for s in j.get("steps", []):
+              total += 1
+              ss = s.get("screenshot")
+              if not ss or ss == "None" or str(ss) == "None":
+                  missing += 1
+                  if missing <= 3:
+                      gaps.append(f"{j['id']} step {s.get('step')}")
+      if total == 0:
+          return (True, "No steps to check")
+      coverage = (total - missing) / total
+      if coverage < 0.6:
+          return (False, f"Only {total-missing}/{total} steps have screenshots ({coverage:.0%}). Gaps: {gaps}")
+      return (True, f"{total-missing}/{total} steps have screenshots ({coverage:.0%})")
+
+  - name: screenshot_not_blank
+    description: Checks that journey screenshots have real content (not blank/empty captures)
+    check: |
+      import os, json
+      files = outputs.get("files", {})
+      case_dir = outputs.get("case_dir", "")
+      log_files = [v for k, v in files.items() if k.endswith("journey-log.json")]
+      if not log_files:
+          return (True, "No journey-log — skipping")
+      log = json.loads(log_files[0])
+      blank = []
+      checked = 0
+      for j in log.get("journeys", []):
+          for s in j.get("steps", []):
+              ss = s.get("screenshot", "")
+              if not ss:
+                  continue
+              ss_path = os.path.join(case_dir, ss) if case_dir else ss
+              if not os.path.exists(ss_path):
+                  ss_path = os.path.join(os.path.dirname(case_dir or "."), ss)
+              if os.path.exists(ss_path):
+                  size = os.path.getsize(ss_path)
+                  checked += 1
+                  if size < 10000:
+                      blank.append(f"{ss} ({size} bytes)")
+      if not checked:
+          return (True, "No screenshot files accessible — skipping")
+      if blank:
+          return (False, f"{len(blank)} potentially blank screenshots (<10KB): {blank[:3]}")
+      return (True, f"{checked} screenshots all have real content (>10KB)")
+
+  - name: screenshot_content_match
+    description: Verifies journey screenshots reference valid routes from component-map.json
+    check: |
+      import json
+      files = outputs.get("files", {})
+      log_files = [v for k, v in files.items() if k.endswith("journey-log.json")]
+      cm_files = [v for k, v in files.items() if k.endswith("component-map.json")]
+      if not log_files or not cm_files:
+          return (True, "Missing journey-log or component-map — skipping")
+      log = json.loads(log_files[0])
+      cm = json.loads(cm_files[0])
+      target = cm.get("target_page", "")
+      issues = []
+      for j in log.get("journeys", []):
+          has_screenshot = any(s.get("screenshot") for s in j.get("steps", []))
+          has_narration = any(s.get("narration") for s in j.get("steps", []))
+          if has_screenshot and not has_narration:
+              issues.append(f"{j['id']}: has screenshots but no narration")
+          if has_narration and not has_screenshot:
+              issues.append(f"{j['id']}: has narration but no screenshots")
+      if issues:
+          return (False, f"Screenshot-narration gaps: {issues[:3]}")
+      journeys_with_both = sum(1 for j in log.get("journeys",[]) if any(s.get("screenshot") for s in j.get("steps",[])) and any(s.get("narration") for s in j.get("steps",[])))
+      return (True, f"{journeys_with_both} journeys have paired screenshots+narrations, target: {target}")
+
+  - name: budget_check
+    builtin: cost_budget
+    arguments:
+      max_cost_usd: 5.00
+
+thresholds:
+  journey_log_exists:
+    min_pass_rate: 1.0
+  validate_verdicts:
+    min_pass_rate: 1.0
+  component_map_schema:
+    min_pass_rate: 1.0
+  screenshot_coverage:
+    min_pass_rate: 0.9
+  interaction_budget_uniqueness:
+    min_pass_rate: 0.9
+  verdict_accuracy:
+    min_score: 0.7
+  nav_route_coverage:
+    min_pass_rate: 1.0
+  post_action_feedback:
+    min_pass_rate: 0.8
+  regression_from_predecessor:
+    min_pass_rate: 0.8
+  screenshot_step_coverage:
+    min_pass_rate: 0.8
+  screenshot_not_blank:
+    min_pass_rate: 1.0
+  screenshot_content_match:
+    min_pass_rate: 1.0
+  budget_check:
+    min_pass_rate: 1.0

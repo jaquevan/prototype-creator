@@ -1,0 +1,197 @@
+name: eval-classify
+description: Evaluate eval-classify skill — AC tier classification and CSV initialization
+skill: eval-classify
+
+execution:
+  mode: case
+  arguments: "{strat_key}"
+  timeout: 60
+  parallelism: 2
+  max_budget_usd: 1.00
+
+runner:
+  type: claude-code
+  effort: medium
+
+models:
+  skill: claude-sonnet-4-6
+  judge: claude-opus-4-6
+
+mlflow:
+  experiment: prototype-creator-eval
+
+permissions:
+  allow: []
+  deny: ["mcp__*"]
+
+dataset:
+  path: .claude/skills/eval/eval-harness/datasets/eval-classify/cases
+  schema: |
+    Each case directory contains:
+    - input.yaml: YAML with fields:
+      - strat_key: Jira key (used for artifact path lookup)
+    - fixtures/extract-state.json: Pre-built extraction with acceptance_criteria[]
+      containing ACs of varying types (UI-visible, backend-only, subjective)
+    - annotations.yaml: Ground truth:
+      - expected_tiers: dict mapping AC ID to expected tier (T1, T3, T4)
+      - expected_t3_auto_pass: list of AC IDs that should auto-PASS as T3
+      - expected_csv_columns: list of expected column headers in Section 1
+
+outputs:
+  - path: artifacts
+    schema: |
+      - evaluation-report.csv: CSV with Section 1 header + tier/verdict rows
+        Columns per csv-schema.yaml: criterion_id, criterion_text, tier, verdict,
+        rationale, evidence, human_action, confidence
+
+traces:
+  stdout: true
+  stderr: true
+  metrics: true
+
+judges:
+  - name: csv_schema_valid
+    description: Validates CSV has correct columns per csv-schema.yaml
+    check: |
+      import csv, io
+      files = outputs.get("files", {})
+      csv_files = [v for k, v in files.items() if k.endswith("evaluation-report.csv")]
+      if not csv_files:
+          return (False, "evaluation-report.csv not produced")
+      reader = csv.reader(io.StringIO(csv_files[0]))
+      rows = list(reader)
+      data_rows = [r for r in rows if r and not r[0].startswith("#")]
+      if len(data_rows) < 2:
+          return (False, "CSV has no data rows")
+      header = data_rows[0]
+      required = ["criterion_id", "criterion_text", "tier", "verdict"]
+      missing = [c for c in required if c not in header]
+      if missing:
+          return (False, f"CSV missing columns: {missing}")
+      return (True, f"CSV valid: {len(data_rows)-1} rows, columns: {header}")
+
+  - name: tier_validity
+    description: Ensures only T1/T3/T4 tiers are assigned (no T2/T5 leakage)
+    check: |
+      import csv, io
+      files = outputs.get("files", {})
+      csv_files = [v for k, v in files.items() if k.endswith("evaluation-report.csv")]
+      if not csv_files:
+          return (False, "No CSV")
+      reader = csv.DictReader(io.StringIO(
+          "\n".join(l for l in csv_files[0].splitlines() if not l.startswith("#"))
+      ))
+      invalid = []
+      for row in reader:
+          tier = row.get("tier", "")
+          if tier and tier not in ("T1", "T3", "T4"):
+              invalid.append(f"{row.get('criterion_id')}: {tier}")
+      if invalid:
+          return (False, f"Invalid tiers: {invalid}")
+      return (True, "All tiers are T1/T3/T4")
+
+  - name: t3_auto_pass
+    description: Verifies T3 (backend-only) rows have auto-PASS verdict
+    check: |
+      import csv, io
+      files = outputs.get("files", {})
+      csv_files = [v for k, v in files.items() if k.endswith("evaluation-report.csv")]
+      if not csv_files:
+          return (False, "No CSV")
+      reader = csv.DictReader(io.StringIO(
+          "\n".join(l for l in csv_files[0].splitlines() if not l.startswith("#"))
+      ))
+      problems = []
+      for row in reader:
+          if row.get("tier") == "T3" and row.get("verdict") != "PASS":
+              problems.append(f"{row.get('criterion_id')}: {row.get('verdict')}")
+      if problems:
+          return (False, f"T3 rows without PASS: {problems}")
+      return (True, "All T3 rows auto-PASS")
+
+  - name: tier_accuracy
+    description: Validates tier assignments against ground truth AND checks T3/T4 plausibility
+    check: |
+      import csv, io, json, re
+      files = outputs.get("files", {})
+      csv_files = [v for k, v in files.items() if k.endswith("evaluation-report.csv")]
+      if not csv_files:
+          return (False, "No CSV")
+      reader = csv.DictReader(io.StringIO(
+          "\n".join(l for l in csv_files[0].splitlines() if not l.startswith("#"))
+      ))
+      rows = list(reader)
+      ui_words = ["display", "show", "page", "button", "column", "table", "form", "modal", "tooltip"]
+      problems = []
+      for row in rows:
+          tier = row.get("tier", "")
+          text = (row.get("criterion_text", "") or "").lower()
+          if tier == "T3" and any(w in text.split() for w in ui_words):
+              problems.append(f"{row.get('criterion_id')}: T3 but has UI word in text")
+          if tier == "T4" and any(w in text.split() for w in ["button", "column", "table", "form", "modal"]):
+              problems.append(f"{row.get('criterion_id')}: T4 but has concrete UI element")
+      annotations = outputs.get("annotations", {})
+      expected = annotations.get("expected_tiers", {})
+      if expected:
+          for row in rows:
+              cid = row.get("criterion_id", "")
+              if cid in expected and row.get("tier") != expected[cid]:
+                  problems.append(f"{cid}: got {row.get('tier')}, expected {expected[cid]}")
+      if problems:
+          return (False, f"Tier issues: {problems}")
+      msg = f"{len(rows)} tiers plausibility-checked"
+      if expected:
+          msg += f", {len(expected)} match ground truth"
+      return (True, msg)
+
+  - name: substring_false_positives
+    description: Catches classify-tiers.js substring matching edge cases where compound words trigger false keyword matches
+    check: |
+      import csv, io
+      files = outputs.get("files", {})
+      csv_files = [v for k, v in files.items() if k.endswith("evaluation-report.csv")]
+      if not csv_files:
+          return (False, "No CSV")
+      reader = csv.DictReader(io.StringIO(
+          "\n".join(l for l in csv_files[0].splitlines() if not l.startswith("#"))
+      ))
+      false_positives = []
+      ui_substrings = {"form": ["format", "transform", "inform", "perform", "formula"],
+                        "tab": ["table", "establish", "stable", "notable", "database"],
+                        "menu": ["menu"],
+                        "label": ["label"],
+                        "panel": ["panel"]}
+      for row in reader:
+          text = (row.get("criterion_text", "") or "").lower()
+          tier = row.get("tier", "")
+          if tier == "T1":
+              for kw, compounds in ui_substrings.items():
+                  for compound in compounds:
+                      if compound != kw and compound in text:
+                          import re
+                          real_ui = ["display","show","page","button","column","label","modal","table","tooltip","tab","panel","sidebar","icon","banner","notification","dropdown","menu","checkbox","toggle","indicator","badge","status","visible","hidden","render"]
+                          has_real_ui = any(re.search(r'\b' + w + r'\b', text) for w in real_ui)
+                          if not has_real_ui:
+                              false_positives.append(f"{row.get('criterion_id')}: T1 may be false positive ('{compound}' contains '{kw}')")
+      if false_positives:
+          return (False, f"Potential substring false positives: {false_positives}")
+      return (True, "No substring false positives detected")
+
+  - name: budget_check
+    builtin: cost_budget
+    arguments:
+      max_cost_usd: 1.00
+
+thresholds:
+  csv_schema_valid:
+    min_pass_rate: 1.0
+  tier_validity:
+    min_pass_rate: 1.0
+  t3_auto_pass:
+    min_pass_rate: 1.0
+  tier_accuracy:
+    min_pass_rate: 0.9
+  substring_false_positives:
+    min_pass_rate: 1.0
+  budget_check:
+    min_pass_rate: 1.0

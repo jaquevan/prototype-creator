@@ -1,0 +1,11 @@
+expected_exit_reason: all_pass
+expected_phase_a_pass: true
+expected_ac_pass_count: 6
+expected_ac_fail_count: 0
+expected_ac_flagged_count: 0
+expected_iteration_count: 2
+expected_html_produced: false
+expected_chat_summary: true
+expected_personas: [paula-platform-engineer, deena-junior]
+expected_usability_dimensions: 7
+expected_max_cost_usd: 12.00

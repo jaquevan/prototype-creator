@@ -1,0 +1,10 @@
+expected_verdict_map:
+  AC-1: PASS
+  AC-2: PASS
+  AC-3: PASS
+  AC-4: FAIL
+  AC-5: PASS
+  AC-6: PASS
+expected_journey_count: 6
+expected_screenshot_count: 6
+expected_component_map_fields: [ui_type, target_page, content_ready_selector, ac_element_mapping]

@@ -29,6 +29,8 @@ build/
 .coverage
 .coverage.*
 htmlcov/
+.pytest_cache/
+.ruff_cache/
 
 # IDE
 .idea/
@@ -39,8 +41,11 @@ htmlcov/
 # Test fixtures — oversized files (>20MB) excluded from git
 .claude/skills/eval/tests/fixtures/images/oversized-test.png
 
-# Eval harness integration (local testing only, not pushed)
-.claude/skills/eval/eval-harness/
+# Eval harness integration — track configs, datasets, and judges; ignore runtime data
+.claude/skills/eval/eval-harness/mlflow.db
+.claude/skills/eval/eval-harness/mlruns/
+.claude/skills/eval/eval-harness/runs/
+.claude/skills/eval/eval-harness/STEVE-CALL-BRIEF.md
 
 # Stray Playwright scripts from eval runs (should be in .artifacts/)
 .claude/skills/eval/journey-test-*.mjs
@@ -48,6 +53,13 @@ htmlcov/
 
 # Run metrics (generated per-run, not source)
 .artifacts/**/run-metrics.json
+
+# MLflow local tracking (may be created at project root or eval-harness root)
+mlflow.db
+mlruns/
+
+# Eval harness run outputs (created by /eval-run)
+eval/runs/
 
 # Cursor workspace state
 .cursor/

@@ -1,0 +1,26 @@
+{
+  "workspace": "/Users/ejaquez/Desktop/rhoai-prototypes",
+  "branch": "mr-174",
+  "commit": "fa9b250",
+  "base_branch": "origin/3.5",
+  "analyzed_at": "2026-07-15T18:05:00Z",
+  "modified_files": [
+    "src/app/AIHub/Deployments/Deployments.tsx",
+    "src/app/AppLayout/AppLayout.tsx",
+    "src/app/utils/FeatureFlagsContext.tsx"
+  ],
+  "new_files": [],
+  "stats": {
+    "files_changed": 3,
+    "insertions": 265,
+    "deletions": 9
+  },
+  "categories": {
+    "pages_components": ["src/app/AIHub/Deployments/Deployments.tsx"],
+    "navigation_routes": ["src/app/AppLayout/AppLayout.tsx"],
+    "feature_flags": ["src/app/utils/FeatureFlagsContext.tsx"],
+    "styles": [],
+    "tests": []
+  },
+  "navigation_gaps": []
+}

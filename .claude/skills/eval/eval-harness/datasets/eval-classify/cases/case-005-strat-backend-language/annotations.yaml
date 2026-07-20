@@ -1,0 +1,13 @@
+expected_tiers:
+  AC-1: T1
+  AC-2: T3
+  AC-3: T3
+  AC-4: T1
+  AC-5: T1
+  AC-6: T1
+  AC-7: T1
+  AC-8: T4
+notes: |
+  AC-2 (cross-tenant isolation) and AC-3 (long-lived API keys) are backend/identity
+  concerns with no UI counterpart. AC-8 (documentation) is T4. The deterministic
+  keyword classifier misses these because the text doesn't contain explicit T3 triggers.

@@ -1,0 +1,12 @@
+# AC-1: "format" contains "form", "validates" contains "tab" -> false T1 (should be T3, backend-only)
+# AC-2: "transformation" contains "form", "establishes" contains "tab", "stable" contains "tab" -> false T1 (should be T3)
+# AC-3: "informs" contains "form", "status" is a UI keyword -> T1 (correctly T1 because "status" is genuine UI)
+# AC-4: genuine UI AC with real table/column/dropdown -> T1 (correctly T1)
+# AC-5: "notable" contains "tab", "payload" is backend -> should be T3 but classifier says T1
+expected_tiers:
+  AC-1: T3
+  AC-2: T3
+  AC-3: T1
+  AC-4: T1
+  AC-5: T3
+expected_known_false_positives: [AC-1, AC-2, AC-5]

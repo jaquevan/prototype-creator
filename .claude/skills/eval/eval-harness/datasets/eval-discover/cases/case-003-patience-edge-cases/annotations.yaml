@@ -1,0 +1,29 @@
+# Edge cases for patience formula validation
+test_type: patience_edge_cases
+
+# These are the expected behaviors:
+# 1. patience_end must match last trace step's patience value
+# 2. Confusion events must decrease patience by the correct drain rate
+# 3. Dead ends must drain more than confusion events
+# 4. Recovery only applies after frustration occurred
+# 5. Patience clamps between 0 and 100
+# 6. Each task starts at 100% regardless of previous task
+
+expected_patience_checks:
+  - scenario: "Low patience + 7 confusion events = clamp at 0"
+    patience_level: Low
+    confusion_events: 7
+    expected_min_patience: 0
+    expected_max_patience: 0
+  - scenario: "High patience + 1 confusion = exactly 95"
+    patience_level: High
+    confusion_events: 1
+    expected_min_patience: 95
+    expected_max_patience: 95
+  - scenario: "Medium patience + dead end = 80"
+    patience_level: Medium
+    dead_ends: 1
+    expected_min_patience: 80
+    expected_max_patience: 80
+
+expected_junior_min_confusion: 1

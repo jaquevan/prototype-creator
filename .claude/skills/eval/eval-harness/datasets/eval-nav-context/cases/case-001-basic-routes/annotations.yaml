@@ -1,0 +1,5 @@
+expected_route_count: 89
+expected_nav_sections: []
+expected_source_file: src/app/routes.tsx
+has_parameterized_routes: true
+has_nested_routes: true

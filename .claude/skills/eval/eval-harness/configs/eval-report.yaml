@@ -1,0 +1,200 @@
+name: eval-report
+description: Evaluate eval-report skill — HTML evaluation report generation from pipeline artifacts
+skill: eval-report
+
+execution:
+  mode: case
+  arguments: "{strat_key}"
+  timeout: 120
+  max_budget_usd: 2.00
+
+runner:
+  type: claude-code
+  effort: medium
+
+models:
+  skill: claude-sonnet-4-6
+  judge: claude-opus-4-6
+
+mlflow:
+  experiment: prototype-creator-eval
+
+permissions:
+  allow: []
+  deny: ["mcp__*"]
+
+dataset:
+  path: .claude/skills/eval/eval-harness/datasets/eval-report/cases
+  schema: |
+    Each case directory contains:
+    - input.yaml: YAML with fields:
+      - strat_key: Jira key (used for artifact path lookup)
+    - fixtures/evaluation-report.csv: Complete CSV with Section 1 + Section 2
+    - fixtures/journey-log.json: Complete journey log with verdicts + usability_dimensions
+    - fixtures/persona-results.json: Persona walkthrough results
+    - fixtures/extract-state.json: Extraction state
+    - fixtures/screenshots/: Directory of captured screenshots (PNG)
+    - annotations.yaml: Ground truth:
+      - expected_overall_score: string format "X/21"
+      - expected_section_count: number of HTML sections
+      - expected_screenshot_count: minimum embedded screenshots
+
+outputs:
+  - path: artifacts
+    schema: |
+      Artifacts produced by eval-report:
+      - evaluation-report.html: Self-contained HTML report with:
+        - Embedded base64 screenshots
+        - AC verdicts table
+        - Usability dimension scores
+        - Overall score in "X/21" format
+      - evaluation-summary.json: Machine-readable summary with:
+        - overall_score, phase_a_results, phase_b_results, timestamp
+
+traces:
+  stdout: true
+  stderr: true
+  metrics: true
+
+judges:
+  - name: html_produced
+    description: Validates evaluation-report.html is produced and non-empty
+    check: |
+      files = outputs.get("files", {})
+      html_files = [v for k, v in files.items() if k.endswith("evaluation-report.html")]
+      if not html_files:
+          return (False, "evaluation-report.html not produced")
+      if len(html_files[0].strip()) < 100:
+          return (False, "evaluation-report.html is nearly empty")
+      return (True, f"evaluation-report.html produced ({len(html_files[0])} chars)")
+
+  - name: summary_json_valid
+    description: Validates evaluation-summary.json is valid JSON with expected keys
+    check: |
+      import json
+      files = outputs.get("files", {})
+      summary_files = [v for k, v in files.items() if k.endswith("evaluation-summary.json")]
+      if not summary_files:
+          return (False, "evaluation-summary.json not produced")
+      try:
+          summary = json.loads(summary_files[0])
+      except json.JSONDecodeError as e:
+          return (False, f"Invalid JSON: {e}")
+      expected_keys = ["key", "status", "counts"]
+      missing = [k for k in expected_keys if k not in summary]
+      if missing:
+          return (False, f"Missing keys: {missing}")
+      return (True, f"evaluation-summary.json valid: {list(summary.keys())}")
+
+  - name: validate_artifacts_pass
+    description: Validates that validate-artifacts.js would pass on the output
+    check: |
+      import json
+      files = outputs.get("files", {})
+      html_files = [v for k, v in files.items() if k.endswith("evaluation-report.html")]
+      csv_files = [v for k, v in files.items() if k.endswith("evaluation-report.csv")]
+      log_files = [v for k, v in files.items() if k.endswith("journey-log.json")]
+      missing = []
+      if not html_files: missing.append("evaluation-report.html")
+      if not csv_files: missing.append("evaluation-report.csv")
+      if not log_files: missing.append("journey-log.json")
+      if missing:
+          return (False, f"validate-artifacts would fail — missing: {missing}")
+      return (True, "All required artifacts present for validation")
+
+  - name: base64_screenshots
+    description: Validates base64 screenshots are embedded in HTML (skips if no screenshots in fixtures)
+    check: |
+      annotations = outputs.get("annotations", {})
+      if not annotations.get("has_screenshots", True):
+          return (True, "No screenshots in fixtures — skipping (fixture-only run)")
+      files = outputs.get("files", {})
+      html_files = [v for k, v in files.items() if k.endswith("evaluation-report.html")]
+      if not html_files:
+          return (False, "No HTML to check")
+      html = html_files[0]
+      b64_count = html.count("data:image/png;base64,")
+      if b64_count == 0:
+          return (False, "No base64 screenshots embedded in HTML")
+      return (True, f"{b64_count} base64 screenshots embedded")
+
+  - name: overall_score_format
+    description: Validates overall_score is in "X/21" format
+    check: |
+      import json, re
+      files = outputs.get("files", {})
+      summary_files = [v for k, v in files.items() if k.endswith("evaluation-summary.json")]
+      if not summary_files:
+          return (False, "No summary JSON")
+      summary = json.loads(summary_files[0])
+      usability = summary.get("usability", {})
+      score = usability.get("overall_score", summary.get("overall_score", ""))
+      if not score:
+          return (False, "No overall_score found in summary or usability section")
+      if not re.match(r"^[\d.]+/\d+$", str(score)):
+          return (False, f"overall_score '{score}' not in X/N format")
+      return (True, f"Score format correct: {score}")
+
+  - name: report_completeness
+    description: LLM judge for report completeness and readability
+    prompt: |
+      You are evaluating the completeness of an evaluation report HTML document.
+
+      ## Report Content (first 5000 chars)
+      {{ (outputs.files | selectattr("0", "match", ".*evaluation-report.html") | map(attribute="1") | first | default("Not found"))[:5000] }}
+
+      ## Summary JSON
+      {{ outputs.files | selectattr("0", "match", ".*evaluation-summary.json") | map(attribute="1") | first | default("Not found") }}
+
+      ## Scoring
+      - Score 1.0 if report has all sections (AC verdicts, usability scores, screenshots, overall score), is well-structured and readable
+      - Score 0.7 if report has most sections but is missing minor elements
+      - Score 0.4 if report is incomplete — missing major sections
+      - Score 0.0 if report is broken, empty, or unreadable
+
+      Return a JSON object: {"score": <float>, "rationale": "<explanation>"}
+
+  - name: consistency_narrative_accuracy
+    description: Verifies the consistency narrative text matches the actual data (catches field mismatches)
+    check: |
+      import json, re
+      files = outputs.get("files", {})
+      html_files = [v for k, v in files.items() if k.endswith("evaluation-report.html")]
+      cr_files = [v for k, v in files.items() if k.endswith("consistency-report.json")]
+      if not html_files or not cr_files:
+          return (True, "No HTML or consistency report — skipping")
+      cr = json.loads(cr_files[0])
+      if cr.get("skipped"):
+          return (True, "Consistency skipped")
+      summary = cr.get("summary", {})
+      checked = summary.get("total_guidelines_checked", 0)
+      html = html_files[0]
+      match = re.search(r'across (\d+) guidelines checked', html)
+      if match:
+          html_checked = int(match.group(1))
+          if html_checked != checked:
+              return (False, f"Narrative says {html_checked} guidelines but data has {checked}")
+      if "0 guidelines checked" in html and checked > 0:
+          return (False, f"Narrative says 0 guidelines but {checked} were actually checked")
+      return (True, f"Narrative matches data: {checked} guidelines")
+
+  - name: budget_check
+    builtin: cost_budget
+    arguments:
+      max_cost_usd: 2.00
+
+thresholds:
+  html_produced:
+    min_pass_rate: 1.0
+  summary_json_valid:
+    min_pass_rate: 1.0
+  validate_artifacts_pass:
+    min_pass_rate: 1.0
+  base64_screenshots:
+    min_pass_rate: 0.9
+  overall_score_format:
+    min_pass_rate: 1.0
+  report_completeness:
+    min_score: 0.7
+  budget_check:
+    min_pass_rate: 1.0

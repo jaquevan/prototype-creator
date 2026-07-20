@@ -1,0 +1,44 @@
+[
+  {
+    "persona": "test-junior",
+    "persona_name": "Test Junior (Low Patience)",
+    "task_index": 1,
+    "task": "Find and understand the agent catalog",
+    "trace": [
+      {"step": 1, "what_i_see": "Landing page with sidebar", "action": "scan sidebar", "confidence": "low", "patience": 100, "screenshot": "screenshots/test-step-1.png", "confusion_event": true, "dead_end": false},
+      {"step": 2, "what_i_see": "Technical terms everywhere", "action": "try to find agents", "confidence": "low", "patience": 85, "screenshot": "screenshots/test-step-2.png", "confusion_event": true, "dead_end": false},
+      {"step": 3, "what_i_see": "Still confused", "action": "click random link", "confidence": "low", "patience": 70, "screenshot": "screenshots/test-step-3.png", "confusion_event": true, "dead_end": false},
+      {"step": 4, "what_i_see": "Wrong page", "action": "go back", "confidence": "low", "patience": 55, "screenshot": "screenshots/test-step-4.png", "confusion_event": true, "dead_end": true},
+      {"step": 5, "what_i_see": "Stuck", "action": "abandon", "confidence": "low", "patience": 10, "screenshot": "screenshots/test-step-5.png", "confusion_event": true, "dead_end": false}
+    ],
+    "patience_start": 100,
+    "patience_end": 10,
+    "confusion_events": [
+      {"step": 1, "trigger": "K8s jargon", "knowledge_gap": "kubernetes: none", "patience_cost": -15},
+      {"step": 2, "trigger": "Agent terminology", "knowledge_gap": "agents: none", "patience_cost": -15},
+      {"step": 3, "trigger": "Pipeline concepts", "knowledge_gap": "mlops: none", "patience_cost": -15},
+      {"step": 4, "trigger": "Dead end", "knowledge_gap": "navigation", "patience_cost": -30},
+      {"step": 5, "trigger": "More jargon", "knowledge_gap": "kubernetes: none", "patience_cost": -15}
+    ],
+    "dead_ends": 1,
+    "would_complete": false,
+    "outcome": "abandoned"
+  },
+  {
+    "persona": "test-senior",
+    "persona_name": "Test Senior (High Patience)",
+    "task_index": 1,
+    "task": "Find and understand the agent catalog",
+    "trace": [
+      {"step": 1, "what_i_see": "Landing page with sidebar navigation showing AI Hub section", "action": "click AI Hub", "confidence": "high", "patience": 100, "screenshot": "screenshots/test-sr-step-1.png", "confusion_event": false, "dead_end": false},
+      {"step": 2, "what_i_see": "Agent catalog with cards showing different agent types", "action": "browse cards", "confidence": "high", "patience": 100, "screenshot": "screenshots/test-sr-step-2.png", "confusion_event": false, "dead_end": false},
+      {"step": 3, "what_i_see": "Agent detail page with deployment options", "action": "review details", "confidence": "high", "patience": 100, "screenshot": "screenshots/test-sr-step-3.png", "confusion_event": false, "dead_end": false}
+    ],
+    "patience_start": 100,
+    "patience_end": 100,
+    "confusion_events": [],
+    "dead_ends": 0,
+    "would_complete": true,
+    "outcome": "completed"
+  }
+]
