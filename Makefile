@@ -1,4 +1,4 @@
-.PHONY: test test-unit test-scripts setup clean context
+.PHONY: test test-unit test-scripts setup clean clean-key context
 
 # Run all tests
 test:
@@ -16,10 +16,12 @@ test-scripts:
 setup:
 	uv sync
 
-# Fetch context (design system + decision-kit)
+# Fetch context (design system + decision-kit + usability testing + consistency checker)
 context:
 	bash scripts/fetch-design-system-context.sh
 	bash scripts/bootstrap-decision-kit.sh
+	bash .claude/skills/eval/scripts/bootstrap-usability-testing.sh
+	bash .claude/skills/eval/scripts/bootstrap-consistency-checker.sh
 
 # Clean generated artifacts
 clean:
@@ -29,3 +31,16 @@ clean:
 # Generate pipeline report
 report:
 	uv run python3 scripts/generate-report.py
+
+# Publish an evaluation report to GitLab Pages
+# Usage: make publish-report KEY=RHAISTRAT-1536
+publish-report:
+	@if [ -z "$(KEY)" ]; then echo "Usage: make publish-report KEY=RHAISTRAT-1536"; exit 1; fi
+	bash .claude/skills/eval/scripts/publish-report.sh .artifacts/$(KEY)/
+
+# Clean artifacts for a single prototype key
+# Usage: make clean-key KEY=RHAISTRAT-1742
+clean-key:
+	@if [ -z "$(KEY)" ]; then echo "Usage: make clean-key KEY=RHAISTRAT-1234"; exit 1; fi
+	rm -rf .artifacts/$(KEY)/
+	@echo "Cleared .artifacts/$(KEY)/"

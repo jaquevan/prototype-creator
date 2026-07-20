@@ -1,0 +1,82 @@
+# Product Overlay — RHOAI (Red Hat OpenShift AI)
+# This file contains all product-specific configuration for the prototype-evaluate skill.
+# To use this evaluator with a different product, create a new overlay file
+# (e.g., product-overlay-rails.yaml) with your product's values and pass it via --overlay flag.
+#
+# See references/skill-overlays.md for the overlay pattern and how to create your own.
+
+product:
+  name: "Red Hat OpenShift AI"
+  short_name: "rhoai"
+  version: "3.5"
+
+# Jira configuration — maps project key prefixes to instance URLs
+jira:
+  instances:
+    - prefix: "RHAISTRAT-"
+      url: "https://issues.redhat.com/browse/"
+      type: "strat"
+    - prefix: "RHAIRFE-"
+      url: "https://issues.redhat.com/browse/"
+      type: "rfe"
+    - prefix: "RHOAIUX-"
+      url: "https://redhat.atlassian.net/browse/"
+      type: "outcome"
+  outcome_project: "RHOAIUX"
+  outcome_issue_type: "Outcome"
+  ac_location: "description"  # field where acceptance criteria live in the ticket
+
+# Git configuration — prototype repo conventions
+git:
+  base_branch: "3.5"
+  remote_url: "https://gitlab.cee.redhat.com/uxd/prototypes/rhoai.git"
+  local_workspace: "~/Desktop/rhoai-prototypes"
+  pages_base_url: "https://rhoai-5171de.pages.redhat.com"
+  mr_branch_pattern: "mr-{number}"
+  diff_url_template: "https://gitlab.cee.redhat.com/uxd/prototypes/rhoai/-/merge_requests/{number}/diffs"
+
+# Design system — PatternFly configuration for consistency checks
+design_system:
+  name: "PatternFly 6"
+  context_path: ".context/consistency-checker/"
+  guidelines_path: ".context/consistency-checker/guidelines/"
+  analyze_script: ".context/consistency-checker/scripts/analyze.py"
+
+# Personas — usability testing personas for dimension scoring
+personas:
+  context_path: ".context/usability-testing/personas/"
+  rubric_path: ".context/usability-testing/prompts/evaluate-flow.md"
+  default_pair: ["deena-junior", "deena-senior"]
+
+# Navigation conventions — what constitutes "reachable via sidebar"
+navigation:
+  sidebar_file: "src/app/AppLayout/AppLayout.tsx"
+  routes_file: "src/app/routes.tsx"
+  feature_flags_file: "src/app/utils/FeatureFlagsContext.tsx"
+
+# Known MR mapping — maps STRAT keys to GitLab MR numbers
+# This is a workaround until we can query GitLab API directly
+known_mrs:
+  RHAISTRAT-1527: 168
+  RHAISTRAT-133: 169
+  RHAISTRAT-1492: 170
+  RHAISTRAT-1267: 167
+  RHAISTRAT-1536: 171
+  RHAISTRAT-1535: 172
+  RHAISTRAT-1745: 176
+  RHAISTRAT-1474: 173
+  RHAISTRAT-1740: 175
+  RHAISTRAT-432: 174
+  RHAISTRAT-1521: 177
+  RHAISTRAT-1433: 178
+  RHAISTRAT-1762: 180
+  RHAISTRAT-1761: 183
+  RHAISTRAT-1758: 181
+  RHAISTRAT-1744: 182
+  RHAISTRAT-1742: 184
+  RHAISTRAT-1741: 179
+
+# Google Sheet integration
+tracking:
+  sheet_id: "1pVpmc4RKLwM-fLAH8mR2uj2hlWX30TGiot8kpg5ETEo"
+  sheet_name: "Automated Eval"

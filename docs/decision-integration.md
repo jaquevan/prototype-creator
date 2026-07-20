@@ -15,7 +15,7 @@ prototype-creator integrates with [decision-kit](https://github.com/jnemargut/de
 Decisions are **not a fixed checklist**. The AI analyzes the RFE, target codebase (if `--workspace` is set), and any upstream decisions to plan which decisions actually need human judgment. Decisions the AI is confident about are auto-resolved with a note.
 
 ```
-/prototype.create PROJ-298 --mode=decide --fidelity=medium --workspace=/path/to/rhoai
+/prototype-create PROJ-298 --mode=decide --fidelity=medium --workspace=/path/to/rhoai
 
   Decision Plan (6 decisions):
   ─────────────────────────────

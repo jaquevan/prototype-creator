@@ -46,13 +46,6 @@ defaults:
   workspace: null
   max_refinement_cycles: 3
 
-# --- Design System ---
-design_system:
-  name: PatternFly
-  version: "6"
-  docs_url: https://www.patternfly.org/
-  context_path: .context/design-system/
-
 # --- Decision Kit Integration ---
 decision_kit:
   repo: https://github.com/jnemargut/decision-kit

@@ -1,6 +1,17 @@
 # Prototype Creator
 
-Takes RFE user stories and produces rapid prototypes that make the proposed experience tangible before engineering commits. Sits between [rfe-creator](https://github.com/jwforres/rfe-creator) (upstream — the **WHAT**) and [strat-creator](https://github.com/ederign/strat-creator) (downstream — the **HOW**). prototype-creator is the **SHOW** — making the vision concrete through clickable prototypes so teams can see, critique, and decide before a single line of production code is written. Integrates with [decision-kit](https://github.com/jnemargut/decision-kit) to surface design decisions at every meaningful junction and keep humans in the loop.
+Takes RFE user stories and produces rapid prototypes that make the proposed experience tangible before engineering commits. Sits between [rfe-creator](https://github.com/jwforres/rfe-creator) (upstream — the **WHAT**) and [strat-creator](https://github.com/ederign/strat-creator) (downstream — the **HOW**). prototype-creator is the **SHOW** — making the vision concrete through clickable prototypes so teams can see, critique, and decide before a single line of production code is written. Integrates with [decision-kit](https://github.com/jnemargut/decision-kit) to surface design decisions at every meaningful junction and keep humans in the loop. The repo also includes a separate **eval pipeline** (`/eval-iterate`) that verifies prototypes against Jira acceptance criteria and runs persona-based usability testing — see [Evaluating a Prototype](#evaluating-a-prototype-eval-pipeline) below.
+
+## Where to Find Things
+
+| I want to... | Run | Full docs |
+|---|---|---|
+| Generate a prototype from an RFE | `/prototype.create` | [Quick Start](#quick-start) |
+| Quick rubric check (completeness, usability, feasibility, fidelity) | `/prototype.review` | [UX Quality Rubric](#ux-quality-rubric) |
+| Deep AC verification + persona usability testing | `/eval-iterate` | [Eval Pipeline section](#evaluating-a-prototype-eval-pipeline) and [.claude/skills/eval/README.md](.claude/skills/eval/README.md) |
+| Review eval results conversationally | `/eval-review` | [.claude/skills/eval/README.md](.claude/skills/eval/README.md) |
+| Iterate on a prototype based on feedback | `/prototype.refine` | [Workflows](#workflows) |
+| Publish a finished prototype | `/prototype.submit` | [Workflows](#workflows) |
 
 ## What This Does
 
@@ -60,6 +71,37 @@ After CI finishes, humans pull prototypes into the `local/` workspace to iterate
 
 Skills auto-detect local mode when files are in `local/` — they skip Jira writes and pipeline label gates.
 
+## Evaluating a Prototype (Eval Pipeline)
+
+The eval pipeline is a deeper verification layer that goes beyond the four-dimension rubric. It opens the running prototype in a real browser (Playwright), verifies every Jira acceptance criterion against the live UI, applies fixes when criteria fail, and then runs per-persona usability walkthroughs that score 7 dimensions with think-aloud traces. The output is a self-contained HTML report that tells you in under 10 seconds: *Did it pass? What needs my attention? What do I do next?*
+
+```bash
+# 1. Bootstrap context (one-time, requires VPN for GitLab repos)
+make context
+
+# 2. Start your prototype locally
+cd ~/Desktop/rhoai-prototypes && npm start
+
+# 3. Run the eval
+/eval-iterate RHAISTRAT-1536 http://localhost:3000 --workspace=~/Desktop/rhoai-prototypes
+```
+
+### How it differs from `/prototype.review`
+
+| | `/prototype.review` | `/eval-iterate` |
+|---|---|---|
+| **Depth** | Static 4-dimension rubric (completeness, usability, feasibility, fidelity) | Playwright-driven: verifies every Jira AC in-browser, runs auto-fix loop, then per-persona usability walkthroughs |
+| **Speed** | Fast, lightweight | Slower, thorough (produces ~14MB HTML report unless `--no-report`) |
+| **When to use** | Quick gut-check during the create/review/refine loop | Before calling a prototype "done" — verifies it actually meets acceptance criteria and holds up under simulated usability testing |
+
+### Slash command not appearing?
+
+Restart your IDE (Cursor or VS Code) to re-index the skills directory. If it still doesn't appear, use the natural-language fallback — same pipeline, same results:
+
+> Read `.claude/skills/eval/eval-iterate/SKILL.md` and run it against RHAISTRAT-1536 at http://localhost:3000 with workspace ~/Desktop/rhoai-prototypes
+
+**Full documentation:** [.claude/skills/eval/README.md](.claude/skills/eval/README.md) — covers all flags (`--no-fix`, `--max-iterations`, `--no-report`, `--no-iterate`), the tier system, output artifacts, and troubleshooting for Claude Code (VS Code) users.
+
 ## UX Quality Rubric
 
 Prototypes are scored across four dimensions (0–2 each, 8 total possible):
@@ -113,6 +155,7 @@ prototype-creator/
 ├── .claude/
 │   ├── settings.json                      # Permissions and tool allowlist
 │   ├── skills/                            # Claude Code skills (pipeline steps)
+│   │   ├── eval/                          # Eval pipeline — AC + usability verification (see .claude/skills/eval/README.md)
 │   │   ├── prototype-create/              # Generate prototype from RFE
 │   │   ├── prototype-refine/              # Iterate on existing prototype
 │   │   ├── prototype-review/              # Score against UX rubric
@@ -128,18 +171,20 @@ prototype-creator/
 ├── config/
 │   ├── pipeline-settings.yaml             # Jira JQL, thresholds, defaults
 │   ├── ux-rubric.yaml                     # Four-dimension scoring rubric
+│   ├── decision-points.yaml               # Decision category reference
 │   └── fidelity-profiles.yaml             # Low/medium/high profiles
 ├── templates/                             # HTML layout and component templates
 │   ├── layouts/                           # Base page layouts per fidelity
-│   ├── components/                        # Reusable component snippets
 │   └── decision-pages/                    # Decision artifact templates
 ├── scripts/                               # Python scripts
 │   ├── fetch-design-system-context.sh     # Fetch PatternFly docs
-│   └── bootstrap-decision-kit.sh          # Bootstrap decision-kit skills
+│   ├── bootstrap-decision-kit.sh          # Bootstrap decision-kit skills
+│   └── bootstrap-usability-testing.sh     # Bootstrap usability testing personas + rubric
 ├── .context/                              # Fetched at runtime (gitignored)
 │   ├── design-system/                     # PatternFly component docs + tokens
 │   ├── research-context/                  # UX research (personas, JTBD)
-│   └── decision-kit/                      # Vendored decision-kit skills
+│   ├── decision-kit/                      # Vendored decision-kit skills
+│   └── usability-testing/                 # Vendored personas + rubric from automated-usability-testing
 ├── local/                                 # Human review workspace (gitignored)
 │   ├── prototypes/                        # Pulled prototypes for iteration
 │   ├── prototype-reviews/                 # Local review scores
@@ -149,8 +194,8 @@ prototype-creator/
 │   ├── prototypes/                        # Generated prototypes
 │   ├── prototype-reviews/                 # Review scores
 │   └── decisions/                         # Decision artifacts
-├── docs/                                  # Documentation
-├── tests/                                 # Test suite
+├── docs/                                  # Prototype-pipeline documentation
+├── tests/                                 # Python test suite
 ├── CLAUDE.md                              # Project instructions for AI agents
 ├── README.md                              # This file
 ├── pyproject.toml                         # Python project config
@@ -175,6 +220,9 @@ bash scripts/fetch-design-system-context.sh
 
 # Bootstrap decision-kit thinking skills
 bash scripts/bootstrap-decision-kit.sh
+
+# Bootstrap usability testing personas + rubric
+bash .claude/skills/eval/scripts/bootstrap-usability-testing.sh
 ```
 
 ### Run a Prototype (CI mode)
@@ -319,6 +367,7 @@ Decision points in `decide` mode:
 | **prototype-creator** | Phase 2: The SHOW | This project — makes the experience tangible |
 | [strat-creator](https://github.com/ederign/strat-creator) | Phase 3: The HOW | Downstream — takes approved prototypes and creates implementation strategies |
 | [decision-kit](https://github.com/jnemargut/decision-kit) | Decision support | Integrated — surfaces design decisions as browsable artifacts |
+| [automated-usability-testing](https://gitlab.cee.redhat.com/zbodnar/automated-usability-testing) | Usability evaluation | Integrated — persona-based usability scoring for prototype evaluation |
 | [assess-rfe](https://github.com/n1hility/assess-rfe) | Quality scoring | Pattern reference — rubric-based scoring approach |
 
 ## Development
