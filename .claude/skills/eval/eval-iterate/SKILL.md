@@ -561,7 +561,7 @@ if --no-report:
   Present:
 
     Eval complete for <KEY>: <story title>
-    **Verdict:** <Lo-fi PASS/FAIL>. <pass>/<total> ACs. Usability: <score>/21.
+    **Result:** <pass>/<total> PASS, <fail> FAIL, <flagged> FLAGGED. Usability: <score>/21.
     **Key findings:** <top 2-3 issues, 1 line each>
 
   # ── Ask about mini-report ─────────────────────────────────────────
