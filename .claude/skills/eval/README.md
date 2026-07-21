@@ -43,6 +43,12 @@ Both methods are fully supported — use whichever works in your environment:
 - If it still doesn't appear, use the natural-language method above — same pipeline, same results
 - In Claude Code (terminal), skills are always invoked via natural language
 
+**`ERR_MODULE_NOT_FOUND: Cannot find package 'playwright'`?**
+- Playwright is installed in `.claude/skills/eval/node_modules/`, not the project root
+- ESM `import` resolves modules by walking up from the **script file's** directory, not from `cwd` or `NODE_PATH`
+- A committed symlink at the project root (`node_modules -> .claude/skills/eval/node_modules`) handles this — it should exist after clone
+- If missing (e.g. OS didn't preserve symlinks during checkout), recreate it: `ln -s .claude/skills/eval/node_modules node_modules`
+
 ### Claude Code Users (VS Code)
 
 The eval pipeline runs ~20 shell commands (`node`, `npm`, `git`) that each require individual approval in Claude Code. Use `--auto-run` to reduce this to 5 checkpoints:

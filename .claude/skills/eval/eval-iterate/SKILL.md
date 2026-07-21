@@ -79,7 +79,7 @@ When `--auto-run` is set, chain related commands with `&&` into 5 groups at natu
 | 2. Phase A validation | `node validate-verdicts.js && cp archive && node append-iteration-log.js` | See iteration results |
 | 3. Fix + rebuild | `cd workspace && npm run build` | See fixes being compiled |
 | 4. Playwright | `node .artifacts/<KEY>/journey-test.mjs` or `node .artifacts/<KEY>/persona-walkthrough.mjs` | See browser automation start |
-| 5. Report | `node validate-artifacts.js && node render-report.js && node log-run.js && node build-leaderboard.js` | See final report generated |
+| 5. Report | `node validate-artifacts.js && node render-report.js && node log-run.js` | See final report generated |
 
 ## Pipeline Flow (Two-Phase)
 
@@ -629,8 +629,6 @@ else:
     • "Re-run eval"
     • "Looks good"
 
-  # Rebuild leaderboard with latest data
-  node .claude/skills/eval/scripts/build-leaderboard.js
 ```
 
 ## Selective Rerun (Phase A Iterations 2+)

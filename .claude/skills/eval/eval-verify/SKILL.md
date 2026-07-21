@@ -101,6 +101,8 @@ else
 fi
 ```
 
+**ESM module resolution:** The `playwright` package is installed in `.claude/skills/eval/node_modules/`. A committed symlink at the project root (`node_modules -> .claude/skills/eval/node_modules`) lets ESM `import` resolve `playwright` from scripts anywhere in the project tree. If the symlink is missing (e.g. checkout didn't preserve it), the eval-iterate setup step recreates it. Without this symlink, all `.mjs` scripts fail with `ERR_MODULE_NOT_FOUND`.
+
 **Browser selection:** Use Firefox by default (more reliable CSS rendering for PatternFly expandable components). Fall back to Chromium if Firefox is not installed.
 
 ```javascript
