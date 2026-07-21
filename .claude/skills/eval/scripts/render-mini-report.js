@@ -96,10 +96,9 @@ if (fs.existsSync(csvPath)) {
 
 const ud = journeyLog.usability_dimensions || {};
 const usabilityScore = ud.overall_score || '—';
-const passRate = acTotal > 0 ? acPass / acTotal : 0;
-const lofiPass = passRate >= 0.7 && acFail <= 1;
-const verdict = lofiPass ? 'Lo-fi PASS' : 'Lo-fi FAIL';
-const verdictColor = lofiPass ? '#2e7d32' : '#c62828';
+const hasFailures = acFail > 0;
+const verdict = hasFailures ? `${acFail} Failing` : acFlagged > 0 ? `${acFlagged} Flagged` : 'All Passing';
+const verdictColor = hasFailures ? '#c62828' : acFlagged > 0 ? '#e65100' : '#2e7d32';
 
 // ── Build screenshot cards ──────────────────────────────────────────
 
@@ -125,22 +124,25 @@ for (const entry of pr) {
     if (fs.existsSync(c)) { imgPath = c; break; }
   }
 
-  let imgTag = '<div style="height:200px;background:#eee;display:flex;align-items:center;justify-content:center;color:#999;">No screenshot</div>';
+  let imgTag = '<div class="no-screenshot">No screenshot captured</div>';
   if (imgPath) {
     const b64 = fs.readFileSync(imgPath).toString('base64');
     imgTag = `<img src="data:image/png;base64,${b64}" alt="${personaName} - ${task}">`;
   }
 
-  const outcome = entry.would_complete === false ? '✗ abandoned' :
-                   entry.would_complete === true ? '✓ completed' : '';
-  const patience = entry.patience_end != null ? ` · patience: ${entry.patience_end}%` : '';
+  const outcomeIcon = entry.would_complete === false ? 'Abandoned' :
+                       entry.would_complete === true ? 'Completed' : '';
+  const patience = entry.patience_end != null ? `Patience: ${entry.patience_end}%` : '';
+  const confusion = entry.confusion_events ? `${entry.confusion_events} confusion event(s)` : '';
+  const details = [outcomeIcon, patience, confusion].filter(Boolean).join(' · ');
 
   cards += `
     <div class="screenshot-card">
       ${imgTag}
       <div class="screenshot-label">
-        <div class="persona">${personaName} ${outcome}</div>
-        <div class="task">Task ${taskIdx}: ${task.substring(0, 80)}${patience}</div>
+        <div class="persona">${personaName}</div>
+        <div class="task">Task ${taskIdx}: ${task.substring(0, 120)}</div>
+        <div class="outcome">${details}</div>
       </div>
     </div>`;
 }
