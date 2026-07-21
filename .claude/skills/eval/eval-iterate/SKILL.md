@@ -236,6 +236,19 @@ LOOP:
   # ── Journey (x-ray mode) ────────────────────────────────────
   # The x-ray evaluator uses workspace source directly for navigation.
   # No discovery-first pretense — goal is fast AC verification.
+  #
+  # ── Playwright script caching ──────────────────────────────
+  # The most expensive part of verify is generating journey-test.mjs
+  # (~3-5 min of LLM output). If a prior run produced one for the same
+  # workspace commit and AC set, reuse it instead of regenerating.
+  # The actual Playwright execution is fast (~30s for 7 journeys).
+  if .artifacts/<KEY>/journey-test.mjs exists AND iteration == 1:
+    Read first 5 lines of .artifacts/<KEY>/journey-test.mjs for a // cache header
+    if header contains workspace_commit matching current WORKSPACE_COMMIT:
+      echo "Reusing cached journey-test.mjs (same commit)"
+      # Tell eval-verify to use the existing script via --reuse-script
+  # If no cache hit, eval-verify generates a fresh script as normal.
+
   python3 .claude/skills/eval/scripts/eval_state.py set .artifacts/<KEY>/eval-state.yaml \
     verify_start=$(python3 .claude/skills/eval/scripts/eval_state.py timestamp)
 
@@ -342,7 +355,10 @@ LOOP:
     python3 .claude/skills/eval/scripts/eval_state.py set .artifacts/<KEY>/eval-state.yaml \
       exit_reason=no_fix ac_pass=false
     BREAK → proceed to Phase B
-    # Findings remain in refinement-suggestions.json for human/agent review
+    # Skip refinement-suggestions.json — no one will act on suggestions
+    # when --no-fix is set. The verify verdicts and screenshots are
+    # sufficient for the report. This saves LLM output tokens that
+    # would otherwise go to generating fix suggestions no one reads.
 
   python3 .claude/skills/eval/scripts/eval_state.py set .artifacts/<KEY>/eval-state.yaml \
     fix_start=$(python3 .claude/skills/eval/scripts/eval_state.py timestamp)
@@ -448,9 +464,16 @@ python3 .claude/skills/eval/scripts/eval_state.py set .artifacts/<KEY>/eval-stat
 python3 .claude/skills/eval/scripts/eval_state.py set .artifacts/<KEY>/eval-state.yaml \
   discover_start=$(python3 .claude/skills/eval/scripts/eval_state.py timestamp)
 
-Read .claude/skills/eval/eval-discover/SKILL.md and execute it
+# When --no-report is set, pass --screenshots=key-only to eval-discover.
+# This captures 1 screenshot per persona-task (final state) instead of per-step,
+# reducing from ~30 to 6 screenshots and skipping think-aloud markdown files.
+# The persona trace data in persona-results.json is still written for scoring.
+if --no-report:
+  Read .claude/skills/eval/eval-discover/SKILL.md and execute it with --screenshots=key-only
+else:
+  Read .claude/skills/eval/eval-discover/SKILL.md and execute it
 # Use Task tool with run_in_background=true for each persona-task pair when possible.
-# Produces: per-persona screenshots, think-aloud traces, 7-dimension scores,
+# Produces: per-persona screenshots, think-aloud traces (unless key-only), 7-dimension scores,
 #           usability suggestions for human review
 
 # VERIFY: Per-persona screenshots must exist after eval-discover completes.
@@ -466,7 +489,25 @@ Read .artifacts/<KEY>/persona-results.json
 if any entry has trace == [] (empty array):
   echo "WARNING: persona-results.json has empty trace[] — re-running eval-discover"
   Read .claude/skills/eval/eval-discover/SKILL.md and execute it
-  # This should not happen if Step 1d synchronous writing is followed correctly
+
+# ── Verify Step 8 completion (usability_dimensions in journey-log) ──
+# persona-results.json existing WITHOUT usability_dimensions in journey-log
+# means Step 8 was skipped. This breaks 3 downstream consumers:
+# 1. render-report.js produces a report with no usability section
+# 2. The "Usability Dimensions Scored" MLflow scorer fails
+# 3. The leaderboard shows "N/A" instead of a usability score
+#
+# Do NOT skip this even if persona walkthroughs completed successfully —
+# the walkthroughs produce per-persona data, but Step 8 consolidates it
+# into the 7-dimension composite format the report and scorers expect.
+Read .artifacts/<KEY>/journey-log.json
+if "usability_dimensions" not in journey-log.json AND .artifacts/<KEY>/persona-results.json exists:
+  echo "Step 8 missing — consolidating persona results into journey-log.json"
+  Read .claude/skills/eval/eval-discover/SKILL.md Step 8 and execute ONLY Step 8
+  # Re-read to verify
+  Read .artifacts/<KEY>/journey-log.json
+  if "usability_dimensions" still not present:
+    echo "ERROR: Step 8 still not written after retry"
 
 python3 .claude/skills/eval/scripts/eval_state.py set .artifacts/<KEY>/eval-state.yaml \
   discover_end=$(python3 .claude/skills/eval/scripts/eval_state.py timestamp)
@@ -474,37 +515,67 @@ python3 .claude/skills/eval/scripts/eval_state.py set .artifacts/<KEY>/eval-stat
 # Update iteration log with usability results
 node .claude/skills/eval/scripts/append-iteration-log.js .artifacts/<KEY>/ <iteration> b
 
+# ── Propagate exit_reason to iteration-log.json ────────────────────
+# The iteration-log.json root-level exit_reason is the canonical field
+# that downstream consumers read (MLflow scorers, leaderboard, report).
+# eval-state.yaml has it, but iteration-log.json needs it too —
+# without it, the "Iteration Log Valid" scorer fails and the report
+# shows "exit_reason: pending" even after the pipeline exits cleanly.
+python3 -c "
+import json
+from pathlib import Path
+ad = Path('.artifacts/<KEY>/')
+# Read exit_reason from eval-state.yaml (source of truth)
+exit_reason = 'unknown'
+es = ad / 'eval-state.yaml'
+if es.exists():
+    for line in es.read_text().splitlines():
+        if line.strip().startswith('exit_reason:'):
+            exit_reason = line.split(':', 1)[1].strip()
+# Write to iteration-log.json root level
+il = ad / 'iteration-log.json'
+if il.exists():
+    log = json.loads(il.read_text())
+    log['exit_reason'] = exit_reason
+    log['key'] = '<KEY>'
+    il.write_text(json.dumps(log, indent=2))
+    print(f'iteration-log.json exit_reason set to: {exit_reason}')
+"
+
 # ═══════════════════════════════════════════════════════════════════
 # REPORT (runs unless --no-report is set)
 # ═══════════════════════════════════════════════════════════════════
 
 REPORT:
 if --no-report:
-  # Skip heavy report generation — print compact chat summary instead.
-  # All artifacts are cached; the user can run /generate-report later.
+  # Skip heavy report generation — print brief chat summary, then offer mini-report.
 
   python3 .claude/skills/eval/scripts/eval_state.py set .artifacts/<KEY>/eval-state.yaml \
     pipeline_end=$(python3 .claude/skills/eval/scripts/eval_state.py timestamp)
 
-  # Read evaluation-summary.json if it exists (from a previous run), otherwise read CSV directly.
-  # evaluation-summary.json is the canonical artifact for conversational mode.
   Read .artifacts/<KEY>/evaluation-report.csv and .artifacts/<KEY>/extract-state.json
   Compute pass/fail/flagged counts from CSV
 
-  # Show unique screenshots inline (only screenshots with distinct visual states)
-  # Use MD5 hashing to deduplicate: group screenshots by hash, show one per unique hash
-  # Pick the most informative screenshot per unique hash (prefer hover/expand states over default table)
-
+  # ── Brief chat summary (always shown) ─────────────────────────────
+  # Keep this short — 4 lines max. Designers scan, they don't read paragraphs.
   Present:
 
-    Eval complete for <KEY>: <story title> (no-report mode)
+    Eval complete for <KEY>: <story title>
+    **Verdict:** <Lo-fi PASS/FAIL>. <pass>/<total> ACs. Usability: <score>/21.
+    **Key findings:** <top 2-3 issues, 1 line each>
 
-    **What passed:** <pass>/<total> acceptance criteria. [Usability: <score>/21]
-    **What needs attention:** <list failed/flagged items, 1 line each>
-    **Key screenshots:** <embed 3-4 unique screenshots inline showing distinct visual states>
-    **What to do:** <prioritized actions from refinement-suggestions.json>
+  # ── Ask about mini-report ─────────────────────────────────────────
+  # The mini-report is a lightweight HTML page with persona screenshots
+  # and a direct link to the prototype. Only generate if the user wants it.
+  Ask the user:
+    "Would you like a mini-report with persona screenshots and a link to the prototype?"
 
-    ---
+  If user says yes:
+    node .claude/skills/eval/scripts/render-mini-report.js .artifacts/<KEY>/
+    open .artifacts/<KEY>/mini-report.html
+
+  # ── Offer next steps ──────────────────────────────────────────────
+  Present:
     How can I help?
     • "Fix [issue]" — I'll apply the fix
     • "Tell me more about [finding]"

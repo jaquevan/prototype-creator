@@ -136,6 +136,20 @@ This mapping drives all downstream Playwright generation. If the mapping shows t
 
 ### Step 1d: Per-Persona Playwright Walkthroughs
 
+**Screenshot mode** (passed from eval-iterate):
+- `--screenshots=full` (default): Capture a screenshot at every navigation step.
+  Names: `persona-<id>-task-<N>-step-<M>.png`
+- `--screenshots=key-only`: Capture ONE screenshot per persona per task — the
+  final interaction state before the persona completes or abandons. This reduces
+  volume from ~30 screenshots to 6 (2 personas x 3 tasks), cutting Playwright
+  execution time and output token cost. The final-state screenshot shows the
+  designer what the persona actually saw at the decision point.
+  Names: `persona-<id>-task-<N>-final.png`
+
+When `--screenshots=key-only` is set, also skip writing `usability-thinkaloud-*.md`
+files — the trace data in `persona-results.json` is sufficient for scoring, and
+the markdown files are only consumed by the full HTML report renderer.
+
 Each persona runs their OWN Playwright walkthrough as an independent sub-agent. Navigation behavior is driven by the persona's YAML fields — not a shared script.
 
 **REQUIRED script structure for `persona-walkthrough.mjs`:**
@@ -573,6 +587,21 @@ Use per-task naming (`-task-<N>.md`) even for single-task runs. Phase 1 steps ar
 **ALWAYS produce this file**, regardless of single-task or multi-task runs. This structured JSON is the canonical source for persona walkthrough data consumed by the report renderer.
 
 Write to: `.artifacts/<KEY>/persona-results.json`
+
+**Post-write validation** — after writing persona-results.json, verify every entry
+has a non-null `persona` field and a valid `task_index`. Entries with
+`persona: null` or `persona: None` break two downstream consumers:
+the `persona_ids_present` scorer rejects the entire file, and Step 8's
+usability_dimensions consolidation silently drops entries it cannot key by persona.
+
+```python
+# Validate immediately after writing:
+import json
+pr = json.loads(open('.artifacts/<KEY>/persona-results.json').read())
+for i, e in enumerate(pr):
+    assert e.get("persona"), f"Entry {i} missing persona field"
+    assert e.get("task_index") is not None, f"Entry {i} missing task_index"
+```
 
 Format: array of persona-task results, one entry per persona per task:
 
