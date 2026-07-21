@@ -11,7 +11,6 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 CONFIG_FILE="$PROJECT_ROOT/config/publish.yaml"
-INDEX_TEMPLATE="$PROJECT_ROOT/templates/report-index.html"
 
 # ── Parse arguments ──────────────────────────────────────────────────────────
 
@@ -143,12 +142,8 @@ publish_pages() {
   if [[ -f "$WORK_DIR/pages-repo/scripts/generate-data.cjs" ]]; then
     node "$WORK_DIR/pages-repo/scripts/generate-data.cjs" "$REPORTS_PATH"
   else
-    node "$(dirname "$0")/generate-dashboard.js" "$REPORTS_PATH"
+    echo "Warning: No dashboard generator found in Pages repo" >&2
   fi
-
-  # Copy leaderboard if it exists (sibling to index.html for navigation)
-  local LEADERBOARD="$ARTIFACTS_DIR/../pain-leaderboard.html"
-  [[ -f "$LEADERBOARD" ]] && cp "$LEADERBOARD" "$REPORTS_PATH/pain-leaderboard.html"
 
   # Commit and push
   cd "$WORK_DIR/pages-repo"
@@ -204,9 +199,6 @@ publish_branch() {
   cd "$BRANCH_DIR"
   mkdir -p "evals/$PROTO_KEY"
   cp "$REPORT_FILE" "evals/$PROTO_KEY/index.html"
-
-  # Regenerate index
-  node "$(dirname "$0")/generate-dashboard.js" "$BRANCH_DIR/evals"
 
   git add -A
   if git diff --cached --quiet; then
