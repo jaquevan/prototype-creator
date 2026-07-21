@@ -78,7 +78,7 @@ When `--auto-run` is set, chain related commands with `&&` into 5 groups at natu
 | 1. Workspace state | `git log -1 --format="%h" && git status --short` | See what commit is being evaluated |
 | 2. Phase A validation | `node validate-verdicts.js && cp archive && node append-iteration-log.js` | See iteration results |
 | 3. Fix + rebuild | `cd workspace && npm run build` | See fixes being compiled |
-| 4. Playwright | `node journey-test.mjs` or `node persona-walkthrough.mjs` | See browser automation start |
+| 4. Playwright | `node .artifacts/<KEY>/journey-test.mjs` or `node .artifacts/<KEY>/persona-walkthrough.mjs` | See browser automation start |
 | 5. Report | `node validate-artifacts.js && node render-report.js && node log-run.js && node build-leaderboard.js` | See final report generated |
 
 ## Pipeline Flow (Two-Phase)
@@ -191,6 +191,20 @@ if workspace provided:
     echo "Dev server detected. HMR will handle rebuilds automatically."
 
 # ── Setup (runs once) ──────────────────────────────────────────────
+
+# ── Playwright ESM module resolution ──────────────────────────────
+# playwright is installed in .claude/skills/eval/node_modules/.
+# ESM import resolves by walking UP from the script file — NOT from
+# cwd and NOT via NODE_PATH. Scripts in .artifacts/<KEY>/ need a
+# node_modules somewhere in their ancestor path. A committed symlink
+# at the project root (node_modules -> .claude/skills/eval/node_modules)
+# handles this. Verify it exists; recreate if missing (e.g. after a
+# clean checkout where symlinks weren't preserved).
+PROJECT_ROOT="$(git rev-parse --show-toplevel)"
+if [ ! -e "$PROJECT_ROOT/node_modules" ]; then
+  ln -s .claude/skills/eval/node_modules "$PROJECT_ROOT/node_modules"
+  echo "Recreated node_modules symlink for ESM Playwright resolution"
+fi
 
 # ── Per-skill timing ──────────────────────────────────────────────
 # Record start/end timestamps for each skill to measure optimization impact.

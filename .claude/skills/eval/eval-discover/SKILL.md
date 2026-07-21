@@ -213,6 +213,8 @@ async function runTask1(page, persona) {
 - Multi-page comparison: 5-7 steps (visit page A, capture, visit page B, capture, compare)
 - Feature exploration: 4-8 steps (find feature, try it, observe feedback, try edge case)
 
+**ESM module resolution:** The `playwright` package is in `.claude/skills/eval/node_modules/`. A committed symlink at the project root (`node_modules -> .claude/skills/eval/node_modules`) lets ESM resolve `playwright` from scripts anywhere in the project tree. If scripts fail with `ERR_MODULE_NOT_FOUND`, the symlink is missing — eval-iterate's setup step recreates it automatically.
+
 ```javascript
 import { firefox } from 'playwright';
 // MANDATORY: 1920x900 viewport in every context. Default 800x600 truncates tables. 1440 is insufficient for tables with 10+ columns.
@@ -280,6 +282,10 @@ async function main() {
 grep -q "viewport" .artifacts/<KEY>/persona-walkthrough.mjs || { echo "FATAL: Missing viewport. Regenerate."; exit 1; }
 grep -q "addInitScript" .artifacts/<KEY>/persona-walkthrough.mjs || { echo "FATAL: Missing addInitScript project seed. Regenerate."; exit 1; }
 ```
+
+**Run command:**
+```bash
+node .artifacts/<KEY>/persona-walkthrough.mjs
 ```
 
 **How persona fields drive navigation AND interaction:**
