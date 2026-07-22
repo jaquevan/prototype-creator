@@ -51,6 +51,32 @@ If the Jira ticket has no ACs, the pipeline will stop and ask for them. You can 
 | `--auto-run` | flag | No | Off (when set, chains shell commands to reduce approval prompts in Claude Code from ~20 to ~5) |
 | `--no-report` | flag | No | Off (when set, skips HTML report generation and prints a compact chat summary instead. Use `/generate-report` later to create the full report from cached artifacts) |
 
+## Model Defaults Per Sub-Skill
+
+Each sub-skill delegates to `--model` when launched via Task tool. These defaults
+are derived from MLflow comparison runs (2026-07-22, RHAISTRAT-432, 24 traces).
+
+| Sub-skill | Default model | Rationale |
+|-----------|--------------|-----------|
+| eval-extract | `claude-sonnet-5` | Mechanical Jira parsing. No quality difference vs Opus. 3× faster. |
+| eval-classify | `claude-sonnet-5` | Mechanical tier assignment. 34s vs 93s. No quality difference. |
+| eval-verify | `claude-opus-4-6` | Verdict accuracy matters: Opus correctly distinguishes FAIL vs FLAGGED. Sonnet over-fails ACs. |
+| eval-fix | `claude-opus-4-6` | Code changes require careful reasoning. Shares verify's context window. |
+| eval-consistency | `claude-opus-4-6` | Focused execution (7 turns vs 23). Precision matters for design audits. |
+| eval-discover | `claude-opus-4-6` | Fewer Playwright turns (40 vs 57) = fewer browser flakes. Same usability scores. |
+| eval-report | `claude-sonnet-5` | Template rendering. No quality-sensitive judgment. |
+
+Override any default with `--model=<model>` on the `/eval-iterate` invocation.
+When `--model` is set, ALL sub-skills use that model (useful for comparison runs).
+
+### Cost estimate per run
+
+| Configuration | Est. cost | Est. time |
+|--------------|-----------|-----------|
+| All Sonnet 5 | ~$10.83 | ~30 min |
+| **Recommended mix** (above) | ~$13.98 | ~35 min |
+| All Opus 4.6 | ~$17.15 | ~40 min |
+
 ## Environment Detection
 
 Before parsing flags, check the execution environment:
@@ -203,10 +229,29 @@ bash .claude/skills/eval/scripts/pipeline-setup.sh <KEY> <URL> <workspace> $max_
 # ── Per-skill timing ──────────────────────────────────────────────
 # Record start/end timestamps for each skill to measure optimization impact.
 
+# ── Model routing ────────────────────────────────────────────────────
+# Resolve per-skill model from --model flag or defaults table above.
+# When --model is set, all sub-skills use that model.
+# Otherwise, each skill uses its default from the Model Defaults table.
+MODEL_OVERRIDE = parse --model (default: null)
+MODEL_EXTRACT    = MODEL_OVERRIDE or "claude-sonnet-5"
+MODEL_CLASSIFY   = MODEL_OVERRIDE or "claude-sonnet-5"
+MODEL_VERIFY     = MODEL_OVERRIDE or "claude-opus-4-6"
+MODEL_FIX        = MODEL_OVERRIDE or "claude-opus-4-6"
+MODEL_CONSISTENCY = MODEL_OVERRIDE or "claude-opus-4-6"
+MODEL_DISCOVER   = MODEL_OVERRIDE or "claude-opus-4-6"
+MODEL_REPORT     = MODEL_OVERRIDE or "claude-sonnet-5"
+
+# Log model config to eval-state for MLflow tracing
+python3 .claude/skills/eval/scripts/eval_state.py set .artifacts/<KEY>/eval-state.yaml \
+  model_extract=$MODEL_EXTRACT model_verify=$MODEL_VERIFY \
+  model_consistency=$MODEL_CONSISTENCY model_discover=$MODEL_DISCOVER
+
 python3 .claude/skills/eval/scripts/eval_state.py set .artifacts/<KEY>/eval-state.yaml \
   extract_core_start=$(python3 .claude/skills/eval/scripts/eval_state.py timestamp)
 
 Read .claude/skills/eval/eval-extract/SKILL.md and execute it with --phase=core
+# Model: $MODEL_EXTRACT (Sonnet 5 — mechanical parsing, no quality difference)
 # Produces: extract-state.json, mr-delta.json
 # Defers: outcome-context.json, tasks_to_be_done, breadcrumb (run before Phase B)
 
@@ -215,6 +260,7 @@ python3 .claude/skills/eval/scripts/eval_state.py set .artifacts/<KEY>/eval-stat
   consistency_source_start=$(python3 .claude/skills/eval/scripts/eval_state.py timestamp)
 
 Read .claude/skills/eval/eval-consistency/SKILL.md and execute it with --mode=source
+# Model: $MODEL_CONSISTENCY (Opus 4.6 — focused execution, 7 turns vs 23)
 # Runs ONCE (source-mode only). Produces: consistency-report.json, appends to refinement-suggestions.json
 # Visual-mode deferred to after eval-verify when screenshots exist.
 # Uses analyze.py bash commands for deterministic checks (no report generation).
@@ -234,6 +280,7 @@ LOOP:
       classify_start=$(python3 .claude/skills/eval/scripts/eval_state.py timestamp)
 
     Read .claude/skills/eval/eval-classify/SKILL.md and execute it
+    # Model: $MODEL_CLASSIFY (Sonnet 5 — mechanical tiering, 34s vs 93s)
     # Produces: evaluation-report.csv (Section 1, tiers only)
 
     python3 .claude/skills/eval/scripts/eval_state.py set .artifacts/<KEY>/eval-state.yaml \
@@ -262,6 +309,7 @@ LOOP:
   if iteration == 1:
     Read .claude/skills/eval/eval-verify/SKILL.md and execute it with:
       --mode=informed
+    # Model: $MODEL_VERIFY (Opus 4.6 — accurate FAIL vs FLAGGED distinction)
     # Uses workspace source for selectors/routes. Verifies ACs quickly.
   else:
     # Iteration 2+: skip SKILL.md re-read (~5K tokens saved). The eval-verify
@@ -269,6 +317,7 @@ LOOP:
     # with --rerun-only targeting FAIL+FLAGGED ACs from the previous CSV.
     Execute eval-verify procedure with:
       --mode=informed --rerun-only=<FAIL+FLAGGED AC IDs from previous CSV>
+    # Model: $MODEL_VERIFY (Opus 4.6)
     # Only runs Playwright for journeys testing failing criteria
     # Carries forward PASS verdicts from previous iteration
 
@@ -378,6 +427,7 @@ LOOP:
   else:
     # Iteration 2+: skip SKILL.md re-read. Procedure already in context.
     Execute eval-fix procedure
+  # Model: $MODEL_FIX (Opus 4.6 — careful reasoning for code changes)
   # Applies fixes from refinement-suggestions.json (AC failures + consistency + flagged)
 
   python3 .claude/skills/eval/scripts/eval_state.py set .artifacts/<KEY>/eval-state.yaml \
@@ -489,6 +539,7 @@ if --no-report:
   Read .claude/skills/eval/eval-discover/SKILL.md and execute it with --screenshots=key-only
 else:
   Read .claude/skills/eval/eval-discover/SKILL.md and execute it
+# Model: $MODEL_DISCOVER (Opus 4.6 — fewer turns = fewer Playwright flakes)
 # Use Task tool with run_in_background=true for each persona-task pair when possible.
 # Produces: per-persona screenshots, think-aloud traces (unless key-only), 7-dimension scores,
 #           usability suggestions for human review
@@ -528,6 +579,12 @@ if "usability_dimensions" not in journey-log.json AND .artifacts/<KEY>/persona-r
 
 python3 .claude/skills/eval/scripts/eval_state.py set .artifacts/<KEY>/eval-state.yaml \
   discover_end=$(python3 .claude/skills/eval/scripts/eval_state.py timestamp)
+
+# ── SCHEMA VALIDATION (self-healing) ──────────────────────────────────────────
+# Validates usability_dimensions uses the correct nested schema (not flat dict).
+# If the schema is wrong, it auto-fixes from persona-results.json.
+# Catches: flat-dict format, missing persona_overlays, missing overall_score.
+node .claude/skills/eval/scripts/validate-phase-b-output.js .artifacts/<KEY>/
 
 # Update iteration log with usability results
 node .claude/skills/eval/scripts/append-iteration-log.js .artifacts/<KEY>/ <iteration> b
@@ -603,6 +660,7 @@ if --no-report:
 else:
   Read .claude/skills/eval/eval-report/SKILL.md and execute it with:
     --note="Phase A: <exit_reason> (<iteration> iterations). Phase B: <usability status>"
+  # Model: $MODEL_REPORT (Sonnet 5 — template rendering, no judgment needed)
 
   # ═══════════════════════════════════════════════════════════════════
   # NOTIFY (open report + present summary)

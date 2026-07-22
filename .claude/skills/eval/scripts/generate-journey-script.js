@@ -178,7 +178,7 @@ function generateVerifyScript() {
     const acIds = journey.ac_ids || [];
     const acTexts = acIds.map(id => {
       const ac = (extractState.ac_list || []).find(a => a.criterion_id === id);
-      return ac ? ac.text : '';
+      return ac ? (ac.text || ac.criterion_text || '') : '';
     });
 
     // Classify each AC's interaction pattern

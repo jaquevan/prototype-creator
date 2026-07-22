@@ -63,6 +63,11 @@ mlruns/
 # Eval harness run outputs (created by /eval-run)
 eval/runs/
 
+# Ad-hoc scripts and planning docs (local-only, not pipeline code)
+.claude/skills/eval/PLAN-*.md
+.claude/skills/eval/scripts/query-model-costs.py
+.claude/skills/eval/scripts/mlflow-trace-eval.py
+
 # Cursor workspace state
 .cursor/
 

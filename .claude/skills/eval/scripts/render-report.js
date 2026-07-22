@@ -566,7 +566,7 @@ function buildPersonaSelectionHtml() {
     return '<p class="muted small">No persona data available.</p>';
   }
 
-  const selection = ud.persona_selection;
+  const selection = ud.persona_selection || (journeyLog && journeyLog.persona_selection);
   if (selection) {
     let html = `<p class="small"><strong>Target audience:</strong> ${escapeHtml(selection.target_audience_text || '—')}</p>`;
     if (selection.reasoning) {
@@ -576,7 +576,7 @@ function buildPersonaSelectionHtml() {
       if (selection.considered_but_rejected && selection.considered_but_rejected.length) {
         html += `<p class="small muted" style="margin-top:0.5rem"><strong>Considered but not selected:</strong></p><ul class="small">`;
         for (const r of selection.considered_but_rejected) {
-          html += `<li><code>${escapeHtml(r.persona)}</code> — ${escapeHtml(r.reason)}</li>`;
+          html += `<li><code>${escapeHtml(r.persona_id || r.persona)}</code> — ${escapeHtml(r.reason)}</li>`;
         }
         html += `</ul>`;
       }
@@ -785,7 +785,7 @@ function buildPersonaWalkthroughData() {
     const trace = traces.find(t => t.persona === pid) || {};
     const confusionEvents = overlay.confusion_events || [];
 
-    const personaEntries = personaResults ? personaResults.filter(r => r.persona === pid) : [];
+    const personaEntries = personaResults ? personaResults.filter(r => (r.persona_id || r.persona) === pid) : [];
 
     const allPersonaScreenshots = screenshotsByPersona[pid] || [];
 
@@ -833,6 +833,22 @@ function buildPersonaWalkthroughData() {
               confidence: entry.trace && entry.trace[ss.step - 1] ? (entry.trace[ss.step - 1].confidence || '') : '',
               patience: String(entry.trace && entry.trace[ss.step - 1] ? (entry.trace[ss.step - 1].patience || 100) : 100),
               screenshot: ssB64 ? `data:image/png;base64,${ssB64}` : '',
+              confusionEvents: []
+            });
+          }
+        }
+
+        // Fallback: use trace data directly when no screenshots or MD files exist
+        if (steps.length === 0 && entry.trace && entry.trace.length > 0) {
+          for (const traceStep of entry.trace) {
+            steps.push({
+              step: traceStep.step || steps.length + 1,
+              see: traceStep.what_i_see || '',
+              thinking: traceStep.thought || traceStep.what_im_thinking || '',
+              trying: traceStep.action || '',
+              confidence: traceStep.confidence || '',
+              patience: String(traceStep.patience || 100),
+              screenshot: '',
               confusionEvents: []
             });
           }
@@ -989,7 +1005,7 @@ function buildEvidenceViewerData() {
     for (const pid of ud.personas_evaluated) {
       const overlay = overlays.find(o => o.persona === pid) || {};
       const confusionEvents = overlay.confusion_events || [];
-      const personaEntries = personaResults ? personaResults.filter(r => r.persona === pid) : [];
+      const personaEntries = personaResults ? personaResults.filter(r => (r.persona_id || r.persona) === pid) : [];
 
       const allPersonaScreenshots = screenshotsByPersona[pid] || [];
 

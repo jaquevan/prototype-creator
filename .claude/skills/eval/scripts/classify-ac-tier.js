@@ -51,7 +51,7 @@ const overrides = [];
 const uiEnhancements = (extractState.feature_context?.ui_enhancements || '').toLowerCase();
 
 for (const ac of extractState.ac_list || []) {
-  const text = ac.text.toLowerCase();
+  const text = (ac.text || ac.criterion_text || '').toLowerCase();
 
   const hasBackendKeyword = BACKEND_KEYWORDS.some(kw => text.includes(kw));
   if (!hasBackendKeyword) continue; // no risk of false T3

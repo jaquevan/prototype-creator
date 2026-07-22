@@ -105,9 +105,56 @@ judges:
           return {"pass": False, "reason": "Second run did not hit cache"}
         return {"pass": True}
 
+  - name: pipeline-output-valid
+    type: check
+    description: Verify pipeline output artifacts have correct schemas (usability, consistency, persona data)
+    applies_to: case-pipeline-output-validation
+    check: |
+      def check(outputs, arguments):
+        import subprocess, json
+        case_dir = arguments['case_dir']
+        # Run the validation script against the artifacts
+        result = subprocess.run(
+          ['node', '.claude/skills/eval/tests/validate-pipeline-output.js', case_dir],
+          capture_output=True, text=True
+        )
+        if result.returncode != 0:
+          try:
+            data = json.loads(result.stdout)
+            failures = [r for r in data['results'] if not r['pass']]
+            reasons = '; '.join(f"{f['scorer']}: {f['detail']}" for f in failures[:3])
+            return {"pass": False, "reason": f"{data['fail_count']} checks failed: {reasons}"}
+          except:
+            return {"pass": False, "reason": f"Validation script errored: {result.stderr[:200]}"}
+        return {"pass": True}
+
+  - name: report-rendering-valid
+    type: check
+    description: Verify HTML report renders all data from JSON artifacts (catches field mismatches, missing placeholders)
+    applies_to: case-pipeline-output-validation
+    check: |
+      def check(outputs, arguments):
+        import subprocess, json
+        case_dir = arguments['case_dir']
+        result = subprocess.run(
+          ['node', '.claude/skills/eval/tests/validate-report-rendering.js', case_dir],
+          capture_output=True, text=True
+        )
+        if result.returncode != 0:
+          try:
+            data = json.loads(result.stdout)
+            failures = [r for r in data['results'] if not r['pass']]
+            reasons = '; '.join(f"{f['scorer']}: {f['detail']}" for f in failures[:3])
+            return {"pass": False, "reason": f"{data['fail_count']} rendering checks failed: {reasons}"}
+          except:
+            return {"pass": False, "reason": f"Report rendering test errored: {result.stderr[:200]}"}
+        return {"pass": True}
+
 thresholds:
   pass_rate: 1.0
   required_judges:
     - patience-drain-exact
     - classify-tier-overrides
     - journey-gen-structure
+    - pipeline-output-valid
+    - report-rendering-valid
