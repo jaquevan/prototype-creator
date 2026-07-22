@@ -2875,7 +2875,7 @@ function buildTokens(opts = {}) {
 
   // ---- Methodology ----
   const methodologyFallback = `
-    <p>Acceptance criteria are extracted from the Jira ticket and verified against the live prototype using Playwright (headless Firefox, 1920x900). Each AC gets a <strong>PASS</strong>, <strong>FAIL</strong>, or <strong>FLAGGED</strong> verdict with screenshot evidence. If criteria fail, the pipeline applies fixes and re-evaluates.</p>
+    <p>Acceptance criteria are extracted from the Jira ticket and verified against the live prototype using Playwright (headless Chromium, 1920x900). Each AC gets a <strong>PASS</strong>, <strong>FAIL</strong>, or <strong>FLAGGED</strong> verdict with screenshot evidence. If criteria fail, the pipeline applies fixes and re-evaluates.</p>
     <p style="margin-top:0.5rem">Usability is scored by simulated personas who navigate the prototype independently, producing think-aloud traces and 7-dimension scores (0-3 each). Patience tracks frustration per task — confusion drains it, successful interactions recover it.</p>
   `;
   const methodologyHtml = methodologyFallback;

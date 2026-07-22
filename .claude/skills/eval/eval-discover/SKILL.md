@@ -216,9 +216,9 @@ async function runTask1(page, persona) {
 **ESM module resolution:** The `playwright` package is in `.claude/skills/eval/node_modules/`. A committed symlink at the project root (`node_modules -> .claude/skills/eval/node_modules`) lets ESM resolve `playwright` from scripts anywhere in the project tree. If scripts fail with `ERR_MODULE_NOT_FOUND`, the symlink is missing — eval-iterate's setup step recreates it automatically.
 
 ```javascript
-import { firefox } from 'playwright';
+import { chromium } from 'playwright';
 // MANDATORY: 1920x900 viewport in every context. Default 800x600 truncates tables. 1440 is insufficient for tables with 10+ columns.
-const browser = await firefox.launch({ headless: true });
+const browser = await chromium.launch({ headless: true });
 
 // MANDATORY: Pre-seed "All projects" in localStorage BEFORE React mounts.
 // Many prototypes default to a project with no mock data (e.g., "AI Platform Team").

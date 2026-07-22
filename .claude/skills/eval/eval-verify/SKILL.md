@@ -44,7 +44,7 @@ The x-ray evaluator has full workspace access and uses it for speed. The goal is
 
 ```javascript
 // Generated script MUST start with this setup:
-const browser = await firefox.launch({ headless: true });
+const browser = await chromium.launch({ headless: true });
 const context = await browser.newContext({ viewport: { width: 1920, height: 900 } });
 const page = await context.newPage();
 
@@ -94,7 +94,7 @@ EVAL_SKILL_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." 2>/dev/null && pwd || 
 if ! npx playwright --version >/dev/null 2>&1; then
   cd "$EVAL_SKILL_ROOT"
   npm install
-  npx playwright install chromium firefox
+  npx playwright install chromium
   cd -
 else
   echo "Playwright already installed, skipping setup"
@@ -103,11 +103,26 @@ fi
 
 **ESM module resolution:** The `playwright` package is installed in `.claude/skills/eval/node_modules/`. A committed symlink at the project root (`node_modules -> .claude/skills/eval/node_modules`) lets ESM `import` resolve `playwright` from scripts anywhere in the project tree. If the symlink is missing (e.g. checkout didn't preserve it), the eval-iterate setup step recreates it. Without this symlink, all `.mjs` scripts fail with `ERR_MODULE_NOT_FOUND`.
 
-**Browser selection:** Use Firefox by default (more reliable CSS rendering for PatternFly expandable components). Fall back to Chromium if Firefox is not installed.
+**Browser selection:** Use Chromium (headless). Firefox caused blank screenshots in 3/4
+pipeline runs due to PatternFly CSS rendering failures in headless mode.
+
+**Blank screenshot detection:** After each screenshot, check the file size. Images under
+10 KB are likely blank (rendering not yet complete). When detected:
+1. Wait 2 seconds and retry once (the page may still be loading)
+2. If still blank after retry, log a warning and continue — base the verdict on DOM state
+   (selectors, getBoundingClientRect), not screenshot appearance
+
+**Hidden row detection:** PatternFly's `Tr` component treats any explicit `isExpanded` value
+(including `false`) as its own visibility control, rendering rows with `hidden=""`. Before
+reporting AC failures for missing table data, check whether rows exist in the DOM but have
+zero bounding rect (`getBoundingClientRect().height === 0`). If so, report ONE root cause
+("N rows exist but are hidden by isExpanded={false}") instead of separate per-AC failures —
+this is a single prototype bug, not N independent issues. This check saved 4 independent
+failure diagnoses from collapsing into 1 root cause on RHAISTRAT-432.
 
 ```javascript
-import { firefox } from 'playwright';
-const browser = await firefox.launch({ headless: true });
+import { chromium } from 'playwright';
+const browser = await chromium.launch({ headless: true });
 // MANDATORY: 1920x900 viewport. Default 800x600 truncates table columns. 1440 is insufficient for tables with 10+ columns (e.g., Kueue scheduling adds Queue + Scheduling + expand toggle).
 const context = await browser.newContext({ viewport: { width: 1920, height: 900 } });
 const page = await context.newPage();
@@ -242,7 +257,7 @@ Verify before running: `journey_count_in_script == len(extract-state.journey_def
 Use this tested template as the BASE of every generated `journey-test.mjs`. The agent fills in the journey-specific logic — do NOT write the boilerplate from scratch.
 
 ```javascript
-import { firefox } from 'playwright';
+import { chromium } from 'playwright';
 import { readFileSync, writeFileSync, mkdirSync } from 'fs';
 
 const BASE_URL = '<prototype-url>';
@@ -252,7 +267,7 @@ const componentMap = JSON.parse(readFileSync(`${ARTIFACTS}/component-map.json`, 
 
 mkdirSync(SCREENSHOTS, { recursive: true });
 
-const browser = await firefox.launch({ headless: true });
+const browser = await chromium.launch({ headless: true });
 const context = await browser.newContext({ viewport: { width: 1920, height: 900 } });
 const page = await context.newPage();
 
