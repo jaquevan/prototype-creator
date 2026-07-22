@@ -1,0 +1,113 @@
+name: eval-pipeline-scripts
+description: Validate deterministic scripts that replaced LLM-authored pipeline steps
+
+execution:
+  mode: case
+  arguments: "{case_dir}"
+
+runner:
+  type: script
+  settings:
+    timeout: 30
+
+models:
+  skill: null  # scripts are Node.js, not LLM-driven
+  judge: claude-opus-4-6
+
+dataset:
+  path: tests/fixtures
+  schema:
+    description: >
+      Each case directory contains input.json (script inputs) and expected.json
+      (expected outputs with formulae/structural checks). Cases test the three
+      deterministic scripts: compute-patience-drain.js, classify-ac-tier.js,
+      and generate-journey-script.js.
+    fields:
+      - name: input.json
+        description: Script input data (persona-results, extract-state, component-map)
+      - name: expected.json
+        description: Expected outputs with documented formulae
+
+outputs:
+  - name: script-output
+    path: "{case_dir}/actual.json"
+    schema:
+      description: Script output captured after execution
+
+judges:
+  - name: patience-drain-exact
+    type: check
+    description: Verify patience_end values match the rubric formula exactly
+    applies_to: case-patience-drain
+    check: |
+      def check(outputs, arguments):
+        import json
+        expected = json.load(open(f"{arguments['case_dir']}/expected.json"))
+        actual = json.load(open(f"{arguments['case_dir']}/actual.json"))
+        for exp, act in zip(expected['results'], actual):
+          if exp['patience_end'] != act['patience_end']:
+            return {"pass": False, "reason": f"{act['persona']} task-{act['task_index']}: expected {exp['patience_end']}, got {act['patience_end']}"}
+        return {"pass": True}
+
+  - name: classify-tier-overrides
+    type: check
+    description: Verify backend ACs with UI surfaces get forced to T1
+    applies_to: case-classify-tier
+    check: |
+      def check(outputs, arguments):
+        import json
+        expected = json.load(open(f"{arguments['case_dir']}/expected.json"))
+        actual = json.load(open(f"{arguments['case_dir']}/tier-overrides.json"))
+        expected_ids = {o['criterion_id'] for o in expected['overrides']}
+        actual_ids = {o['criterion_id'] for o in actual}
+        missing = expected_ids - actual_ids
+        if missing:
+          return {"pass": False, "reason": f"Missing T1 overrides for: {missing}"}
+        for o in actual:
+          if o['forced_tier'] != 'T1':
+            return {"pass": False, "reason": f"{o['criterion_id']} forced to {o['forced_tier']}, expected T1"}
+        return {"pass": True}
+
+  - name: journey-gen-structure
+    type: check
+    description: Verify generated Playwright script has correct structure
+    applies_to: case-journey-gen
+    check: |
+      def check(outputs, arguments):
+        import json, re
+        expected = json.load(open(f"{arguments['case_dir']}/expected.json"))
+        script = open(f"{arguments['case_dir']}/journey-test.mjs").read()
+        for pattern in expected['verify_mode']['required_patterns']:
+          if not re.search(pattern, script):
+            return {"pass": False, "reason": f"Missing required pattern: {pattern}"}
+        for pattern in expected['verify_mode']['forbidden_patterns']:
+          if re.search(pattern, script):
+            return {"pass": False, "reason": f"Found forbidden pattern: {pattern}"}
+        func_count = len(re.findall(r'async function journey_\d+', script))
+        if func_count != expected['verify_mode']['journey_count']:
+          return {"pass": False, "reason": f"Expected {expected['verify_mode']['journey_count']} journey functions, found {func_count}"}
+        return {"pass": True}
+
+  - name: cache-hit
+    type: check
+    description: Verify cache hit skips regeneration on unchanged inputs
+    applies_to: case-journey-gen
+    check: |
+      def check(outputs, arguments):
+        import subprocess, json
+        case_dir = arguments['case_dir']
+        # Run generator twice — second run should be cache hit
+        result = subprocess.run(
+          ['node', '.claude/skills/eval/scripts/generate-journey-script.js', case_dir, '--mode=verify'],
+          capture_output=True, text=True
+        )
+        if 'Cache hit' not in result.stdout:
+          return {"pass": False, "reason": "Second run did not hit cache"}
+        return {"pass": True}
+
+thresholds:
+  pass_rate: 1.0
+  required_judges:
+    - patience-drain-exact
+    - classify-tier-overrides
+    - journey-gen-structure

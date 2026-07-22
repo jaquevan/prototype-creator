@@ -44,18 +44,9 @@ Each persona navigates at their own competence level — an experienced user exp
 
 #### 1a: Select personas based on target audience
 
-Use the mapping below with `extract-state.json > persona_selection.target_audience_text`:
+Read `persona_selection.selected` from `extract-state.json`. These IDs were populated by eval-extract using `config/persona-mapping.json` — the canonical audience-to-persona mapping. Do NOT re-derive personas from scratch. If `persona_selection.selected` is empty (legacy artifact), fall back to reading `config/persona-mapping.json` directly and matching against `persona_selection.target_audience_text`.
 
-| RFE Target Audience | Recommended Personas |
-|---------------------|---------------------|
-| Data scientists, ML practitioners | `deena-junior`, `deena-senior` |
-| AI/ML engineers, developers | `alex-junior`, `alex-senior` |
-| MLOps, platform operators | `maude-experienced`, `maude-junior` |
-| Platform admins, infrastructure | `paula-platform-engineer` |
-| Accessibility-sensitive flows | `sam-accessibility` |
-| Regulated/air-gapped environments | `raj-regulated` |
-
-Always pick one junior + one senior when possible.
+Validate each selected persona ID has a corresponding file at `.context/usability-testing/personas/<id>.yaml` before proceeding. If a file is missing, log a warning and drop that persona from the run.
 
 #### 1b: Read each selected persona's YAML file
 
@@ -151,6 +142,16 @@ files — the trace data in `persona-results.json` is sufficient for scoring, an
 the markdown files are only consumed by the full HTML report renderer.
 
 Each persona runs their OWN Playwright walkthrough as an independent sub-agent. Navigation behavior is driven by the persona's YAML fields — not a shared script.
+
+**Step 1d-gen: Generate the walkthrough script scaffold:**
+
+```bash
+node .claude/skills/eval/scripts/generate-journey-script.js .artifacts/<KEY>/ --mode=discover --screenshots=<full|key-only>
+```
+
+This produces `.artifacts/<KEY>/persona-walkthrough.mjs` with mechanical scaffolding (browser setup, PF6 utilities, per-task function shells, main loop). The script uses a content-based cache hash — if inputs haven't changed since last run, it skips regeneration.
+
+**Fill LLM_FILL blocks:** Read the generated script and complete `// LLM_FILL:` comment blocks with task-specific navigation, persona-driven interactions, and step-by-step screenshots. The mechanical sections (browser launch, viewport, addInitScript, utilities) are pre-filled and must not be modified.
 
 **REQUIRED script structure for `persona-walkthrough.mjs`:**
 
@@ -479,26 +480,15 @@ After persona walkthroughs complete, read each persona's output:
 
 For each persona's trace, assess:
 1. **Comprehension** — did the persona understand the UI elements? Check against domain_knowledge map.
-2. **Patience drain and recovery** — apply the model from `.context/usability-testing/prompts/evaluate-flow.md` exactly as specified:
+2. **Patience drain and recovery** — run the deterministic calculator:
 
-   **Drain rates (per persona patience attribute from YAML):**
-   - High patience: -5% per confusion event, -10% per dead end
-   - Medium patience: -10% per confusion event, -20% per dead end
-   - Low patience: -15% per confusion event, -30% per dead end
-   - At 0%: accept assisted navigation if available, otherwise abandon
-
-   **Recovery (on successful sub-task completion):**
-   - High patience: +10% per success (cap at 100%)
-   - Medium patience: +5% per success (cap at 100%)
-   - Low patience: +5% per success (cap at 100%)
-   - Recovery only applies after frustration occurred. No recovery if never frustrated.
-   - Assisted navigation recovery: +15% (got unstuck, but step is still a failure)
-
-   **CRITICAL:** Apply these rates mechanically from the think-aloud trace events. Count the logged confusion events, dead ends, and successful sub-tasks. Do NOT infer additional drain from step count, time spent, or subjective assessment. The formula is:
+   ```bash
+   node .claude/skills/eval/scripts/compute-patience-drain.js .artifacts/<KEY>/
    ```
-   patience_end = 100 - SUM(drain from confusion events) - SUM(drain from dead ends) + SUM(recovery from successes)
-   ```
-   Clamp between 0 and 100.
+
+   This reads `persona-results.json` trace events and each persona's YAML patience attribute, then recalculates `patience_end` using the exact rubric formula (drain rates: High -5/-10, Medium -10/-20, Low -15/-30; recovery: High +10, Medium/Low +5; clamped 0-100; resets to 100 per task). The script overwrites `patience_end` and `confusion_events` in persona-results.json.
+
+   Do NOT manually compute patience drain — the script enforces the formula mechanically.
 
 3. **Knowledge gaps** — moments where persona constraints caused confusion
 4. **Assisted navigation** — steps marked `navigate-assisted` are FAIL evidence for usability

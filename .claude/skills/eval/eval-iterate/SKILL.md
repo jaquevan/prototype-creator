@@ -190,21 +190,15 @@ if workspace provided:
     NEEDS_REBUILD=false
     echo "Dev server detected. HMR will handle rebuilds automatically."
 
-# ── Setup (runs once) ──────────────────────────────────────────────
+# ── Setup (runs once, consolidated) ────────────────────────────────
+# All setup steps (eval-state init, workspace capture, server detection,
+# node_modules symlink, Playwright check) are consolidated in one script.
+# This replaces ~40 individual tool calls with a single invocation.
 
-# ── Playwright ESM module resolution ──────────────────────────────
-# playwright is installed in .claude/skills/eval/node_modules/.
-# ESM import resolves by walking UP from the script file — NOT from
-# cwd and NOT via NODE_PATH. Scripts in .artifacts/<KEY>/ need a
-# node_modules somewhere in their ancestor path. A committed symlink
-# at the project root (node_modules -> .claude/skills/eval/node_modules)
-# handles this. Verify it exists; recreate if missing (e.g. after a
-# clean checkout where symlinks weren't preserved).
-PROJECT_ROOT="$(git rev-parse --show-toplevel)"
-if [ ! -e "$PROJECT_ROOT/node_modules" ]; then
-  ln -s .claude/skills/eval/node_modules "$PROJECT_ROOT/node_modules"
-  echo "Recreated node_modules symlink for ESM Playwright resolution"
-fi
+bash .claude/skills/eval/scripts/pipeline-setup.sh <KEY> <URL> <workspace> $max_iterations [--reset if set]
+
+# The script outputs NEEDS_REBUILD=true|false which determines whether
+# we run `npm run build` after eval-fix applies changes.
 
 # ── Per-skill timing ──────────────────────────────────────────────
 # Record start/end timestamps for each skill to measure optimization impact.
@@ -256,12 +250,11 @@ LOOP:
   # (~3-5 min of LLM output). If a prior run produced one for the same
   # workspace commit and AC set, reuse it instead of regenerating.
   # The actual Playwright execution is fast (~30s for 7 journeys).
-  if .artifacts/<KEY>/journey-test.mjs exists AND iteration == 1:
-    Read first 5 lines of .artifacts/<KEY>/journey-test.mjs for a // cache header
-    if header contains workspace_commit matching current WORKSPACE_COMMIT:
-      echo "Reusing cached journey-test.mjs (same commit)"
-      # Tell eval-verify to use the existing script via --reuse-script
-  # If no cache hit, eval-verify generates a fresh script as normal.
+  # Playwright script caching is handled by generate-journey-script.js:
+  # It writes a // CACHE_HASH: header based on MD5(component-map + extract-state).
+  # On subsequent runs, if the hash matches, it skips regeneration entirely.
+  # No manual cache check needed here — eval-verify's Step 3a calls the generator,
+  # which self-caches. --force-regenerate bypasses the cache if needed.
 
   python3 .claude/skills/eval/scripts/eval_state.py set .artifacts/<KEY>/eval-state.yaml \
     verify_start=$(python3 .claude/skills/eval/scripts/eval_state.py timestamp)
@@ -271,7 +264,10 @@ LOOP:
       --mode=informed
     # Uses workspace source for selectors/routes. Verifies ACs quickly.
   else:
-    Read .claude/skills/eval/eval-verify/SKILL.md and execute it with:
+    # Iteration 2+: skip SKILL.md re-read (~5K tokens saved). The eval-verify
+    # procedure is already in context from iteration 1. Only re-run Steps 3-8
+    # with --rerun-only targeting FAIL+FLAGGED ACs from the previous CSV.
+    Execute eval-verify procedure with:
       --mode=informed --rerun-only=<FAIL+FLAGGED AC IDs from previous CSV>
     # Only runs Playwright for journeys testing failing criteria
     # Carries forward PASS verdicts from previous iteration
@@ -377,7 +373,11 @@ LOOP:
   python3 .claude/skills/eval/scripts/eval_state.py set .artifacts/<KEY>/eval-state.yaml \
     fix_start=$(python3 .claude/skills/eval/scripts/eval_state.py timestamp)
 
-  Read .claude/skills/eval/eval-fix/SKILL.md and execute it
+  if iteration == 1:
+    Read .claude/skills/eval/eval-fix/SKILL.md and execute it
+  else:
+    # Iteration 2+: skip SKILL.md re-read. Procedure already in context.
+    Execute eval-fix procedure
   # Applies fixes from refinement-suggestions.json (AC failures + consistency + flagged)
 
   python3 .claude/skills/eval/scripts/eval_state.py set .artifacts/<KEY>/eval-state.yaml \
@@ -415,6 +415,9 @@ if iteration > 1:
   # This re-walks ALL journeys (not just the re-run set) and captures fresh screenshots
   # to .artifacts/<KEY>/screenshots/ — overwriting the partial captures from fix iterations.
   # Verdict CSV is NOT modified. journey-log.json step screenshots are updated in-place.
+  # IMPORTANT: --capture-only triggers Step 2b to re-scan source and refresh
+  # component-map.json, so Phase B's generate-journey-script.js reads post-fix
+  # columns, interaction patterns, and routes — not stale pre-fix data.
 
   # Ensure the rebuild completed before capturing (static server needs explicit build)
   if NEEDS_REBUILD:

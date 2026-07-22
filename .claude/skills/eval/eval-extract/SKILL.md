@@ -302,6 +302,8 @@ Write to `.artifacts/<KEY>/mr-delta.json`.
 - `--phase=enrichment`: Read existing `extract-state.json`, merge in `tasks_to_be_done`, `phase_a_only_acs`, and `breadcrumb` from Steps 5b, 6, 7. Write updated file.
 - No `--phase` flag: Write everything at once (legacy behavior).
 
+**Persona selection (deterministic):** Read `config/persona-mapping.json` (relative to the eval skill root). Extract `target_audience_text` from the ticket description or user stories. Match against `mappings[].audience_keywords` (case-insensitive substring match). Select the first matching entry's `personas[]`. Always pick one junior + one senior when the mapping provides both. Validate every selected ID exists in `valid_ids` — if an ID is not in the list, log a warning and skip it (prevents silent file-read failures downstream in eval-discover). If no keywords match, default to `["alex-junior", "alex-senior"]` with reasoning `"no audience keywords matched, defaulting to developer personas"`.
+
 Assemble all extracted data into the handoff artifact:
 
 ```json
@@ -324,7 +326,7 @@ Assemble all extracted data into the handoff artifact:
     { "id": "journey-1", "title": "...", "persona": "...", "source": "...", "ac_ids": ["AC-1"], "expected_path": [] }
   ],
   "breadcrumb": { "outcome": null, "rfe": null, "strat": {}, "prototype": null, "mr": null },
-  "persona_selection": { "selected": [], "target_audience_text": "", "reasoning": "" },
+  "persona_selection": { "selected": ["<from config/persona-mapping.json>"], "target_audience_text": "<from ticket>", "target_audience_source": "<ticket key>", "reasoning": "<which keywords matched>" },
   "rfe_key": "<key or null>",
   "raw_parent": "<parent field from Jira response, cached for enrichment phase>",
   "raw_issuelinks": "<issuelinks array from Jira response, cached for enrichment phase>",

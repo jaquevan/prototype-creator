@@ -45,6 +45,16 @@ Load the AC list, criterion-to-reference map, and `feature_context` from `.artif
 
 If `feature_context.ui_enhancements` exists, use it as supplementary signal for tier decisions -- it describes what the prototype is supposed to visually demonstrate.
 
+### Step 1b: Run T3 misclassification guard
+
+```bash
+node .claude/skills/eval/scripts/classify-ac-tier.js .artifacts/<KEY>/
+```
+
+This produces `.artifacts/<KEY>/tier-overrides.json` — a list of ACs that have backend keywords but confirmed UI surfaces. Any AC listed there is locked to the specified tier (typically T1) and MUST NOT be overridden to T3 in Step 2.
+
+If `tier-overrides.json` exists, read it before classifying. For each override entry, set that AC's tier to `forced_tier` and note the `reason` in the rationale column.
+
 ### Step 2: Classify each criterion
 
 For each AC in the list, determine its tier. **Default to T1 unless there is a strong reason not to.** These are functional prototypes -- if it's about UI, it's testable.

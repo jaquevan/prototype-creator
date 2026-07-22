@@ -1,0 +1,31 @@
+{
+  "_doc": "Test case: 3 Medium-rate confusion events should yield patience_end=70. This was the exact bug from the 2026-07-14 pipeline audit.",
+  "persona_results": [
+    {
+      "persona": "maude-junior",
+      "task_index": 1,
+      "trace": [
+        {"step": 1, "action": "navigate", "confidence": "high"},
+        {"step": 2, "event": "confusion", "confidence": "low"},
+        {"step": 3, "event": "confusion", "confidence": "low"},
+        {"step": 4, "event": "confusion", "confidence": "low"}
+      ],
+      "patience_start": 100,
+      "patience_end": 80,
+      "confusion_events": 3
+    },
+    {
+      "persona": "maude-junior",
+      "task_index": 2,
+      "trace": [
+        {"step": 1, "action": "navigate", "confidence": "high"},
+        {"step": 2, "event": "confusion", "confidence": "low"},
+        {"step": 3, "event": "dead_end", "action": "back"},
+        {"step": 4, "event": "success", "action": "found", "confidence": "high"}
+      ],
+      "patience_start": 100,
+      "patience_end": 90,
+      "confusion_events": 1
+    }
+  ]
+}

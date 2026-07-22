@@ -219,11 +219,21 @@ Write to `.artifacts/<KEY>/component-map.json`:
 - Expected values (use `status_values` to know what to look for)
 - Target page route (use `target_page` for navigation)
 
+**Refresh rule:** Step 2b re-runs unconditionally when `--capture-only` is set (FINAL-STATE CAPTURE pass), because eval-fix may have changed columns, interaction patterns, or routes since the original scan. On normal iterations, Step 2b only runs if `component-map.json` does not exist.
+
 **Validation:** If `component-map.json` does not exist when Step 3 starts, STOP and go back to Step 2b. Do not generate a script without a component map.
 
 ### Step 3: Generate and run Playwright script
 
-Generate `.artifacts/<KEY>/journey-test.mjs` using the component map from Step 2b and the PF6 script template below.
+**Step 3a: Run the deterministic generator:**
+
+```bash
+node .claude/skills/eval/scripts/generate-journey-script.js .artifacts/<KEY>/ --mode=verify
+```
+
+This produces `.artifacts/<KEY>/journey-test.mjs` with ~80% of code filled in mechanically from `component-map.json` and `extract-state.json`. The script uses a content-based cache hash — if inputs haven't changed since last run, it skips regeneration.
+
+**Step 3b: Fill LLM_FILL blocks.** Read the generated `journey-test.mjs` and complete any `// LLM_FILL:` comment blocks. These are the ~20% that require judgment: AC-to-interaction classification for ambiguous ACs, row text for expand targets, and selectors not in component-map. Do NOT modify mechanical sections (marked "do not edit").
 
 **Journey skip check (when `--rerun-only` set):** For each journey, check if ANY of its `ac_ids` are in `--rerun-only`. If none are, skip the journey — carry forward its previous `journey-log.json` entry and screenshots.
 
