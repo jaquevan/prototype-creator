@@ -9,7 +9,7 @@ const { defineConfig } = require('@playwright/test');
  */
 module.exports = defineConfig({
   testDir: __dirname,
-  testMatch: 'report-rendering.spec.js',
+  testMatch: ['report-rendering.spec.js', 'report-visual-verification.spec.js'],
   timeout: 30_000,
   retries: 0,
   workers: 1,

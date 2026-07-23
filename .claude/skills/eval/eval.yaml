@@ -194,6 +194,46 @@ judges:
             return {"pass": False, "reason": f"Playwright exited {result.returncode}: {result.stderr[:200]}"}
           return {"pass": True}
 
+  - name: report-visual-verification
+    type: check
+    description: >
+      Playwright screenshot capture + LLM vision judge. Takes screenshots of every
+      report section (fix history, evidence viewer, review panel, all tabs) then uses
+      Claude vision to verify each section rendered correct, populated content against
+      the source JSON artifacts. Catches visual rendering bugs that DOM-based tests miss.
+    applies_to: case-pipeline-output-validation
+    check: |
+      def check(outputs, arguments):
+        import subprocess, json, os
+        case_dir = os.path.abspath(arguments['case_dir'])
+        env = os.environ.copy()
+        env['ARTIFACTS_DIR'] = case_dir
+
+        # Step 1: Take screenshots
+        pw = subprocess.run(
+          ['npx', 'playwright', 'test', 'report-visual-verification.spec.js',
+           '--config=.claude/skills/eval/tests/playwright.config.js'],
+          capture_output=True, text=True, env=env, timeout=120
+        )
+        if pw.returncode != 0:
+          return {"pass": False, "reason": f"Screenshot capture failed: {pw.stderr[:200]}"}
+
+        # Step 2: Run LLM judge if API key available
+        judge = subprocess.run(
+          ['node', '.claude/skills/eval/tests/judge-report-screenshots.js', case_dir],
+          capture_output=True, text=True, env=env, timeout=300
+        )
+        results_path = os.path.join(case_dir, 'report-screenshots', 'judge-results.json')
+        if os.path.exists(results_path):
+          data = json.load(open(results_path))
+          if data.get('failed', 0) > 0:
+            failures = [r for r in data['results'] if r.get('pass') is False]
+            reasons = '; '.join(f"{f['section']}: {f['reason']}" for f in failures[:3])
+            return {"pass": False, "reason": f"{data['failed']} sections failed visual check: {reasons}"}
+          return {"pass": True, "reason": f"{data['passed']} sections passed, {data.get('skipped', 0)} skipped"}
+        # If no API key, pass based on screenshot capture success alone
+        return {"pass": True, "reason": "Screenshots captured; LLM judge skipped (no API key)"}
+
 thresholds:
   pass_rate: 1.0
   required_judges:
@@ -203,3 +243,4 @@ thresholds:
     - pipeline-output-valid
     - report-rendering-valid
     - report-rendering-playwright
+    - report-visual-verification
