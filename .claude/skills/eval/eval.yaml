@@ -150,6 +150,50 @@ judges:
             return {"pass": False, "reason": f"Report rendering test errored: {result.stderr[:200]}"}
         return {"pass": True}
 
+  - name: report-rendering-playwright
+    type: check
+    description: >
+      Playwright browser tests for the evaluation report. Opens the HTML in Chromium
+      and verifies every section renders visible, interactive, populated content.
+      Catches blank accordions, missing persona cards, broken tab switching, empty
+      dimension scores, and data mismatches between JSON artifacts and rendered HTML.
+    applies_to: case-pipeline-output-validation
+    check: |
+      def check(outputs, arguments):
+        import subprocess, json, os
+        case_dir = os.path.abspath(arguments['case_dir'])
+        env = os.environ.copy()
+        env['ARTIFACTS_DIR'] = case_dir
+        result = subprocess.run(
+          ['npx', 'playwright', 'test',
+           '--config=.claude/skills/eval/tests/playwright.config.js',
+           '--reporter=json'],
+          capture_output=True, text=True, env=env, timeout=120
+        )
+        try:
+          data = json.loads(result.stdout)
+          suites = data.get('suites', [])
+          total = passed = failed = skipped = 0
+          failures = []
+          for suite in suites:
+            for spec in suite.get('specs', []):
+              for test in spec.get('tests', []):
+                for r in test.get('results', []):
+                  total += 1
+                  if r['status'] == 'passed': passed += 1
+                  elif r['status'] == 'failed':
+                    failed += 1
+                    failures.append(f"{spec['title']}: {r.get('error', {}).get('message', 'unknown')[:80]}")
+                  elif r['status'] == 'skipped': skipped += 1
+          if failed > 0:
+            reasons = '; '.join(failures[:3])
+            return {"pass": False, "reason": f"{failed}/{total} Playwright tests failed: {reasons}"}
+          return {"pass": True, "reason": f"{passed} passed, {skipped} skipped"}
+        except (json.JSONDecodeError, KeyError):
+          if result.returncode != 0:
+            return {"pass": False, "reason": f"Playwright exited {result.returncode}: {result.stderr[:200]}"}
+          return {"pass": True}
+
 thresholds:
   pass_rate: 1.0
   required_judges:
@@ -158,3 +202,4 @@ thresholds:
     - journey-gen-structure
     - pipeline-output-valid
     - report-rendering-valid
+    - report-rendering-playwright
