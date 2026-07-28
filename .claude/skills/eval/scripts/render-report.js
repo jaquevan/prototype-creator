@@ -20,6 +20,17 @@ const templatePath = path.join(__dirname, '..', 'templates', 'evaluation-report.
 // Helpers
 // ---------------------------------------------------------------------------
 
+function numScore(v) {
+  if (typeof v === 'number') return v;
+  const n = parseFloat(v);
+  return isNaN(n) ? 0 : n;
+}
+
+function isScoredDimension(d) {
+  const s = d.composite_score;
+  return s !== null && s !== undefined && s !== 'N/A' && s !== 'n/a';
+}
+
 function normalizeUsabilityDimensions(ud) {
   if (!ud) return ud;
   if (!ud.personas_evaluated && ud.persona_selection && ud.persona_selection.selected) {
@@ -30,12 +41,24 @@ function normalizeUsabilityDimensions(ud) {
     'scalability_complexity': 'scalability_progressive_complexity',
     'system_status': 'system_status_trust',
     'system_status_visibility': 'system_status_trust',
+    'system_status_observability': 'system_status_trust',
+    'cross_persona_context': 'cross_persona_handoffs',
     'technical_abstraction_level': 'technical_abstraction',
+  };
+  const dimNames = {
+    'workflow_continuity': 'Workflow Continuity & Integrity',
+    'cross_persona_handoffs': 'Cross-Persona Context & Handoffs',
+    'scalability_progressive_complexity': 'Scalability & Progressive Complexity',
+    'system_status_trust': 'System Status, Observability & Trust',
+    'technical_abstraction': 'Technical Abstraction & Signal-to-Noise',
+    'mental_model_fidelity': 'Mental Model Fidelity',
+    'accessibility_inclusion': 'Accessibility & Inclusion',
   };
 
   if (ud.dimensions) {
     for (const dim of ud.dimensions) {
       if (dim.id && dimIdAliases[dim.id]) dim.id = dimIdAliases[dim.id];
+      if (!dim.name && dim.id) dim.name = dimNames[dim.id] || dim.id;
       if (dim.score !== undefined && dim.composite_score === undefined) dim.composite_score = dim.score;
       if (dim.scores && !dim.persona_scores) dim.persona_scores = dim.scores;
     }
@@ -72,7 +95,9 @@ function normalizeJourneyLog(jl, artifactsDir) {
   if (Array.isArray(jl.journeys)) {
     for (const j of jl.journeys) {
       if (j.steps_expected == null && Array.isArray(j.steps)) j.steps_expected = j.steps.length;
+      if (j.steps_expected == null) j.steps_expected = j.steps_completed || 0;
       if (j.steps_completed == null && Array.isArray(j.steps)) j.steps_completed = j.steps.filter(s => s.result === 'success').length;
+      if (j.steps_completed == null) j.steps_completed = 0;
       if (!j.persona) j.persona = 'Evaluator';
       if (!j.source) j.source = j.ac_ids ? `Testing ${j.ac_ids.join(', ')}` : '';
       if (Array.isArray(j.steps)) {
@@ -87,6 +112,154 @@ function normalizeJourneyLog(jl, artifactsDir) {
     }
   }
   return jl;
+}
+
+// ---------------------------------------------------------------------------
+// Schema normalization — handles all observed persona-results.json variants
+// ---------------------------------------------------------------------------
+
+function normalizePersonaResults(raw) {
+  if (!raw) return [];
+  let entries = Array.isArray(raw) ? raw : (raw.personas || []);
+
+  return entries.map(entry => {
+    const persona = entry.persona_id || entry.persona || 'unknown';
+    const personaName = entry.persona_name || null;
+    const taskIndex = entry.task_index ?? entry.task_idx ?? 1;
+    const abandoned = entry.abandoned ?? (entry.outcome === 'abandoned') ?? false;
+
+    let confusionEvents = entry.confusion_events;
+    if (typeof confusionEvents === 'number') {
+      confusionEvents = Array.from({ length: confusionEvents }, (_, i) => ({ step: i + 1 }));
+    } else if (!Array.isArray(confusionEvents)) {
+      confusionEvents = [];
+    }
+
+    const trace = (entry.trace || []).map(step => ({
+      step: step.step,
+      what_i_see: step.what_i_see || step.description || '',
+      what_im_thinking: step.what_im_thinking || step.thought || '',
+      action: step.action || '',
+      target: step.target || '',
+      confidence: step.confidence || 'medium',
+      patience: step.patience ?? 100,
+      screenshot: step.screenshot || '',
+      evidence_for_acs: step.evidence_for_acs || [],
+      confusion_event: step.confusion_event ?? false,
+      dead_end: step.dead_end ?? false,
+      result: step.result || undefined,
+      narration: step.narration || undefined,
+    }));
+
+    return {
+      persona,
+      persona_id: persona,
+      persona_name: personaName,
+      task_index: taskIndex,
+      task: entry.task || '',
+      trace,
+      screenshots: entry.screenshots || [],
+      patience_start: entry.patience_start ?? 100,
+      patience_end: entry.patience_end ?? 100,
+      abandoned,
+      outcome: entry.outcome || (abandoned ? 'abandoned' : 'completed'),
+      would_complete: entry.would_complete ?? !abandoned,
+      confusion_events: confusionEvents,
+      dimension_scores: entry.dimension_scores || {},
+    };
+  });
+}
+
+function normalizeConsistencyReport(raw) {
+  if (!raw) return null;
+  if (raw.source_mode && Array.isArray(raw.violations)) return raw;
+
+  const normalized = {
+    source_mode: raw.source_mode || 'unknown',
+    summary: raw.summary || '',
+    violations: [],
+    total_violations: 0,
+  };
+
+  if (Array.isArray(raw.violations)) {
+    normalized.violations = raw.violations.map(v => ({
+      guideline_id: v.guideline_id || v.id || '',
+      guideline_title: v.guideline_title || v.title || v.guideline_id || '',
+      severity: v.severity || 'warning',
+      file: v.file || '',
+      line: v.line || null,
+      description: v.description || '',
+      suggestion: v.suggestion || v.fix || '',
+      pf_doc_url: v.pf_doc_url || '',
+      category: v.category || '',
+    }));
+  } else if (raw.categories) {
+    for (const [cat, items] of Object.entries(raw.categories)) {
+      if (Array.isArray(items)) {
+        for (const v of items) {
+          normalized.violations.push({
+            guideline_id: v.guideline_id || v.id || '',
+            guideline_title: v.guideline_title || v.title || '',
+            severity: v.severity || 'warning',
+            file: v.file || '',
+            line: v.line || null,
+            description: v.description || '',
+            suggestion: v.suggestion || v.fix || '',
+            pf_doc_url: v.pf_doc_url || '',
+            category: cat,
+          });
+        }
+      }
+    }
+  }
+
+  normalized.total_violations = normalized.violations.length;
+  return normalized;
+}
+
+// ---------------------------------------------------------------------------
+// Persona name map — single lookup used everywhere a persona is displayed
+// ---------------------------------------------------------------------------
+
+function buildPersonaNameMap(personaResults, journeyLog) {
+  const nameMap = {};
+
+  if (personaResults) {
+    for (const pr of personaResults) {
+      const id = pr.persona || pr.persona_id;
+      if (id && pr.persona_name) nameMap[id] = pr.persona_name;
+    }
+  }
+
+  if (journeyLog && journeyLog.usability_dimensions && journeyLog.usability_dimensions.persona_overlays) {
+    for (const ov of journeyLog.usability_dimensions.persona_overlays) {
+      const id = ov.persona || ov.persona_id;
+      if (id && ov.persona_name && !nameMap[id]) nameMap[id] = ov.persona_name;
+    }
+  }
+
+  // Also try persona YAML files for names and roles
+  const contextDir = path.join(require('./resolve-root').resolveProjectRoot(), '.context', 'usability-testing', 'personas');
+  if (journeyLog && journeyLog.usability_dimensions && journeyLog.usability_dimensions.personas_evaluated) {
+    for (const pid of journeyLog.usability_dimensions.personas_evaluated) {
+      if (!nameMap[pid]) {
+        const yamlPath = path.join(contextDir, pid + '.yaml');
+        const raw = readFileOr(yamlPath, '');
+        const nameMatch = raw.match(/^name:\s*"?(.+?)"?\s*$/m);
+        if (nameMatch) nameMap[pid] = nameMatch[1];
+      }
+    }
+  }
+
+  return nameMap;
+}
+
+
+
+function resolvePersonaName(nameMap, rawId) {
+  if (!rawId) return 'Unknown';
+  if (nameMap[rawId]) return nameMap[rawId];
+  return rawId.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 }
 
 function readFileOr(filePath, fallback) {
@@ -125,6 +298,13 @@ function escapeHtml(str) {
     .replace(/"/g, '&quot;');
 }
 
+function renderInlineMarkdown(escaped) {
+  return escaped
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/_(.+?)_/g, '<em>$1</em>')
+    .replace(/`(.+?)`/g, '<code>$1</code>');
+}
+
 function badgeHtml(verdict, acId) {
   const v = String(verdict).toUpperCase();
   const cls = v === 'PASS' ? 'badge-pass' : v === 'FAIL' ? 'badge-fail' : 'badge-flagged';
@@ -138,19 +318,39 @@ function extractPrototypeId() {
   return path.basename(absArtifacts);
 }
 
+function extractExpectedBehavior(criterionText) {
+  if (!criterionText) return '';
+  const thenMatch = criterionText.match(/,\s*then\s+(.+?)(?:,\s*measured\s+by\b.*)?$/i);
+  if (thenMatch) {
+    let behavior = thenMatch[1].replace(/,\s*$/, '').trim();
+    behavior = behavior.charAt(0).toUpperCase() + behavior.slice(1);
+    return behavior;
+  }
+  const whenMatch = criterionText.match(/,\s*when\s+(.+?)(?:,\s*measured\s+by\b.*)?$/i);
+  if (whenMatch) {
+    let behavior = whenMatch[1].replace(/,\s*$/, '').trim();
+    behavior = behavior.charAt(0).toUpperCase() + behavior.slice(1);
+    return behavior;
+  }
+  return criterionText.replace(/,?\s*measured\s+by\b.*$/i, '').trim();
+}
+
 function normalizeDelta(raw) {
   if (!raw) return null;
 
-  const allFiles = raw.changed_files || raw.files_changed ||
-    [...(raw.new_files || []), ...(raw.modified_files || [])];
+  const toPath = f => typeof f === 'string' ? f : (f && (f.path || f.file)) || String(f);
+  const flatPaths = arr => (arr || []).map(toPath);
+
+  const allFiles = flatPaths(raw.changed_files || raw.files_changed ||
+    [...(raw.new_files || []), ...(raw.modified_files || [])]);
 
   const cats = raw.categories || {};
-  const newPages = cats.new_pages || [];
-  const routeNavChanges = cats.route_nav_changes || [];
-  const featureFlagChanges = cats.feature_flag_changes || [];
+  const newPages = flatPaths(cats.new_pages);
+  const routeNavChanges = flatPaths(cats.route_nav_changes);
+  const featureFlagChanges = flatPaths(cats.feature_flag_changes);
 
-  const newFiles = raw.new_files || newPages;
-  const modifiedFiles = raw.modified_files ||
+  const newFiles = flatPaths(raw.new_files) || newPages;
+  const modifiedFiles = flatPaths(raw.modified_files) ||
     allFiles.filter(f => !newPages.includes(f));
 
   return {
@@ -170,7 +370,7 @@ function normalizeDelta(raw) {
     nav_changes: raw.nav_changes ?? routeNavChanges.some(f => f.includes('AppLayout') || f.includes('nav')),
     feature_flag_changes: raw.feature_flag_changes ?? featureFlagChanges.length > 0,
     nav_warning: raw.nav_warning || (raw.navigation_gaps && raw.navigation_gaps.length ? raw.navigation_gaps[0] : ''),
-    new_routes: raw.new_routes || [],
+    new_routes: flatPaths(raw.new_routes),
     summary: raw.summary || '',
     categories: cats
   };
@@ -240,7 +440,7 @@ function buildFullCsv(csvRaw, journeyLog, passCount, failCount, flaggedCount, ex
       fullCsv += '\n\n# USABILITY DIMENSIONS\ndimension_id,dimension_name,score,confidence,evidence,persona_scores\n';
       for (const dim of ud.dimensions) {
         const pScores = dim.persona_scores ? JSON.stringify(dim.persona_scores).replace(/"/g, '""') : '';
-        fullCsv += `${dim.id || ''},${escapeCSVField(dim.name || '')},${dim.composite_score || 0},${dim.confidence || 'medium'},${escapeCSVField(dim.evidence || '')},"${pScores}"\n`;
+        fullCsv += `${dim.id || ''},${escapeCSVField(dim.name || '')},${numScore(dim.composite_score)},${dim.confidence || 'medium'},${escapeCSVField(dim.evidence || '')},"${pScores}"\n`;
       }
     }
   }
@@ -332,7 +532,9 @@ function buildSummaryJson() {
 
   const usability = {};
   if (ud) {
-    usability.overall_score = ud.overall_score || null;
+    usability.overall_score = typeof ud.overall_score === 'number' ? ud.overall_score : null;
+    const scoredDims = (ud.dimensions || []).filter(d => isScoredDimension(d));
+    usability.max_score = ud.max_score || (scoredDims.length > 0 ? scoredDims.length * 3 : 21);
     usability.personas_evaluated = ud.personas_evaluated || [];
     usability.dimensions = (ud.dimensions || []).map(d => ({
       id: d.id,
@@ -735,43 +937,40 @@ function buildPersonaWalkthroughsHtml() {
 function loadPersonaData(absArtifacts, screenshotsDir) {
   const journeyLog = readJsonOr(path.join(absArtifacts, 'journey-log.json'), null);
   const extractState = readJsonOr(path.join(absArtifacts, 'extract-state.json'), null);
-  let personaResults = readJsonOr(path.join(absArtifacts, 'persona-results.json'), null);
-  if (personaResults && !Array.isArray(personaResults)) {
-    const arr = [];
-    for (const [pid, tasks] of Object.entries(personaResults)) {
-      if (Array.isArray(tasks)) {
-        for (const task of tasks) {
-          arr.push({
-            persona: pid,
-            task_index: task.task_index || 1,
-            task: task.task_name || task.task || '',
-            trace: task.steps || task.trace || [],
-            screenshots: task.screenshots || [],
-            patience_start: task.patience_start || 100,
-            patience_end: task.patience_end || 100,
-            confusion_events: task.confusion_events || 0,
-            outcome: task.outcome || (task.completed ? 'completed' : 'incomplete')
-          });
-        }
-      }
-    }
-    personaResults = arr;
+  const rawPersonaResults = readJsonOr(path.join(absArtifacts, 'persona-results.json'), null);
+  const personaResults = normalizePersonaResults(rawPersonaResults);
+
+  let ud = journeyLog ? normalizeUsabilityDimensions(journeyLog.usability_dimensions) : null;
+  if (!ud) ud = {};
+
+  const personaNameMap = buildPersonaNameMap(personaResults, journeyLog);
+
+  if (!ud.personas_evaluated && personaResults.length > 0) {
+    ud.personas_evaluated = [...new Set(personaResults.map(r => r.persona).filter(Boolean))];
   }
-  const ud = journeyLog ? normalizeUsabilityDimensions(journeyLog.usability_dimensions) : null;
+  if (!ud.personas_evaluated && fs.existsSync(screenshotsDir)) {
+    const ssFiles = fs.readdirSync(screenshotsDir).filter(f => f.startsWith('persona-') && f.endsWith('.png'));
+    const pids = [...new Set(ssFiles.map(f => {
+      const m = f.match(/^persona-(.+?)-task-/);
+      return m ? m[1] : null;
+    }).filter(Boolean))];
+    if (pids.length > 0) ud.personas_evaluated = pids;
+  }
+
   const tasksDefined = extractState ? (extractState.tasks_to_be_done || []) : [];
   const screenshotsByPersona = {};
-  if (ud && ud.personas_evaluated && fs.existsSync(screenshotsDir)) {
+  if (ud.personas_evaluated && fs.existsSync(screenshotsDir)) {
     const allFiles = fs.readdirSync(screenshotsDir).filter(f => f.endsWith('.png')).sort();
     for (const pid of ud.personas_evaluated) {
       screenshotsByPersona[pid] = allFiles.filter(f => f.startsWith(`persona-${pid}-`));
     }
   }
-  return { personaResults, ud, tasksDefined, screenshotsByPersona, journeyLog };
+  return { personaResults, ud, tasksDefined, screenshotsByPersona, journeyLog, personaNameMap };
 }
 
 function buildPersonaWalkthroughData() {
   const screenshotsDir = path.join(absArtifacts, 'screenshots');
-  const { personaResults, ud, tasksDefined, screenshotsByPersona, journeyLog } = loadPersonaData(absArtifacts, screenshotsDir);
+  const { personaResults, ud, tasksDefined, screenshotsByPersona, journeyLog, personaNameMap } = loadPersonaData(absArtifacts, screenshotsDir);
   const consistencyReport = readJsonOr(path.join(absArtifacts, 'consistency-report.json'), null);
 
   if (!ud || !ud.personas_evaluated) return '{}';
@@ -794,13 +993,21 @@ function buildPersonaWalkthroughData() {
     // Build tasks array
     const tasks = [];
 
+    const minTaskIdx = personaEntries.reduce((m, e) => Math.min(m, e.task_index != null ? e.task_index : 1), Infinity);
+    const isZeroBased = minTaskIdx === 0;
+
     if (personaEntries.length > 0) {
       // Use structured persona-results.json data (preferred path)
       for (const entry of personaEntries) {
-        const taskIdx = entry.task_index || 1;
-        const screenshots = allPersonaScreenshots
+        const taskIdx = isZeroBased ? ((entry.task_index || 0) + 1) : (entry.task_index || 1);
+        let screenshots = allPersonaScreenshots
           .filter(f => f.match(new RegExp(`task-${taskIdx}-step`)))
           .map(f => ({ file: f, step: parseInt((f.match(/step-(\d+)/) || [])[1] || '0', 10) }));
+        if (screenshots.length === 0) {
+          screenshots = allPersonaScreenshots
+            .filter(f => f.match(new RegExp(`task-${taskIdx}\\b`)) && !f.match(/task-\d+-step/))
+            .map(f => ({ file: f, step: 0 }));
+        }
 
         const thinkaloudPath = path.join(absArtifacts, `usability-thinkaloud-${pid}-task-${taskIdx}.md`);
         let thinkaloudRaw = readFileOr(thinkaloudPath, '');
@@ -820,35 +1027,27 @@ function buildPersonaWalkthroughData() {
           }
         }
 
-        if (steps.length === 0 && screenshots.length > 0) {
-          for (const ss of screenshots.sort((a, b) => a.step - b.step)) {
-            const ssB64 = fs.existsSync(path.join(screenshotsDir, ss.file))
-              ? fs.readFileSync(path.join(screenshotsDir, ss.file)).toString('base64')
-              : '';
-            steps.push({
-              step: ss.step,
-              see: entry.trace && entry.trace[ss.step - 1] ? (entry.trace[ss.step - 1].what_i_see || '') : '',
-              thinking: entry.trace && entry.trace[ss.step - 1] ? (entry.trace[ss.step - 1].what_im_thinking || '') : '',
-              trying: entry.trace && entry.trace[ss.step - 1] ? (entry.trace[ss.step - 1].action || '') : '',
-              confidence: entry.trace && entry.trace[ss.step - 1] ? (entry.trace[ss.step - 1].confidence || '') : '',
-              patience: String(entry.trace && entry.trace[ss.step - 1] ? (entry.trace[ss.step - 1].patience || 100) : 100),
-              screenshot: ssB64 ? `data:image/png;base64,${ssB64}` : '',
-              confusionEvents: []
-            });
-          }
-        }
-
-        // Fallback: use trace data directly when no screenshots or MD files exist
+        // Build steps from trace data when no think-aloud MD produced steps
         if (steps.length === 0 && entry.trace && entry.trace.length > 0) {
-          for (const traceStep of entry.trace) {
+          const screenshotStepIdx = entry.trace.findIndex(t => t.action === 'screenshot');
+          for (let si = 0; si < entry.trace.length; si++) {
+            const traceStep = entry.trace[si];
+            let ssB64 = '';
+            const isScreenshotStep = si === screenshotStepIdx || (screenshotStepIdx === -1 && si === entry.trace.length - 1);
+            if (isScreenshotStep && screenshots.length > 0) {
+              const ssPath = path.join(screenshotsDir, screenshots[screenshots.length - 1].file);
+              if (fs.existsSync(ssPath)) {
+                ssB64 = fs.readFileSync(ssPath).toString('base64');
+              }
+            }
             steps.push({
-              step: traceStep.step || steps.length + 1,
-              see: traceStep.what_i_see || '',
+              step: traceStep.step || si + 1,
+              see: traceStep.what_i_see || traceStep.description || '',
               thinking: traceStep.thought || traceStep.what_im_thinking || '',
               trying: traceStep.action || '',
               confidence: traceStep.confidence || '',
               patience: String(traceStep.patience || 100),
-              screenshot: '',
+              screenshot: ssB64 ? `data:image/png;base64,${ssB64}` : '',
               confusionEvents: []
             });
           }
@@ -992,7 +1191,7 @@ function getPersonaMetadata(pid) {
 
 function buildEvidenceViewerData() {
   const screenshotsDir = path.join(absArtifacts, 'screenshots');
-  const { personaResults, ud, tasksDefined, screenshotsByPersona } = loadPersonaData(absArtifacts, screenshotsDir);
+  const { personaResults, ud, tasksDefined, screenshotsByPersona, personaNameMap } = loadPersonaData(absArtifacts, screenshotsDir);
   const csvRaw = readFileOr(path.join(absArtifacts, 'evaluation-report.csv'), '');
   const csvRows = parseCsv(csvRaw);
 
@@ -1012,35 +1211,69 @@ function buildEvidenceViewerData() {
       const displayName = pid.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
       const tasks = [];
 
+      const evMinTaskIdx = personaEntries.reduce((m, e) => Math.min(m, e.task_index != null ? e.task_index : 1), Infinity);
+      const evIsZeroBased = evMinTaskIdx === 0;
+
       if (personaEntries.length > 0) {
         for (const entry of personaEntries) {
-          const taskIdx = entry.task_index || 1;
-          const ssFiles = allPersonaScreenshots
+          const taskIdx = evIsZeroBased ? ((entry.task_index || 0) + 1) : (entry.task_index || 1);
+          let ssFiles = allPersonaScreenshots
             .filter(f => f.match(new RegExp(`task-${taskIdx}-step`)))
             .map(f => ({ file: f, step: parseInt((f.match(/step-(\d+)/) || [])[1] || '0', 10) }));
+          if (ssFiles.length === 0) {
+            ssFiles = allPersonaScreenshots
+              .filter(f => f.match(new RegExp(`task-${taskIdx}\\b`)) && !f.match(/task-\d+-step/))
+              .map(f => ({ file: f, step: 0 }));
+          }
+          if (ssFiles.length === 0) {
+            ssFiles = allPersonaScreenshots
+              .filter(f => f.match(/step-\d+/) && !f.match(/task-\d+-step/))
+              .map(f => ({ file: f, step: parseInt((f.match(/step-(\d+)/) || [])[1] || '0', 10) }));
+          }
 
           const traceSteps = entry.trace || [];
           const steps = [];
 
+          // Find which trace step has action=screenshot to attach the image there
+          const screenshotStepIdx = traceSteps.findIndex(t => t.action === 'screenshot');
+
           for (let si = 0; si < traceSteps.length; si++) {
             const t = traceSteps[si];
             const stepNum = t.step || si + 1;
-            const ssEntry = ssFiles.find(s => s.step === stepNum);
             let ssB64 = '';
-            if (ssEntry) {
+
+            // Attach screenshot to the screenshot-action step, or to the last step
+            const isScreenshotStep = si === screenshotStepIdx || (screenshotStepIdx === -1 && si === traceSteps.length - 1);
+            if (isScreenshotStep && ssFiles.length > 0) {
+              const ssEntry = ssFiles[ssFiles.length - 1];
               const ssPath = path.join(screenshotsDir, ssEntry.file);
               if (fs.existsSync(ssPath)) {
                 ssB64 = fs.readFileSync(ssPath).toString('base64');
+              }
+            } else {
+              const ssEntry = ssFiles.find(s => s.step === stepNum);
+              if (ssEntry) {
+                const ssPath = path.join(screenshotsDir, ssEntry.file);
+                if (fs.existsSync(ssPath)) {
+                  ssB64 = fs.readFileSync(ssPath).toString('base64');
+                }
               }
             }
 
             const stepConfusion = confusionEvents.filter(e => e.step === stepNum);
 
+            const rawAction = t.action || '';
+            const verbMatch = rawAction.match(/^(\w+(?:\s+\w+)?)\s+(.+)$/);
+            const actionVerb = verbMatch ? verbMatch[1] : rawAction;
+            const actionTarget = verbMatch ? verbMatch[2] : '';
+
             steps.push({
               step: stepNum,
-              what_i_see: t.what_i_see || '',
-              what_im_thinking: t.what_im_thinking || '',
-              action: t.action || '',
+              what_i_see: t.what_i_see || t.description || '',
+              what_im_thinking: t.what_im_thinking || t.thought || '',
+              action: rawAction,
+              actionVerb,
+              actionTarget,
               confidence: t.confidence || 'medium',
               patience: t.patience != null ? t.patience : 100,
               screenshot: ssB64 ? `data:image/png;base64,${ssB64}` : '',
@@ -1412,7 +1645,7 @@ function buildHeroStatus(csvRows, passCount, failCount, flaggedCount, extractSta
     html += '<div class="status-hero-issues">';
     for (const f of failItems) {
       const acId = f.criterion_id || '?';
-      const text = (f.criterion_text || '').substring(0, 60);
+      const text = extractExpectedBehavior(f.criterion_text || '').substring(0, 60);
       html += `<div class="status-hero-issue fail"><span class="status-hero-issue-icon">✗</span> <strong>${escapeHtml(acId)}</strong>: ${escapeHtml(text)}${text.length >= 60 ? '…' : ''}</div>`;
     }
     html += '</div>';
@@ -1422,7 +1655,7 @@ function buildHeroStatus(csvRows, passCount, failCount, flaggedCount, extractSta
     html += '<div class="status-hero-issues">';
     for (const f of flagItems) {
       const acId = f.criterion_id || '?';
-      const action = (f.human_action || f.criterion_text || '').substring(0, 60);
+      const action = (f.human_action || extractExpectedBehavior(f.criterion_text || '')).substring(0, 60);
       html += `<div class="status-hero-issue flag"><span class="status-hero-issue-icon">⚠</span> <strong>${escapeHtml(acId)}</strong>: ${escapeHtml(action)}${action.length >= 60 ? '…' : ''}</div>`;
     }
     html += '</div>';
@@ -1439,7 +1672,7 @@ function buildHeroStatus(csvRows, passCount, failCount, flaggedCount, extractSta
     primaryText = `View ${failCount} failure${failCount !== 1 ? 's' : ''}`;
     primaryAction = "scrollToSection('ac-results')";
   } else {
-    primaryText = 'All clear — ready to submit';
+    primaryText = 'View conclusion';
     primaryAction = "scrollToSection('conclusion')";
   }
 
@@ -1452,21 +1685,6 @@ function buildHeroStatus(csvRows, passCount, failCount, flaggedCount, extractSta
   return html;
 }
 
-function buildStatDeltas(passCount, failCount, flaggedCount, usabilityScore, journeyLog) {
-  const iterLog = readJsonOr(path.join(absArtifacts, 'iteration-log.json'), null);
-  if (!iterLog || !iterLog.iterations || iterLog.iterations.length < 2) return '';
-  const iter1 = iterLog.iterations[0];
-  const passDelta = passCount - iter1.pass_count;
-  const failDelta = failCount - iter1.fail_count;
-  if (passDelta === 0 && failDelta === 0) return '';
-  let html = '<div style="font-size:0.65rem;color:var(--text2);margin-top:0.75rem;text-align:center">';
-  html += 'vs Iteration 1: ';
-  if (passDelta > 0) html += `<span style="color:var(--status-success)">+${passDelta} passed</span> `;
-  if (failDelta < 0) html += `<span style="color:var(--status-success)">${failDelta} failed</span>`;
-  if (failDelta > 0) html += `<span style="color:var(--status-danger)">+${failDelta} failed</span>`;
-  html += '</div>';
-  return html;
-}
 
 function buildFlaggedDataArray(csvRows, journeyLog, screenshots) {
   const flagged = csvRows.filter(r => (r.verdict || '').toUpperCase() === 'FLAGGED');
@@ -1537,7 +1755,8 @@ function buildIterationTimelineHtml() {
     }
     html += `<span class="iter-counts" style="margin-left:0.75rem">${iter.pass_count}P / ${iter.fail_count}F / ${iter.flagged_count}FL</span>`;
     if (iter.usability_score) {
-      html += `<span style="font-size:0.7rem;color:var(--text2);margin-left:0.5rem">Usability: ${iter.usability_score}/21</span>`;
+      const iterScoreStr = String(iter.usability_score).replace(/\/\d+$/, '');
+      html += `<span style="font-size:0.7rem;color:var(--text2);margin-left:0.5rem">Usability: ${iterScoreStr}</span>`;
     }
     if (iter.iteration > 1) {
       const prev = iterLog.iterations[iter.iteration - 2];
@@ -1644,7 +1863,9 @@ function buildIterationTimelineHtml() {
   const firstUsab = firstIter.usability_score;
   const lastUsab = lastIter.usability_score;
   if (firstUsab && lastUsab && firstUsab !== lastUsab) {
-    html += ` Usability: ${firstUsab} → ${lastUsab}/21.`;
+    const fStr = String(firstUsab).replace(/\/\d+$/, '');
+    const lStr = String(lastUsab).replace(/\/\d+$/, '');
+    html += ` Usability: ${fStr} → ${lStr}.`;
   }
   html += `</p>`;
 
@@ -1666,73 +1887,6 @@ function buildIterationTimelineHtml() {
   return html;
 }
 
-function buildReviewItemsHtml(csvRows, journeyLog, screenshots) {
-  const flagged = csvRows.filter(r => (r.verdict || '').toUpperCase() === 'FLAGGED');
-  if (!flagged.length) return '<p class="muted">No items flagged for review.</p>';
-
-  const journeys = journeyLog ? journeyLog.journeys || [] : [];
-
-  let html = '';
-  for (const item of flagged) {
-    const acId = item.criterion_id || '';
-    const tier = item.tier || '';
-    const criterion = item.criterion_text || '';
-    const rationale = item.rationale || item.evidence || '';
-    const humanAction = item.human_action || '';
-
-    // Find a relevant screenshot from journeys that test this AC
-    let screenshotSrc = '';
-    for (const j of journeys) {
-      if (j.ac_ids && j.ac_ids.includes(acId)) {
-        const steps = j.steps || [];
-        const lastStep = steps[steps.length - 1];
-        if (lastStep && lastStep.screenshot) {
-          const ssPath = path.join(absArtifacts, lastStep.screenshot);
-          if (fs.existsSync(ssPath)) {
-            const b64 = fs.readFileSync(ssPath).toString('base64');
-            screenshotSrc = `data:image/png;base64,${b64}`;
-          }
-          break;
-        }
-      }
-    }
-
-    html += `<div class="review-item">`;
-    html += `<div class="review-item-header">`;
-    html += `<span class="review-item-id">${escapeHtml(acId)}</span>`;
-    html += `<span class="badge badge-flagged">FLAGGED</span>`;
-    html += `<span class="review-item-tier">Tier ${escapeHtml(tier)}</span>`;
-    html += `</div>`;
-    html += `<div class="review-item-body">`;
-    html += `<div class="review-item-criterion">${escapeHtml(criterion)}</div>`;
-
-    if (rationale) {
-      html += `<div class="review-item-evidence"><strong>Why flagged:</strong> ${escapeHtml(rationale)}</div>`;
-    }
-    if (humanAction) {
-      html += `<p style="font-size:0.75rem;color:var(--accent);margin:0.5rem 0"><strong>Action needed:</strong> ${escapeHtml(humanAction)}</p>`;
-    }
-
-    if (screenshotSrc) {
-      html += `<div class="review-item-screenshot" onclick="openImageLightbox(this.querySelector('img').src)"><img loading="lazy" src="${screenshotSrc}" alt="Screenshot for ${escapeHtml(acId)}"></div>`;
-    }
-
-    html += `<div class="review-override" data-override-ac="${escapeHtml(acId)}">`;
-    html += `<span style="font-size:0.75rem;color:var(--text2);align-self:center">Override:</span>`;
-    html += `<button data-verdict="PASS" onclick="overrideVerdict('${escapeHtml(acId)}','PASS')">PASS</button>`;
-    html += `<button data-verdict="FAIL" onclick="overrideVerdict('${escapeHtml(acId)}','FAIL')">FAIL</button>`;
-    html += `<input type="hidden" id="override-${escapeHtml(acId)}" value="">`;
-    html += `</div>`;
-
-    html += `<textarea class="review-textarea" data-ac="${escapeHtml(acId)}" placeholder="Your assessment — what did you observe when testing this in the prototype?"></textarea>`;
-    html += `<div style="margin-top:0.5rem;display:flex;gap:0.5rem">`;
-    html += `<a href="#ac-results" onclick="scrollToSection('ac-results');return false" style="font-size:0.7rem;color:var(--accent)">View in AC table</a>`;
-    html += `<a href="#" onclick="openReviewPanel('${escapeHtml(acId)}');return false" style="font-size:0.7rem;color:var(--accent)">Open review panel</a>`;
-    html += `</div>`;
-    html += `</div></div>`;
-  }
-  return html;
-}
 
 function buildBaselineComparison() {
   const fixLog = readJsonOr(path.join(absArtifacts, 'fix-log.json'), null);
@@ -1754,85 +1908,107 @@ function buildBaselineComparison() {
 }
 
 function buildFixesAppliedHtml() {
+  const suggestions = readJsonOr(path.join(absArtifacts, 'refinement-suggestions.json'), []);
   const fixLog = readJsonOr(path.join(absArtifacts, 'fix-log.json'), null);
   const journeyLog = readJsonOr(path.join(absArtifacts, 'journey-log.json'), null);
-  const appliedFixes = fixLog ? (Array.isArray(fixLog) ? fixLog : fixLog.applied || []) : [];
+  const fixLogEntries = fixLog ? (Array.isArray(fixLog) ? fixLog : fixLog.applied || []) : [];
 
-  if (!appliedFixes.length) {
+  const allItems = Array.isArray(suggestions) && suggestions.length > 0
+    ? suggestions
+    : fixLogEntries;
+
+  if (!allItems.length) {
     const csvRaw = readFileOr(path.join(absArtifacts, 'evaluation-report.csv'), '');
     const hasFlagged = csvRaw.includes(',FLAGGED,');
     const hasFail = csvRaw.includes(',FAIL,');
     if (hasFlagged && !hasFail) {
       const flaggedCount = (csvRaw.match(/,FLAGGED,/g) || []).length;
-      return `<p class="muted small">No automated fixes needed. ${flaggedCount} criterion${flaggedCount !== 1 ? 'a' : ''} flagged for human review.</p>`;
+      return `<p class="muted small">No automated fixes needed. ${flaggedCount} ${flaggedCount !== 1 ? 'criteria' : 'criterion'} flagged for human review.</p>`;
     } else if (hasFail) {
       return '<p class="muted small">Fix loop was not triggered. Some criteria still failing — review refinement suggestions.</p>';
     }
     return '<p class="muted small">All acceptance criteria passed without modification.</p>' + buildBaselineComparison();
   }
 
+  const applied = allItems.filter(s => s.applied === true);
+  const needsReview = allItems.filter(s => s.applied !== true);
+
   let html = buildBaselineComparison();
-  html += `<div style="display:flex;flex-direction:column;gap:1rem">`;
 
-  for (const fix of appliedFixes) {
-    const iteration = fix.iteration || 1;
-    html += `<div class="card">`;
-
-    if (fix.criterion_id || fix.ac_id) {
-      const acId = fix.criterion_id || fix.ac_id;
-      const jIdx = findJourneyForAC(journeyLog, acId);
-      const journeyTitle = (jIdx && journeyLog.journeys[jIdx - 1]) ? journeyLog.journeys[jIdx - 1].title : '';
-      html += `<div style="margin-bottom:0.75rem">`;
-      html += `<p style="margin:0 0 0.25rem;font-weight:600;font-size:0.9375rem"><span style="color:var(--accent);font-family:var(--font-mono)">${escapeHtml(acId)}</span> ${journeyTitle ? '— ' + escapeHtml(journeyTitle) : ''}</p>`;
-      html += `<span class="badge badge-pass" style="font-size:0.6rem">Fixed in iteration ${iteration}</span>`;
-      html += `</div>`;
+  if (applied.length > 0) {
+    html += `<h4 style="margin:0 0 0.75rem;color:var(--status-success)">Fixed automatically (${applied.length})</h4>`;
+    html += `<div style="display:flex;flex-direction:column;gap:0.75rem;margin-bottom:1.5rem">`;
+    for (const fix of applied) {
+      html += renderFixCard(fix, journeyLog, 'applied');
     }
-
-    if (fix.description || fix.rationale || fix.change) {
-      html += `<div style="margin-bottom:0.75rem">`;
-      html += `<p class="small" style="margin:0 0 0.15rem;font-weight:600;color:var(--text2)">What changed and why</p>`;
-      html += `<p style="margin:0;font-size:0.875rem;line-height:1.5">${escapeHtml(fix.description || fix.rationale || fix.change)}</p>`;
-      html += `</div>`;
-    }
-
-    if (fix.file) {
-      html += `<code class="small" style="display:block;margin:0.5rem 0 0.25rem;color:var(--accent)">${escapeHtml(fix.file)}${fix.line ? ':' + fix.line : ''}</code>`;
-    }
-
-    // Before/after screenshot comparison
-    const rawAcId = fix.criterion_id || fix.ac_id || fix.criterion || '';
-    const firstAcId = rawAcId.split(',')[0].trim();
-    if (firstAcId) {
-      const journeyIdx = findJourneyForAC(journeyLog, firstAcId);
-      if (journeyIdx !== null) {
-        // Look for the true original broken state in nested screenshots dir
-        const originalDir = path.join(absArtifacts, 'screenshots-iter-1', 'screenshots');
-        const beforeDir = fs.existsSync(originalDir) ? originalDir : path.join(absArtifacts, 'screenshots-iter-1');
-        const afterDir = fs.existsSync(originalDir)
-          ? path.join(absArtifacts, 'screenshots-iter-1')  // iter-1 top-level is the first working state
-          : path.join(absArtifacts, 'screenshots');
-        const beforeFile = findScreenshotForJourney(beforeDir, journeyIdx);
-        const afterFile = findScreenshotForJourney(afterDir, journeyIdx);
-
-        if (beforeFile && afterFile) {
-          const beforeB64 = fs.readFileSync(beforeFile).toString('base64');
-          const afterB64 = fs.readFileSync(afterFile).toString('base64');
-          html += `<div style="display:grid;grid-template-columns:1fr 1fr;gap:0.5rem;margin-top:0.75rem">`;
-          html += `<div><p class="small muted" style="margin:0 0 0.25rem">Before (original MR state)</p>`;
-          html += `<img src="data:image/png;base64,${beforeB64}" style="width:100%;border:1px solid var(--border);border-radius:4px;cursor:pointer" onclick="openImageLightbox(this.src)" /></div>`;
-          html += `<div><p class="small muted" style="margin:0 0 0.25rem">After (fix applied)</p>`;
-          html += `<img src="data:image/png;base64,${afterB64}" style="width:100%;border:1px solid var(--border);border-radius:4px;cursor:pointer" onclick="openImageLightbox(this.src)" /></div>`;
-          html += `</div>`;
-        } else if (afterFile) {
-          const afterB64 = fs.readFileSync(afterFile).toString('base64');
-          html += `<div style="margin-top:0.75rem"><p class="small muted" style="margin:0 0 0.25rem">Result after fix</p>`;
-          html += `<img src="data:image/png;base64,${afterB64}" style="width:100%;border:1px solid var(--border);border-radius:4px;cursor:pointer" onclick="openImageLightbox(this.src)" /></div>`;
-        }
-      }
-    }
-
     html += `</div>`;
   }
+
+  if (needsReview.length > 0) {
+    html += `<h4 style="margin:0 0 0.75rem;color:var(--status-warning)">Needs your review (${needsReview.length})</h4>`;
+    html += `<div style="display:flex;flex-direction:column;gap:0.75rem">`;
+    for (const item of needsReview) {
+      html += renderFixCard(item, journeyLog, 'review');
+    }
+    html += `</div>`;
+  }
+
+  return html;
+}
+
+function renderFixCard(fix, journeyLog, mode) {
+  const isApplied = mode === 'applied';
+  const acId = fix.criterion_id || fix.ac_id || fix.guideline_id || '';
+  const iteration = fix.applied_in_iteration || fix.iteration || null;
+  const description = fix.description || fix.fix || fix.rationale || fix.change || fix.fix_action || '';
+  const file = fix.file || fix.fix_file || '';
+  const type = fix.type || 'unknown';
+  const confidence = fix.confidence || '';
+
+  const borderColor = isApplied ? 'var(--status-success)' : 'var(--status-warning)';
+  const typeBadge = type === 'consistency'
+    ? '<span class="badge" style="background:rgba(99,102,241,0.1);color:#6366f1;font-size:0.6rem">consistency</span>'
+    : type === 'ac_failure'
+      ? '<span class="badge" style="background:rgba(239,68,68,0.1);color:#dc2626;font-size:0.6rem">AC failure</span>'
+      : type === 'ac_flagged'
+        ? '<span class="badge" style="background:rgba(234,179,8,0.1);color:#d97706;font-size:0.6rem">flagged</span>'
+        : '';
+
+  let html = `<div class="card" style="border-left:3px solid ${borderColor}">`;
+
+  if (acId) {
+    const jIdx = findJourneyForAC(journeyLog, acId);
+    const journeyTitle = (jIdx && journeyLog && journeyLog.journeys && journeyLog.journeys[jIdx - 1])
+      ? journeyLog.journeys[jIdx - 1].title : '';
+    html += `<div style="margin-bottom:0.5rem;display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap">`;
+    html += `<span style="color:var(--accent);font-family:var(--font-mono);font-weight:600;font-size:0.875rem">${escapeHtml(acId)}</span>`;
+    if (journeyTitle) html += `<span class="small muted">— ${escapeHtml(journeyTitle)}</span>`;
+    html += typeBadge;
+    if (isApplied && iteration) {
+      html += `<span class="badge badge-pass" style="font-size:0.6rem">Fixed in iteration ${iteration}</span>`;
+    }
+    if (!isApplied && confidence) {
+      html += `<span class="small muted">(confidence: ${escapeHtml(confidence)})</span>`;
+    }
+    html += `</div>`;
+  }
+
+  if (description) {
+    html += `<p style="margin:0 0 0.5rem;font-size:0.875rem;line-height:1.5">${escapeHtml(description)}</p>`;
+  }
+
+  if (fix.criterion_text) {
+    html += `<p class="small muted" style="margin:0 0 0.5rem"><strong>Criterion:</strong> ${escapeHtml(fix.criterion_text)}</p>`;
+  }
+
+  if (file) {
+    html += `<code class="small" style="display:block;color:var(--accent)">${escapeHtml(file)}${fix.line ? ':' + fix.line : ''}</code>`;
+  }
+
+  if (fix.pf_doc_url) {
+    html += `<a href="${escapeHtml(fix.pf_doc_url)}" target="_blank" class="small" style="display:block;margin-top:0.25rem">PatternFly docs</a>`;
+  }
+
   html += `</div>`;
   return html;
 }
@@ -1847,13 +2023,6 @@ function findJourneyForAC(journeyLog, acId) {
   return null;
 }
 
-function findScreenshotForJourney(dir, journeyIdx) {
-  if (!fs.existsSync(dir)) return null;
-  const target = `journey-${journeyIdx}-step-1.png`;
-  const filePath = path.join(dir, target);
-  return fs.existsSync(filePath) ? filePath : null;
-}
-
 
 function buildConsistencyHtml() {
   const report = readJsonOr(path.join(absArtifacts, 'consistency-report.json'), null);
@@ -1861,7 +2030,9 @@ function buildConsistencyHtml() {
 
   const summary = report.summary || {};
   const srcMode = report.source_mode;
-  const violations = (srcMode && srcMode.violations) || [];
+  const violations = (srcMode && Array.isArray(srcMode.violations) && srcMode.violations.length > 0)
+    ? srcMode.violations
+    : (Array.isArray(report.findings) ? report.findings : []);
   let html = '';
 
   // Summary stats
@@ -1993,7 +2164,7 @@ function buildFixHistoryNarrative() {
     const csvRaw = readFileOr(path.join(absArtifacts, 'evaluation-report.csv'), '');
     const flaggedCount = (csvRaw.match(/,FLAGGED,/g) || []).length;
     if (flaggedCount > 0) {
-      return `<p class="appendix-narrative">No code changes were applied. ${flaggedCount} criterion${flaggedCount !== 1 ? 'a require' : ' requires'} human review.</p>`;
+      return `<p class="appendix-narrative">No code changes were applied. ${flaggedCount} ${flaggedCount !== 1 ? 'criteria require' : 'criterion requires'} human review.</p>`;
     }
     return `<p class="appendix-narrative">All acceptance criteria passed on first evaluation — no fix loop needed.</p>`;
   }
@@ -2004,7 +2175,7 @@ function buildComplianceNarrative() {
   const cr = readJsonOr(path.join(absArtifacts, 'consistency-report.json'), null);
   if (!cr || cr.skipped) return '';
   const violations = (cr.source_mode && cr.source_mode.violations) ? cr.source_mode.violations.length : 0;
-  const checked = cr.source_mode && cr.source_mode.guidelines_checked ? cr.source_mode.guidelines_checked : 0;
+  const checked = (cr.summary && cr.summary.total_guidelines_checked) ? cr.summary.total_guidelines_checked : 0;
   if (!violations) return `<p class="appendix-narrative">All ${checked} PatternFly guidelines checked — no violations found.</p>`;
   return `<p class="appendix-narrative">${violations} PatternFly guideline violation${violations !== 1 ? 's' : ''} found across ${checked} guidelines checked.</p>`;
 }
@@ -2040,61 +2211,110 @@ function buildTabbedExecSummary() {
     } catch { /* ignore */ }
   }
 
-  // === Summary panel ===
-  let summaryInner = '';
-
+  // === Build tab content panels ===
   const featureCtx = extractState && extractState.feature_context;
+
+  // Tab 1: Overview (always shown)
+  let overviewContent = '';
   if (featureCtx) {
     if (featureCtx.problem_statement) {
-      summaryInner += `<div class="exec-detail exec-problem" style="margin:0.5rem 0;padding:0.5rem 0.75rem;background:rgba(0,102,204,0.04);border-left:3px solid var(--accent);border-radius:0.25rem"><strong>Problem:</strong> ${escapeHtml(featureCtx.problem_statement)}</div>`;
+      let probText = featureCtx.problem_statement;
+      const numberedMatch = probText.match(/^(.*?)\n\n(\d+\.\s)/s);
+      if (numberedMatch) {
+        const intro = numberedMatch[1].trim();
+        const listPart = probText.slice(numberedMatch.index + numberedMatch[1].length).trim();
+        const items = listPart.split(/\n?\d+\.\s+/).filter(Boolean);
+        let probHtml = `<div class="exec-detail exec-problem"><strong>Problem:</strong> ${renderInlineMarkdown(escapeHtml(intro))}`;
+        probHtml += `<ul style="margin:0.4rem 0 0 1rem;padding:0;line-height:1.5;font-size:0.8125rem">`;
+        for (const item of items) probHtml += `<li style="margin-bottom:0.2rem">${renderInlineMarkdown(escapeHtml(item.trim()))}</li>`;
+        probHtml += `</ul></div>`;
+        overviewContent += probHtml;
+      } else {
+        overviewContent += `<div class="exec-detail exec-problem"><strong>Problem:</strong> ${renderInlineMarkdown(escapeHtml(probText))}</div>`;
+      }
     }
     if (featureCtx.background) {
-      summaryInner += `<div class="exec-detail small" style="margin-top:0.5rem"><p style="margin:0;color:var(--text2);line-height:1.6"><strong>Background:</strong> ${escapeHtml(featureCtx.background)}</p></div>`;
-    }
-    if (featureCtx.ui_enhancements) {
-      const uiSections = featureCtx.ui_enhancements
-        .split(/(?=New Columns|Status Indicators|Detailed View|Queue Position|Autoscale|Resource Allocation)/i)
-        .map(s => s.trim()).filter(Boolean);
-      summaryInner += `<details class="exec-detail small exec-dropdown" style="margin-top:0.5rem"><summary><strong>Proposed UI enhancements</strong> <span class="muted">(from RFE) &middot; ${uiSections.length} items</span></summary>`;
-      summaryInner += `<ul style="margin:0.5rem 0 0 1rem;padding:0;line-height:1.5">`;
-      for (const section of uiSections.slice(0, 8)) {
-        summaryInner += `<li style="margin-bottom:0.3rem">${escapeHtml(section)}</li>`;
+      const bgText = featureCtx.background;
+      const bgItems = bgText.split(/\s*\*\s+/).filter(Boolean);
+      if (bgItems.length > 1) {
+        overviewContent += `<div class="exec-detail small" style="margin-top:0.5rem"><p style="margin:0 0 0.25rem;color:var(--text2);font-weight:600">Background</p>`;
+        overviewContent += `<ul style="margin:0;padding-left:1.25rem;color:var(--text2);line-height:1.6;font-size:0.8125rem">`;
+        for (const item of bgItems) overviewContent += `<li style="margin-bottom:0.2rem">${escapeHtml(item.trim())}</li>`;
+        overviewContent += `</ul></div>`;
+      } else {
+        overviewContent += `<div class="exec-detail small" style="margin-top:0.5rem"><p style="margin:0;color:var(--text2);line-height:1.6"><strong>Background:</strong> ${escapeHtml(bgText)}</p></div>`;
       }
-      if (uiSections.length > 8) summaryInner += `<li class="muted">+${uiSections.length - 8} more</li>`;
-      summaryInner += `</ul></details>`;
-    }
-    if (Array.isArray(featureCtx.user_stories) && featureCtx.user_stories.length) {
-      summaryInner += `<details class="exec-detail small exec-dropdown" style="margin-top:0.5rem"><summary><strong>User stories</strong> <span class="muted">&middot; ${featureCtx.user_stories.length} stories</span></summary>`;
-      summaryInner += `<ul style="margin:0.5rem 0 0 1rem;padding:0;line-height:1.6">`;
-      for (const story of featureCtx.user_stories.slice(0, 6)) {
-        summaryInner += `<li style="margin-bottom:0.3rem">${escapeHtml(story)}</li>`;
-      }
-      if (featureCtx.user_stories.length > 6) summaryInner += `<li class="muted">+${featureCtx.user_stories.length - 6} more</li>`;
-      summaryInner += `</ul></details>`;
     }
   } else if (outcomeContext && outcomeContext.problem_statement) {
-    summaryInner += `<p class="exec-detail exec-problem">${escapeHtml(outcomeContext.problem_statement)}</p>`;
+    overviewContent += `<div class="exec-detail exec-problem">${escapeHtml(outcomeContext.problem_statement)}</div>`;
   }
-
-  // Inline pipeline stats
   if (iterationLog) {
     const iters = (iterationLog.iterations || []).length;
     const exitReason = iterationLog.exit_reason || 'pending';
-    summaryInner += `<p class="exec-detail small muted" style="margin-top:0.5rem;border-top:1px solid var(--border);padding-top:0.5rem">`;
-    summaryInner += `<strong>Pipeline:</strong> ${iters} iteration${iters !== 1 ? 's' : ''} &middot; Exit: ${escapeHtml(exitReason)}`;
-    if (mrDelta) summaryInner += ` &middot; ${mrDelta.total_files_changed || 0} files changed`;
-    summaryInner += `</p>`;
+    overviewContent += `<div style="display:flex;gap:1rem;flex-wrap:wrap;margin-top:0.75rem;padding-top:0.5rem;border-top:1px solid var(--border)">`;
+    overviewContent += `<span class="exec-detail small muted"><strong>${iters}</strong> iteration${iters !== 1 ? 's' : ''}</span>`;
+    overviewContent += `<span class="exec-detail small muted">Exit: <strong>${escapeHtml(exitReason.replace(/_/g, ' '))}</strong></span>`;
+    if (mrDelta) overviewContent += `<span class="exec-detail small muted"><strong>${mrDelta.total_files_changed || 0}</strong> files changed</span>`;
+    overviewContent += `</div>`;
   }
 
-  // === Assemble (single panel, no tabs) ===
-  let html = `<section class="exec-summary" data-tour="context">`;
+  // Tab 2: User Stories (hidden if empty)
+  let storiesContent = '';
+  const hasStories = featureCtx && Array.isArray(featureCtx.user_stories) && featureCtx.user_stories.length > 0;
+  if (hasStories) {
+    storiesContent += `<ul style="margin:0.25rem 0 0 1rem;padding:0;line-height:1.6;font-size:0.875rem">`;
+    for (const story of featureCtx.user_stories) {
+      storiesContent += `<li style="margin-bottom:0.4rem">${escapeHtml(story)}</li>`;
+    }
+    storiesContent += `</ul>`;
+  }
 
+  // Tab 3: UI Enhancements (hidden if empty)
+  let enhancementsContent = '';
+  const hasEnhancements = featureCtx && featureCtx.ui_enhancements;
+  if (hasEnhancements) {
+    const raw = featureCtx.ui_enhancements;
+    const paragraphs = raw.split(/\n\n+/).map(p => p.trim()).filter(Boolean);
+
+    if (paragraphs.length > 1) {
+      enhancementsContent += `<div style="display:flex;flex-direction:column;gap:0.5rem;margin:0.25rem 0">`;
+      for (const para of paragraphs) {
+        const headerMatch = para.match(/^_([^_]+):?_\s*(.*)/s);
+        if (headerMatch) {
+          const heading = headerMatch[1].trim().replace(/:$/, '');
+          const body = headerMatch[2].trim();
+          enhancementsContent += `<div style="padding:0.5rem 0.65rem;background:var(--bg2);border-radius:0.375rem;border:1px solid var(--border)">`;
+          enhancementsContent += `<div style="font-size:0.75rem;font-weight:600;color:var(--text);margin-bottom:0.15rem">${escapeHtml(heading)}</div>`;
+          enhancementsContent += `<div style="font-size:0.8125rem;color:var(--text2);line-height:1.5">${renderInlineMarkdown(escapeHtml(body))}</div>`;
+          enhancementsContent += `</div>`;
+        } else {
+          enhancementsContent += `<div style="padding:0.5rem 0.65rem;background:var(--bg2);border-radius:0.375rem;border:1px solid var(--border)">`;
+          enhancementsContent += `<div style="font-size:0.8125rem;color:var(--text2);line-height:1.5">${renderInlineMarkdown(escapeHtml(para))}</div>`;
+          enhancementsContent += `</div>`;
+        }
+      }
+      enhancementsContent += `</div>`;
+    } else {
+      enhancementsContent += `<div style="font-size:0.875rem;color:var(--text);line-height:1.6;padding:0.25rem 0">${renderInlineMarkdown(escapeHtml(raw))}</div>`;
+    }
+  }
+
+  // === Assemble tabbed panel ===
+  let html = `<section class="exec-summary" data-tour="context">`;
   html += `<div class="exec-header">`;
   html += `<span class="exec-key">${escapeHtml(key)}</span>`;
   html += `<h2 class="exec-title">${escapeHtml(title)}</h2>`;
   html += `</div>`;
 
-  html += `<div style="padding:0.5rem 0">${summaryInner}</div>`;
+  html += `<div class="exec-tabs">`;
+  html += `<button class="exec-tab active" onclick="switchExecTab('overview')">Overview</button>`;
+  if (hasStories) html += `<button class="exec-tab" onclick="switchExecTab('stories')">User Stories <span class="muted" style="font-size:0.7rem">(${featureCtx.user_stories.length})</span></button>`;
+  if (hasEnhancements) html += `<button class="exec-tab" onclick="switchExecTab('enhancements')">UI Enhancements</button>`;
+  html += `</div>`;
+
+  html += `<div class="exec-tab-content active" id="exec-overview">${overviewContent}</div>`;
+  if (hasStories) html += `<div class="exec-tab-content" id="exec-stories">${storiesContent}</div>`;
+  if (hasEnhancements) html += `<div class="exec-tab-content" id="exec-enhancements">${enhancementsContent}</div>`;
 
   html += `</section>`;
 
@@ -2123,6 +2343,11 @@ function buildTokens(opts = {}) {
 
   // Normalize usability_dimensions fields (handle common LLM output variants)
   const ud = journeyLog ? normalizeUsabilityDimensions(journeyLog.usability_dimensions) : null;
+  const rawPersonaResults = readJsonOr(path.join(absArtifacts, 'persona-results.json'), null);
+  const personaNameMap = buildPersonaNameMap(
+    normalizePersonaResults(rawPersonaResults),
+    journeyLog
+  );
 
   const csvRows = parseCsv(csvRaw);
 
@@ -2153,11 +2378,25 @@ function buildTokens(opts = {}) {
   const journeys = journeyLog ? journeyLog.journeys || [] : [];
   const journeyPass = journeys.filter(j => j.verdict === 'PASS').length;
   const journeyTotal = journeys.length;
-  const journeyRatio = `${journeyPass}/${journeyTotal}`;
 
   // Usability
-  const rawUsability = ud ? ud.overall_score || '—' : '—';
-  const usabilityScore = String(rawUsability).replace(/\/21$/, '').trim();
+  const rawUsability = ud ? ud.overall_score : null;
+  let usabilityScore = '—';
+  let usabilityMaxScore = 21;
+  if (rawUsability != null && rawUsability !== '—') {
+    if (typeof rawUsability === 'string' && rawUsability.includes('/')) {
+      const parts = rawUsability.split('/');
+      usabilityScore = parts[0].trim();
+      usabilityMaxScore = parseInt(parts[1], 10) || 21;
+    } else {
+      usabilityScore = String(typeof rawUsability === 'number' ? rawUsability : parseFloat(rawUsability) || 0);
+    }
+  }
+  if (ud && ud.max_score) usabilityMaxScore = ud.max_score;
+  else if (ud && ud.dimensions) {
+    const scoredDims = ud.dimensions.filter(d => isScoredDimension(d));
+    if (scoredDims.length > 0) usabilityMaxScore = scoredDims.length * 3;
+  }
 
   // Metadata from JSON artifacts (no MD dependency)
   const storyTitle = (extractState && extractState.ticket_summary) || protoId;
@@ -2196,8 +2435,11 @@ function buildTokens(opts = {}) {
   // Build consistency violations per-AC lookup for CSV column + table badges
   const cReport = readJsonOr(path.join(absArtifacts, 'consistency-report.json'), null);
   const consistencyViolationIds = new Set();
-  if (cReport && cReport.source_mode && cReport.source_mode.violations) {
-    for (const v of cReport.source_mode.violations) {
+  if (cReport) {
+    const cViolations = (cReport.source_mode && Array.isArray(cReport.source_mode.violations) && cReport.source_mode.violations.length > 0)
+      ? cReport.source_mode.violations
+      : (Array.isArray(cReport.findings) ? cReport.findings : []);
+    for (const v of cViolations) {
       consistencyViolationIds.add(v.guideline_id);
     }
   }
@@ -2210,11 +2452,10 @@ function buildTokens(opts = {}) {
     const rawText = r.criterion_text || '';
     const evidenceText = r.rationale || r.evidence || '';
 
-    // Show a clean summary: first sentence or first 100 chars, whichever is shorter
-    const firstSentence = rawText.match(/^[^.!?]+[.!?]/);
-    const summary = firstSentence && firstSentence[0].length <= 150
-      ? firstSentence[0]
-      : (rawText.length > 100 ? rawText.slice(0, 100).replace(/\s+\S*$/, '') + '...' : rawText);
+    const expectedBehavior = extractExpectedBehavior(rawText);
+    const summary = expectedBehavior.length > 120
+      ? expectedBehavior.slice(0, 120).replace(/\s+\S*$/, '') + '...'
+      : expectedBehavior;
     const needsExpand = rawText.length > summary.length;
 
     let criterionHtml = `<span class="ac-summary">${escapeHtml(summary)}</span>`;
@@ -2309,7 +2550,12 @@ function buildTokens(opts = {}) {
     }
   }
 
-  if (consistencyReport && consistencyReport.source_mode && consistencyReport.source_mode.violations) {
+  const srcViolations = consistencyReport
+    ? ((consistencyReport.source_mode && Array.isArray(consistencyReport.source_mode.violations) && consistencyReport.source_mode.violations.length > 0)
+        ? consistencyReport.source_mode.violations
+        : (Array.isArray(consistencyReport.findings) ? consistencyReport.findings : []))
+    : [];
+  if (srcViolations.length > 0) {
     const routeMap = {
       'AppLayout': '/',
       'AgentCatalog/AgentCatalog': '/ai-hub/agents/catalog',
@@ -2322,7 +2568,7 @@ function buildTokens(opts = {}) {
       'ContextPanel': '/'
     };
 
-    for (const v of consistencyReport.source_mode.violations) {
+    for (const v of srcViolations) {
       const file = v.file || '';
       for (const [pattern, route] of Object.entries(routeMap)) {
         if (file.includes(pattern)) {
@@ -2421,7 +2667,7 @@ function buildTokens(opts = {}) {
       if (acMatch) acLabels = acMatch.map(m => m.replace(/^(?:Inferred from |Story \d+ \+ )/i, ''));
     }
     const acBadge = acLabels.length > 0 ? acLabels.map(ac => `<span class="badge" style="background:rgba(0,102,204,0.1);color:#0066cc;margin-right:0.4rem">Testing ${escapeHtml(ac)}</span>`).join('') : '';
-    block += `<p class="small muted" style="padding-left:calc(0.6rem + 4px)">${acBadge}<strong>Persona:</strong> ${escapeHtml(journey.persona)} · <strong>Source:</strong> ${escapeHtml(journey.source)} · <strong>Verdict:</strong> ${badgeHtml(journey.verdict)}</p>`;
+    block += `<p class="small muted" style="padding-left:calc(0.6rem + 4px)">${acBadge}<strong>Persona:</strong> ${escapeHtml(resolvePersonaName(personaNameMap, journey.persona))} · <strong>Source:</strong> ${escapeHtml(journey.source)} · <strong>Verdict:</strong> ${badgeHtml(journey.verdict)}</p>`;
 
     const steps = journey.steps || [];
     const renderedScreenshots = new Set();
@@ -2524,7 +2770,7 @@ function buildTokens(opts = {}) {
           journeyColor: jColor,
           journeySource: journey.source || '',
           acIds: journey.ac_ids || [],
-          persona: journey.persona,
+          persona: resolvePersonaName(personaNameMap, journey.persona),
           verdict: mergedSteps.some(ms => ms.result !== 'success') ? 'FAIL' : 'PASS',
           violations: cResult.page.map(cf => ({
             id: cf.guideline_id, title: cf.guideline_title || cf.guideline_id,
@@ -2536,8 +2782,8 @@ function buildTokens(opts = {}) {
             severity: cf.severity, file: (cf.file || '').replace('src/app/', '').replace('src/', ''),
             line: cf.line, description: cf.description || '', suggestion: cf.suggestion || '', pfDocUrl: cf.pf_doc_url || '', category: cf.category || '', isShell: true
           })),
-          personaReaction: reaction ? { name: reaction.persona, text: reaction.reaction }
-            : step.persona_reaction ? { name: journey.persona || 'Persona', text: step.persona_reaction }
+          personaReaction: reaction ? { name: resolvePersonaName(personaNameMap, reaction.persona), text: reaction.reaction }
+            : step.persona_reaction ? { name: resolvePersonaName(personaNameMap, journey.persona), text: step.persona_reaction }
             : null,
           scoreImpacts: scoreImpacts.slice(0, 5),
           outcomeContext: outcomeContext ? { key: outcomeContext.key || '', problem: (outcomeContext.problem_statement || '').slice(0, 200), criteria: (outcomeContext.acceptance_criteria || []).slice(0, 5) } : null,
@@ -2629,7 +2875,7 @@ function buildTokens(opts = {}) {
         drift = `Step ${failStep.step}: ${reason}`;
       }
     }
-    pathRows.push(`<tr><td>${escapeHtml(journey.title)}</td><td>${escapeHtml(journey.persona)}</td><td>${journey.steps_expected}</td><td>${unassistedPass}</td><td style="${matchClass};font-weight:500">${matchPct}</td><td class="small">${escapeHtml(drift)}</td></tr>`);
+    pathRows.push(`<tr><td>${escapeHtml(journey.title)}</td><td>${escapeHtml(resolvePersonaName(personaNameMap, journey.persona))}</td><td>${journey.steps_expected}</td><td>${unassistedPass}</td><td style="${matchClass};font-weight:500">${matchPct}</td><td class="small">${escapeHtml(drift)}</td></tr>`);
   }
 
   // ---- Append exploration as additional journey blocks ----
@@ -2639,7 +2885,7 @@ function buildTokens(opts = {}) {
     journeyBlocksHtml += `<p class="small muted" style="margin:-0.25rem 0 1rem">Pages the persona visited after the prescribed AC journeys. Same browser session, same state.</p>`;
 
     for (const expl of explorationData) {
-      const pName = escapeHtml(expl.persona_name || expl.persona);
+      const pName = escapeHtml(resolvePersonaName(personaNameMap, expl.persona));
       let block = `<p class="small"><strong>${pName}</strong> · ${escapeHtml(expl.goal || '')}</p>`;
       if (expl.prescribed_gap) {
         block += `<p class="small muted" style="margin:0 0 0.75rem">${escapeHtml(expl.prescribed_gap)}</p>`;
@@ -2705,102 +2951,156 @@ function buildTokens(opts = {}) {
 
   // ---- Usability Table ----
   let usabilityTable = '';
-  let personaSensitivity = '';
   let patienceTracking = '';
 
   if (ud && ud.dimensions) {
     const personas = ud.personas_evaluated || [];
-    const sensitivityItems = [];
 
     let cards = '';
     for (const dim of ud.dimensions) {
-      const isNA = dim.composite_score === 'N/A' || dim.composite_score === 'n/a';
+      const isNA = dim.composite_score === 'N/A' || dim.composite_score === 'n/a' || dim.composite_score === null || dim.composite_score === undefined;
       const score = isNA ? 'N/A' : dim.composite_score;
       const scoreColor = isNA ? 'var(--text2)' : score >= 2.5 ? 'var(--status-success)' : score >= 1.5 ? 'var(--status-warning)' : 'var(--status-danger)';
+      const naNote = dim.note || dim.na_reason || 'Not evaluated for this prototype';
 
       const findings = [];
       const scores = [];
       for (const p of personas) {
-        const s = dim.scores[p];
+        const s = dim.scores ? dim.scores[p] : null;
         if (s) {
-          if (s.score !== 'N/A' && s.score !== 'n/a') scores.push(s.score);
+          if (s.score !== 'N/A' && s.score !== 'n/a' && s.score !== null && s.score !== undefined) scores.push(s.score);
           if (s.finding) findings.push(s.finding);
         }
       }
-      const finding = findings[0] || (isNA ? 'Single-user feature — no cross-persona handoff to evaluate' : '');
+      const finding = findings[0] || (isNA ? naNote : '');
 
       let personaScores = '';
       for (const p of personas) {
-        const s = dim.scores[p];
-        const pName = p.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
-        const pScore = s ? (s.score === 'N/A' ? 'N/A' : `${s.score}/3`) : '—';
+        const s = dim.scores ? dim.scores[p] : null;
+        const pName = resolvePersonaName(personaNameMap, p);
+        const pScore = s ? (s.score === 'N/A' || s.score === null || s.score === undefined ? 'N/A' : `${s.score}/3`) : '—';
         personaScores += `<span style="font-size:0.7rem;color:var(--text2)">${escapeHtml(pName)}: <strong style="color:var(--text)">${pScore}</strong></span>`;
       }
 
-      cards += `<div class="usability-card" style="display:flex;gap:1rem;padding:1rem;border:1px solid var(--border);border-radius:0.5rem;margin-bottom:0.5rem;background:var(--bg)">`;
-      cards += `<div style="flex-shrink:0;text-align:center;min-width:56px"><div style="font-size:1.5rem;font-weight:700;color:${scoreColor};line-height:1">${isNA ? 'N/A' : score + '/3'}</div></div>`;
-      cards += `<div style="flex:1;min-width:0"><div style="font-weight:600;font-size:0.875rem;color:var(--text);margin-bottom:0.25rem">${escapeHtml(dim.name)}</div>`;
-      cards += `<p style="font-size:0.8125rem;color:var(--text2);line-height:1.55;margin:0 0 0.4rem">${escapeHtml(finding)}</p>`;
-      cards += `<div style="display:flex;gap:1rem;flex-wrap:wrap">${personaScores}</div>`;
-      cards += `</div></div>`;
+      const scorePct = isNA ? 0 : Math.round((score / 3) * 100);
+      const dimId = `dim-na-${(dim.name || '').replace(/[^a-zA-Z0-9]/g, '-').toLowerCase()}`;
 
-      if (scores.length >= 2) {
-        const maxS = Math.max(...scores);
-        const minS = Math.min(...scores);
-        if (maxS - minS >= 1) {
-          sensitivityItems.push(`<li><strong>${escapeHtml(dim.name)}</strong>: scores range ${minS}/3 to ${maxS}/3 across personas</li>`);
-        }
+      if (isNA) {
+        cards += `<div class="usability-card dim-na" style="display:flex;gap:1rem;padding:1rem;border:2px dashed var(--border);border-radius:0.5rem;margin-bottom:0.5rem;background:var(--bg);opacity:0.75;cursor:pointer" onclick="var el=document.getElementById('${dimId}');if(el)el.style.display=el.style.display==='none'?'block':'none'">`;
+        cards += `<div style="flex-shrink:0;text-align:center;min-width:56px">`;
+        cards += `<div class="score-na" style="font-size:1.5rem;font-weight:700;line-height:1">N/A</div>`;
+        cards += `<div class="score-na-label">not scored</div>`;
+        cards += `</div>`;
+        cards += `<div style="flex:1;min-width:0"><div style="font-weight:600;font-size:0.875rem;color:var(--text);margin-bottom:0.25rem">${escapeHtml(dim.name)}</div>`;
+        cards += `<p style="font-size:0.8125rem;color:var(--text2);line-height:1.55;margin:0 0 0.4rem">${escapeHtml(finding)}</p>`;
+        cards += `<div id="${dimId}" style="display:none;margin-top:0.5rem;padding:0.5rem 0.75rem;background:var(--bg2);border-radius:0.375rem;border-left:2px solid var(--border);font-size:0.8rem;color:var(--text2);line-height:1.5">`;
+        cards += `<strong style="font-size:0.7rem;text-transform:uppercase;letter-spacing:0.04em;color:var(--text)">Why N/A</strong><br>${escapeHtml(naNote)}`;
+        cards += `</div></div></div>`;
+      } else {
+        cards += `<div class="usability-card" style="display:flex;gap:1rem;padding:1rem;border:1px solid var(--border);border-radius:0.5rem;margin-bottom:0.5rem;background:var(--bg)">`;
+        cards += `<div style="flex-shrink:0;text-align:center;min-width:56px">`;
+        cards += `<div style="font-size:1.5rem;font-weight:700;color:${scoreColor};line-height:1">${score}/3</div>`;
+        cards += `<div style="width:48px;height:4px;background:var(--border);border-radius:2px;overflow:hidden;margin:0.3rem auto 0"><div style="width:${scorePct}%;height:100%;background:${scoreColor};border-radius:2px"></div></div>`;
+        cards += `</div>`;
+        cards += `<div style="flex:1;min-width:0"><div style="font-weight:600;font-size:0.875rem;color:var(--text);margin-bottom:0.25rem">${escapeHtml(dim.name)}</div>`;
+        cards += `<p style="font-size:0.8125rem;color:var(--text2);line-height:1.55;margin:0 0 0.4rem">${escapeHtml(finding)}</p>`;
+        cards += `<div style="display:flex;gap:1rem;flex-wrap:wrap">${personaScores}</div>`;
+        cards += `</div></div>`;
       }
+
     }
 
     usabilityTable = cards;
 
-    if (sensitivityItems.length) {
-      personaSensitivity = `<h3>Persona Sensitivity</h3><div class="card card-warning"><ul>${sensitivityItems.join('')}</ul></div>`;
-    }
-
-    // Patience tracking
+    // Patience tracking — heatmap + sparklines (Decision 12)
     const overlays = ud.persona_overlays || [];
     const tasksDef = extractState ? (extractState.tasks_to_be_done || []) : [];
     if (overlays.length) {
-      let pCards = '';
+      // Build persona x task grid
+      const personaIds = [...new Set(overlays.map(o => o.persona || o.persona_id).filter(Boolean))];
+      const taskIds = [...new Set(overlays.map(o => o.task_index).filter(t => t != null))].sort((a, b) => a - b);
+
+      const grid = {};
       for (const o of overlays) {
-        const name = escapeHtml(o.persona_name || o.persona);
-        const taskIdx = o.task_index;
-        const taskDef = taskIdx ? tasksDef[taskIdx - 1] : null;
-        const taskLabel = taskDef ? escapeHtml(taskDef.task) : (taskIdx ? `Task ${taskIdx}` : '');
-        const pEnd = o.patience_end != null ? o.patience_end : 100;
-        const barColor = pEnd > 70 ? 'var(--status-success)' : pEnd > 40 ? 'var(--status-warning)' : 'var(--status-danger)';
-        const confCount = o.confusion_events ? o.confusion_events.length : 0;
-        const abandoned = o.abandoned ? 'Yes' : 'No';
-        const frictions = (o.confusion_events || []).map(e => e.trigger || '').filter(Boolean);
-
-        pCards += `<div style="display:flex;align-items:center;gap:1rem;padding:0.75rem 1rem;border:1px solid var(--border);border-radius:0.5rem;margin-bottom:0.5rem;background:var(--bg)">`;
-        pCards += `<div style="flex:1;min-width:0"><div style="font-weight:600;font-size:0.875rem;color:var(--text)">${name}</div>`;
-        if (taskLabel) {
-          pCards += `<div style="font-size:0.75rem;color:var(--text2);margin-top:0.15rem">${taskLabel}</div>`;
-        }
-        pCards += `<div style="display:flex;align-items:center;gap:0.75rem;margin-top:0.35rem">`;
-        pCards += `<div style="flex:1;max-width:160px;height:6px;background:var(--border);border-radius:3px;overflow:hidden"><div style="width:${pEnd}%;height:100%;background:${barColor};border-radius:3px"></div></div>`;
-        pCards += `<span style="font-size:0.75rem;font-weight:600;color:${barColor}">${pEnd}%</span>`;
-        pCards += `</div></div>`;
-        pCards += `<div style="display:flex;gap:1.5rem;flex-shrink:0">`;
-        pCards += `<div style="text-align:center"><div style="font-size:0.65rem;color:var(--text2);text-transform:uppercase;letter-spacing:0.05em">Confusion</div><div style="font-size:1rem;font-weight:700;color:${confCount > 0 ? 'var(--status-warning)' : 'var(--status-success)'}">${confCount}</div></div>`;
-        pCards += `<div style="text-align:center"><div style="font-size:0.65rem;color:var(--text2);text-transform:uppercase;letter-spacing:0.05em">Abandoned</div><div style="font-size:1rem;font-weight:700;color:${abandoned === 'Yes' ? 'var(--status-danger)' : 'var(--status-success)'}">${abandoned}</div></div>`;
-        pCards += `</div></div>`;
-
-        if (frictions.length) {
-          pCards += `<div style="padding:0 1rem 0.5rem;margin-top:-0.5rem"><p class="small muted" style="margin:0">Friction: ${frictions.map(f => escapeHtml(f)).join(', ')}</p></div>`;
-        }
+        const pid = o.persona || o.persona_id;
+        const tid = o.task_index;
+        if (!pid || tid == null) continue;
+        if (!grid[pid]) grid[pid] = {};
+        grid[pid][tid] = {
+          patience_end: o.patience_end != null ? o.patience_end : 100,
+          confusion_count: o.confusion_events ? o.confusion_events.length : 0,
+          abandoned: !!o.abandoned
+        };
       }
-      patienceTracking = `<h3 style="margin-bottom:0.5rem">Patience Tracking</h3>${pCards}`;
+
+      function hmColor(val) {
+        return val > 70 ? 'var(--status-success)' : val > 40 ? 'var(--status-warning)' : 'var(--status-danger)';
+      }
+      function hmBg(val) {
+        return val > 70 ? 'rgba(22,163,74,0.1)' : val > 40 ? 'rgba(217,119,6,0.1)' : 'rgba(220,38,38,0.1)';
+      }
+
+      let heatmap = `<div class="patience-heatmap"><table class="tbl" style="font-size:0.8rem"><thead><tr><th>Persona</th>`;
+      for (const tid of taskIds) {
+        const tDef = tasksDef[tid - 1];
+        const shortLabel = tDef ? (tDef.task.length > 20 ? tDef.task.substring(0, 20) + '...' : tDef.task) : `Task ${tid}`;
+        heatmap += `<th style="text-align:center" title="${escapeHtml(tDef ? tDef.task : 'Task ' + tid)}">${escapeHtml(shortLabel)}</th>`;
+      }
+      heatmap += `<th style="text-align:center">Overall</th></tr></thead><tbody>`;
+
+      for (const pid of personaIds) {
+        const name = resolvePersonaName(personaNameMap, pid);
+        const row = grid[pid] || {};
+        const allVals = taskIds.map(t => row[t] ? row[t].patience_end : null).filter(v => v !== null);
+        const overallP = allVals.length ? Math.round(allVals.reduce((a, b) => a + b, 0) / allVals.length) : 100;
+
+        heatmap += `<tr><td style="font-weight:600">${escapeHtml(name)}</td>`;
+        for (const tid of taskIds) {
+          const cell = row[tid];
+          if (cell) {
+            const val = cell.patience_end;
+            let cellContent = `<span style="font-weight:600;color:${hmColor(val)}">${val}%</span>`;
+            if (cell.abandoned) cellContent += ` <span style="font-size:0.6rem;color:var(--status-danger);font-weight:700">✗</span>`;
+            if (cell.confusion_count > 0) cellContent += ` <span style="font-size:0.6rem;color:var(--status-warning);font-weight:600">${cell.confusion_count}</span>`;
+            heatmap += `<td class="patience-hm-cell" style="text-align:center;background:${hmBg(val)}">${cellContent}</td>`;
+          } else {
+            heatmap += `<td style="text-align:center;color:var(--text2)">—</td>`;
+          }
+        }
+        heatmap += `<td class="patience-hm-cell" style="text-align:center;background:${hmBg(overallP)};font-weight:700;color:${hmColor(overallP)}">${overallP}%</td>`;
+        heatmap += `</tr>`;
+      }
+      heatmap += `</tbody></table></div>`;
+
+      // Sparklines for worst tasks (patience_end < 70%)
+      const worstTasks = [];
+      for (const tid of taskIds) {
+        const vals = personaIds.map(p => grid[p] && grid[p][tid] ? grid[p][tid].patience_end : null).filter(v => v !== null);
+        const avg = vals.length ? Math.round(vals.reduce((a, b) => a + b, 0) / vals.length) : 100;
+        if (avg < 70) worstTasks.push({ tid, avg, vals });
+      }
+
+      let sparklines = '';
+      if (worstTasks.length) {
+        sparklines = `<div style="margin-top:1rem"><h4 style="font-size:0.8rem;font-weight:600;color:var(--text);margin-bottom:0.5rem">Tasks needing attention</h4>`;
+        for (const wt of worstTasks) {
+          const tDef = tasksDef[wt.tid - 1];
+          const label = tDef ? tDef.task : `Task ${wt.tid}`;
+          sparklines += `<div class="patience-sparkline" style="margin-bottom:0.75rem">`;
+          sparklines += `<div style="font-size:0.8rem;font-weight:500;color:var(--text);margin-bottom:0.3rem">${escapeHtml(label)} <span style="font-size:0.7rem;color:${hmColor(wt.avg)};font-weight:600">${wt.avg}% avg</span></div>`;
+          sparklines += `<div style="display:flex;gap:2px;align-items:flex-end;height:28px">`;
+          for (const val of wt.vals) {
+            const h = Math.max(4, Math.round((val / 100) * 28));
+            sparklines += `<div class="patience-spark-bar" style="width:${Math.max(12, Math.round(120 / wt.vals.length))}px;height:${h}px;background:${hmColor(val)};border-radius:2px 2px 0 0" title="${val}%"></div>`;
+          }
+          sparklines += `</div></div>`;
+        }
+        sparklines += `</div>`;
+      }
+
+      patienceTracking = `<h3 style="margin-bottom:0.5rem">Patience Tracking</h3>${heatmap}${sparklines}`;
     }
   }
-
-  // INF vs TA comparison removed — both scores come from the same evaluator run,
-  // producing identical values and all-zero deltas. The dimension scores table above
-  // already shows the composite scores which is all designers need.
-  const thinkAloudComparison = '';
 
   // ---- Think-Aloud Narratives ----
   let thinkAloudNarratives = '';
@@ -2809,7 +3109,7 @@ function buildTokens(opts = {}) {
 
     const taTasks = extractState ? (extractState.tasks_to_be_done || []) : [];
     for (const trace of ud.think_aloud.traces) {
-      const pName = escapeHtml(trace.persona_name || trace.persona);
+      const pName = escapeHtml(resolvePersonaName(personaNameMap, trace.persona));
       const outcome = escapeHtml(trace.outcome || '');
       const patience = trace.patience_end || 0;
       const patienceClass = patience > 60 ? 'ta-patience-high' : patience > 30 ? 'ta-patience-med' : 'ta-patience-low';
@@ -2872,12 +3172,13 @@ function buildTokens(opts = {}) {
       if (!rationale && !humanAction) hasEmptyContext = true;
       const rationaleDisplay = rationale || '<span class="muted" style="font-style:italic">Review this criterion against the prototype directly</span>';
       const actionDisplay = humanAction || '<span class="muted" style="font-style:italic">Verify manually</span>';
-      const shortText = (r.criterion_text || '').length > 80
-        ? escapeHtml(r.criterion_text.slice(0, 80)) + '&hellip;'
-        : escapeHtml(r.criterion_text);
+      const expectedBehavior = extractExpectedBehavior(r.criterion_text || '');
+      const shortText = expectedBehavior.length > 80
+        ? escapeHtml(expectedBehavior.slice(0, 80)) + '&hellip;'
+        : escapeHtml(expectedBehavior);
       rows += `<tr><td><strong>${escapeHtml(r.criterion_id)}</strong></td><td class="small">${shortText}</td><td>${escapeHtml(r.tier)}</td><td class="small">${rationaleDisplay}</td><td class="small">${actionDisplay}</td></tr>`;
-      if (r.criterion_text && r.criterion_text.length > 80) {
-        rows += `<tr><td colspan="5" style="padding:0.25rem 1rem 0.75rem;background:var(--bg2);border-top:none"><details><summary style="font-size:0.75rem;color:var(--accent);cursor:pointer;font-weight:500">Expected behavior</summary><p style="font-size:0.8125rem;line-height:1.6;color:var(--text);margin:0.5rem 0 0;white-space:pre-wrap">${escapeHtml(r.criterion_text)}</p></details></td></tr>`;
+      if ((r.criterion_text || '').length > 80) {
+        rows += `<tr><td colspan="5" style="padding:0.25rem 1rem 0.75rem;background:var(--bg2);border-top:none"><details><summary style="font-size:0.75rem;color:var(--accent);cursor:pointer;font-weight:500">Full criterion</summary><p style="font-size:0.8125rem;line-height:1.6;color:var(--text);margin:0.5rem 0 0;white-space:pre-wrap">${escapeHtml(r.criterion_text)}</p></details></td></tr>`;
       }
     }
     let contextNote = '';
@@ -2905,32 +3206,75 @@ function buildTokens(opts = {}) {
     const iterLog = readJsonOr(path.join(absArtifacts, 'iteration-log.json'), null);
     const iterations = iterLog ? (iterLog.iterations || []).length : 1;
     const fixCount = iterLog ? iterLog.total_criteria_fixed || 0 : 0;
-    const usabilityScore = ud ? ud.overall_score : null;
+    const concUsabilityRaw = ud ? ud.overall_score : null;
+    const concMaxScore = (ud && ud.max_score) ? ud.max_score : (ud && ud.dimensions ? ud.dimensions.filter(d => isScoredDimension(d)).length * 3 || 21 : 21);
     const extractState = readJsonOr(path.join(absArtifacts, 'extract-state.json'), null);
 
-    conclusionHtml += `<p>This evaluation identified <strong>${total} acceptance criteria</strong> from the Jira ticket`;
+    // Score bar with fraction (Decision 7: Fraction with Visual Bar)
+    const barPct = Math.round((passCount / total) * 100);
+    const barColor = barPct >= 70 ? 'var(--status-success)' : barPct >= 40 ? 'var(--status-warning)' : 'var(--status-danger)';
+
+    conclusionHtml += `<div style="display:flex;align-items:center;gap:1.25rem;margin-bottom:1rem">`;
+    conclusionHtml += `<div style="font-family:var(--font-heading);font-size:1.75rem;font-weight:700;color:${barColor};line-height:1">${passCount}/${total}</div>`;
+    conclusionHtml += `<div style="flex:1;max-width:16rem"><div style="font-size:0.7rem;color:var(--text2);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:0.25rem">Criteria passing (${barPct}%)</div><div style="height:6px;background:var(--border);border-radius:3px;overflow:hidden"><div style="width:${barPct}%;height:100%;background:${barColor};border-radius:3px;transition:width 0.4s ease"></div></div></div>`;
+    if (concUsabilityRaw != null) {
+      const scoreNum = typeof concUsabilityRaw === 'number' ? concUsabilityRaw : parseFloat(String(concUsabilityRaw));
+      const usabilityPct = concMaxScore > 0 ? Math.round((scoreNum / concMaxScore) * 100) : 0;
+      const usabilityBarColor = usabilityPct >= 70 ? 'var(--status-success)' : usabilityPct >= 40 ? 'var(--status-warning)' : 'var(--status-danger)';
+      conclusionHtml += `<div style="font-family:var(--font-heading);font-size:1.75rem;font-weight:700;color:${usabilityBarColor};line-height:1">${scoreNum}/${concMaxScore}</div>`;
+      conclusionHtml += `<div style="flex:1;max-width:16rem"><div style="font-size:0.7rem;color:var(--text2);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:0.25rem">Usability score (${usabilityPct}%)</div><div style="height:6px;background:var(--border);border-radius:3px;overflow:hidden"><div style="width:${usabilityPct}%;height:100%;background:${usabilityBarColor};border-radius:3px;transition:width 0.4s ease"></div></div></div>`;
+    }
+    conclusionHtml += `</div>`;
+
+    conclusionHtml += `<p style="font-size:0.875rem;color:var(--text2);margin:0 0 0.75rem">`;
+    conclusionHtml += `Evaluated <strong style="color:var(--text)">${total} acceptance criteria</strong> from the Jira ticket`;
     if (extractState && extractState.rfe_key) conclusionHtml += ` (linked from RFE ${extractState.rfe_key})`;
-    conclusionHtml += ` and verified each against the live prototype.`;
-    if (iterations > 1) conclusionHtml += ` The pipeline ran <strong>${iterations} iterations</strong>, fixing ${fixCount} criteria that initially failed.`;
+    conclusionHtml += `.`;
+    if (iterations > 1) conclusionHtml += ` Pipeline ran <strong style="color:var(--text)">${iterations} iterations</strong>, fixing ${fixCount} initially-failing criteria.`;
     conclusionHtml += `</p>`;
 
-    conclusionHtml += `<p style="font-size:1.1rem;font-weight:600;margin:1rem 0">${passCount}/${total} passing (${passRate}%)`;
-    if (usabilityScore) conclusionHtml += ` · Usability: ${usabilityScore}`;
-    conclusionHtml += `</p>`;
-
+    // Decision 6: Contextual Action Cards — "What to do next"
+    const actionCards = [];
     if (failCount > 0) {
-      conclusionHtml += `<p style="color:var(--status-danger)">${failCount} criteria still failing — requires implementation attention before this prototype is reviewable.</p>`;
+      actionCards.push({ icon: '&#x2717;', color: 'var(--status-danger)', bg: 'rgba(220,38,38,0.06)', border: 'rgba(220,38,38,0.15)', label: `Fix ${failCount} failing criteria`, desc: 'Implementation attention needed before this prototype is reviewable.', link: '#ac-results' });
     }
-
     if (flaggedCount > 0) {
-      conclusionHtml += `<p style="color:var(--status-warning)">&#9888; ${flaggedCount} flagged for human review — requires verification against external references or backend systems.</p>`;
+      actionCards.push({ icon: '&#9888;', color: 'var(--status-warning)', bg: 'rgba(217,119,6,0.06)', border: 'rgba(217,119,6,0.15)', label: `Review ${flaggedCount} flagged items`, desc: 'Human verification needed — external references or backend logic.', link: '#flagged' });
+    }
+    const suggestions = readJsonOr(path.join(absArtifacts, 'refinement-suggestions.json'), []);
+    const needsReview = Array.isArray(suggestions) ? suggestions.filter(s => !s.applied) : [];
+    if (needsReview.length > 0) {
+      actionCards.push({ icon: '&#128269;', color: 'var(--accent)', bg: 'rgba(0,102,204,0.04)', border: 'rgba(0,102,204,0.12)', label: `${needsReview.length} suggestions to review`, desc: 'Pipeline-generated fixes that need designer sign-off.', link: '#appendix-iteration-fixes' });
+    }
+    if (concUsabilityRaw != null && ud && ud.dimensions) {
+      const lowDims = ud.dimensions.filter(d => isScoredDimension(d) && numScore(d.composite_score) <= 1.5);
+      if (lowDims.length) {
+        actionCards.push({ icon: '&#128200;', color: 'var(--accent)', bg: 'rgba(0,102,204,0.04)', border: 'rgba(0,102,204,0.12)', label: `${lowDims.length} usability dimensions need attention`, desc: lowDims.map(d => d.name).join(', '), link: '#usability-dimensions' });
+      }
     }
 
-    if (usabilityScore && ud.dimensions) {
-      const lowDims = ud.dimensions.filter(d => d.composite_score <= 1.5);
-      const highDims = ud.dimensions.filter(d => d.composite_score >= 2.5);
+    if (actionCards.length) {
+      conclusionHtml += `<div style="margin:1rem 0 1.25rem"><div style="font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--text2);margin-bottom:0.5rem">What to do next</div>`;
+      conclusionHtml += `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:0.5rem">`;
+      for (const card of actionCards) {
+        conclusionHtml += `<a href="${card.link}" style="display:flex;align-items:flex-start;gap:0.6rem;padding:0.65rem 0.85rem;background:${card.bg};border:1px solid ${card.border};border-radius:0.5rem;text-decoration:none;transition:border-color 0.15s" onclick="if(this.getAttribute('href').startsWith('#appendix-')){switchAppendixTab(this.getAttribute('href').replace('#appendix-',''));return false}">`;
+        conclusionHtml += `<span style="font-size:1rem;flex-shrink:0;margin-top:1px">${card.icon}</span>`;
+        conclusionHtml += `<div><div style="font-size:0.8125rem;font-weight:600;color:${card.color}">${card.label}</div>`;
+        conclusionHtml += `<div style="font-size:0.75rem;color:var(--text2);line-height:1.4;margin-top:0.1rem">${card.desc}</div></div></a>`;
+      }
+      conclusionHtml += `</div></div>`;
+    } else {
+      conclusionHtml += `<div style="margin:1rem 0;padding:0.65rem 0.85rem;background:rgba(22,163,74,0.06);border:1px solid rgba(22,163,74,0.15);border-radius:0.5rem">`;
+      conclusionHtml += `<div style="font-size:0.8125rem;font-weight:600;color:var(--status-success)">&#10003; All clear — no actions needed</div>`;
+      conclusionHtml += `<div style="font-size:0.75rem;color:var(--text2);margin-top:0.1rem">All criteria pass and no items flagged for review.</div></div>`;
+    }
+
+    // Strengths & weaknesses grid
+    if (concUsabilityRaw != null && ud.dimensions) {
+      const lowDims = ud.dimensions.filter(d => isScoredDimension(d) && numScore(d.composite_score) <= 1.5);
+      const highDims = ud.dimensions.filter(d => isScoredDimension(d) && numScore(d.composite_score) >= 2.5);
       if (lowDims.length || highDims.length) {
-        conclusionHtml += `<div style="margin-top:1rem;display:grid;grid-template-columns:1fr 1fr;gap:1rem">`;
+        conclusionHtml += `<div style="margin-top:0.75rem;display:grid;grid-template-columns:1fr 1fr;gap:1rem">`;
         if (highDims.length) {
           conclusionHtml += `<div><p class="small" style="font-weight:600;color:var(--status-success);margin:0 0 0.25rem">Strengths</p>`;
           conclusionHtml += `<ul class="small" style="margin:0;padding-left:1rem">`;
@@ -2957,16 +3301,60 @@ function buildTokens(opts = {}) {
       }
 
       if (personasEvaluated.length) {
-        conclusionHtml += `<p class="small muted" style="margin-top:1rem">Usability tested with: ${personasEvaluated.join(', ')}</p>`;
+        conclusionHtml += `<p class="small muted" style="margin-top:1rem">Usability tested with: ${personasEvaluated.map(p => resolvePersonaName(personaNameMap, p)).join(', ')}</p>`;
       }
+    }
+  } else if (ud && ud.dimensions) {
+    const concUsabilityRaw = ud.overall_score;
+    const concMaxScore = ud.max_score ? ud.max_score : ud.dimensions.filter(d => isScoredDimension(d)).length * 3 || 21;
+
+    if (concUsabilityRaw != null) {
+      const scoreNum = typeof concUsabilityRaw === 'number' ? concUsabilityRaw : parseFloat(String(concUsabilityRaw));
+      const usabilityPct = concMaxScore > 0 ? Math.round((scoreNum / concMaxScore) * 100) : 0;
+      const usabilityBarColor = usabilityPct >= 70 ? 'var(--status-success)' : usabilityPct >= 40 ? 'var(--status-warning)' : 'var(--status-danger)';
+      conclusionHtml += `<div style="display:flex;align-items:center;gap:1.25rem;margin-bottom:1rem">`;
+      conclusionHtml += `<div style="font-family:var(--font-heading);font-size:1.75rem;font-weight:700;color:${usabilityBarColor};line-height:1">${scoreNum}/${concMaxScore}</div>`;
+      conclusionHtml += `<div style="flex:1;max-width:16rem"><div style="font-size:0.7rem;color:var(--text2);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:0.25rem">Usability score (${usabilityPct}%)</div><div style="height:6px;background:var(--border);border-radius:3px;overflow:hidden"><div style="width:${usabilityPct}%;height:100%;background:${usabilityBarColor};border-radius:3px;transition:width 0.4s ease"></div></div></div>`;
+      conclusionHtml += `</div>`;
+    }
+
+    conclusionHtml += `<p style="font-size:0.875rem;color:var(--text2);margin:0 0 0.75rem">AC verdicts not yet recorded. Usability evaluation completed with <strong style="color:var(--text)">${personasEvaluated.length} persona${personasEvaluated.length !== 1 ? 's' : ''}</strong>.</p>`;
+
+    const lowDims = ud.dimensions.filter(d => isScoredDimension(d) && numScore(d.composite_score) <= 1.5);
+    const highDims = ud.dimensions.filter(d => isScoredDimension(d) && numScore(d.composite_score) >= 2.5);
+    if (lowDims.length || highDims.length) {
+      conclusionHtml += `<div style="margin-top:0.75rem;display:grid;grid-template-columns:1fr 1fr;gap:1rem">`;
+      if (highDims.length) {
+        conclusionHtml += `<div><p class="small" style="font-weight:600;color:var(--status-success);margin:0 0 0.25rem">Strengths</p>`;
+        conclusionHtml += `<ul class="small" style="margin:0;padding-left:1rem">`;
+        for (const d of highDims) {
+          const finding = d.scores ? Object.values(d.scores).map(s => s.finding).filter(Boolean)[0] : '';
+          conclusionHtml += `<li><strong>${escapeHtml(d.name)}</strong> (${d.composite_score}/3)`;
+          if (finding) conclusionHtml += `<br><span class="muted" style="font-size:0.75rem">${escapeHtml(finding.slice(0, 120))}</span>`;
+          conclusionHtml += `</li>`;
+        }
+        conclusionHtml += `</ul></div>`;
+      }
+      if (lowDims.length) {
+        conclusionHtml += `<div><p class="small" style="font-weight:600;color:var(--status-danger);margin:0 0 0.25rem">Needs improvement</p>`;
+        conclusionHtml += `<ul class="small" style="margin:0;padding-left:1rem">`;
+        for (const d of lowDims) {
+          const finding = d.scores ? Object.values(d.scores).map(s => s.finding).filter(Boolean)[0] : '';
+          conclusionHtml += `<li><strong>${escapeHtml(d.name)}</strong> (${d.composite_score}/3)`;
+          if (finding) conclusionHtml += `<br><span class="muted" style="font-size:0.75rem">${escapeHtml(finding.slice(0, 120))}</span>`;
+          conclusionHtml += `</li>`;
+        }
+        conclusionHtml += `</ul></div>`;
+      }
+      conclusionHtml += `</div>`;
+    }
+
+    if (personasEvaluated.length) {
+      conclusionHtml += `<p class="small muted" style="margin-top:1rem">Usability tested with: ${personasEvaluated.map(p => resolvePersonaName(personaNameMap, p)).join(', ')}</p>`;
     }
   } else {
     conclusionHtml = '<p>No evaluation data available.</p>';
   }
-
-  // ---- AI Insights (empty without MD) ----
-  const aiInsights = '';
-  const aiInsightsDisplay = 'display:none';
 
   // ---- CSV data for download (full 3-section format) ----
   const fullCsv = buildFullCsv(csvRaw, journeyLog, passCount, failCount, flaggedCount, extractState);
@@ -2999,15 +3387,7 @@ function buildTokens(opts = {}) {
     '{{RFE_URL}}': rfeUrl,
     '{{PROTOTYPE_REPO_URL}}': protoRepoUrl,
     '{{MR_URL}}': mrUrl,
-    '{{MR_LABEL}}': mrNumber ? `MR !${mrNumber}` : 'MRs',
-    '{{USABILITY_SCORE}}': escapeHtml(String(usabilityScore)),
-    '{{USABILITY_SCORE_SHORT}}': rawUsability !== '—' ? escapeHtml(String(rawUsability)) : 'Not scored',
-    '{{PASS_COUNT}}': String(passCount),
-    '{{FAIL_COUNT}}': String(failCount),
-    '{{FLAGGED_COUNT}}': String(flaggedCount),
-    '{{JOURNEY_RATIO}}': journeyRatio,
     '{{STATUS_SECTION_HTML}}': buildHeroStatus(csvRows, passCount, failCount, flaggedCount, extractState, readJsonOr(path.join(absArtifacts, 'iteration-log.json'), null)),
-    '{{STAT_DELTAS}}': buildStatDeltas(passCount, failCount, flaggedCount, usabilityScore, journeyLog),
     '{{AC_TABLE_ROWS_JIRA}}': acTableRowsJira,
     '{{AC_TABLE_ROWS_INFERRED}}': acTableRowsInferred,
     '{{AC_JIRA_COUNT}}': String(acJiraCount),
@@ -3015,33 +3395,27 @@ function buildTokens(opts = {}) {
     '{{METHODOLOGY_HTML}}': methodologyHtml,
     '{{USABILITY_TABLE}}': usabilityTable,
     '{{PATIENCE_TRACKING}}': patienceTracking,
-    '{{THINK_ALOUD_COMPARISON}}': thinkAloudComparison,
     '{{PATH_COMPARISON_TABLE}}': pathComparisonTable,
     '{{THINK_ALOUD_NARRATIVES}}': thinkAloudNarratives,
     '{{FLAGGED_HTML}}': flaggedHtml,
     '{{CONCLUSION_HTML}}': conclusionHtml,
-    '{{AI_INSIGHTS}}': aiInsights,
-    '{{AI_INSIGHTS_DISPLAY}}': aiInsightsDisplay,
     '{{DELTA_HTML}}': buildDeltaHtml(),
     '{{DELTA_DISPLAY}}': fs.existsSync(path.join(absArtifacts, 'mr-delta.json')) ? '' : 'display:none',
-    '{{ITERATION_DISPLAY}}': (fs.existsSync(path.join(absArtifacts, 'iteration-log.json')) || fs.existsSync(path.join(absArtifacts, 'mr-delta.json'))) ? '' : 'display:none',
     '{{ITERATION_TIMELINE_HTML}}': buildIterationTimelineHtml(),
     '{{CSV_DATA}}': csvDataEscaped,
     '{{FLAGGED_DATA}}': buildFlaggedDataArray(csvRows, journeyLog, screenshots),
     '{{PERSONA_SELECTION_HTML}}': buildPersonaSelectionHtml(),
     '{{PERSONA_WALKTHROUGHS_HTML}}': buildPersonaWalkthroughsHtml(),
+    '{{JOURNEY_BLOCKS_HTML}}': journeyBlocksHtml,
     '{{PERSONA_WALKTHROUGH_DATA}}': buildPersonaWalkthroughData(),
     '{{EVIDENCE_VIEWER_DATA}}': JSON.stringify(buildEvidenceViewerData()),
     '{{CODE_DELTAS_HTML}}': buildCodeDeltasHtml(),
     '{{FIXES_APPLIED_HTML}}': buildFixesAppliedHtml(),
-    '{{FIXES_TAB_DISPLAY}}': fs.existsSync(path.join(absArtifacts, 'refinement-suggestions.json')) || fs.existsSync(path.join(absArtifacts, 'fix-log.json')) || fs.existsSync(path.join(absArtifacts, 'consistency-report.json')) ? '' : 'display:none',
     '{{CONSISTENCY_HTML}}': buildConsistencyHtml(),
     '{{CONSISTENCY_TAB_DISPLAY}}': fs.existsSync(path.join(absArtifacts, 'consistency-report.json')) ? '' : 'display:none',
-    '{{REVIEW_ITEMS_HTML}}': buildReviewItemsHtml(csvRows, journeyLog, screenshots),
-    '{{FIX_COUNT}}': String((() => { const fl = readJsonOr(path.join(absArtifacts, 'fix-log.json'), null); const rs = readJsonOr(path.join(absArtifacts, 'refinement-suggestions.json'), null); const applied = fl ? (Array.isArray(fl) ? fl.length : (fl.applied || []).length) : 0; const outstanding = rs ? (Array.isArray(rs) ? rs.filter(s => s.type !== 'consistency').length : 0) : 0; return applied + outstanding; })()),
-    '{{COMPLIANCE_COUNT}}': String((() => { const cr2 = readJsonOr(path.join(absArtifacts, 'consistency-report.json'), null); return cr2 && cr2.source_mode && cr2.source_mode.violations ? cr2.source_mode.violations.length : 0; })()),
-    '{{PERSONA_COUNT}}': String(personasEvaluated.length),
-    '{{PIPELINE_COUNT}}': String((() => { const d = normalizeDelta(readJsonOr(path.join(absArtifacts, 'mr-delta.json'), null)); return d ? (d.total_files_changed || 0) : 0; })()),
+    '{{JOURNEYS_TAB_DISPLAY}}': (journeyLog && (journeyLog.journeys || []).length > 0) ? '' : 'display:none',
+    '{{USABILITY_TAB_DISPLAY}}': (ud && ud.dimensions && ud.dimensions.length > 0) ? '' : 'display:none',
+    '{{ITERATION_FIXES_TAB_DISPLAY}}': (fs.existsSync(path.join(absArtifacts, 'iteration-log.json')) || fs.existsSync(path.join(absArtifacts, 'refinement-suggestions.json')) || fs.existsSync(path.join(absArtifacts, 'fix-log.json')) || fs.existsSync(path.join(absArtifacts, 'mr-delta.json'))) ? '' : 'display:none',
     '{{FIX_HISTORY_NARRATIVE}}': buildFixHistoryNarrative(),
     '{{COMPLIANCE_NARRATIVE}}': buildComplianceNarrative(),
     '{{OUTCOME_DISPLAY}}': outcomeContext ? '' : 'display:none',
@@ -3150,8 +3524,20 @@ function renderTaStep(step) {
   let html = `<div class="ta-step">`;
   html += `<div class="ta-step-head">Step ${step.num} — ${escapeHtml(step.title)}</div>`;
 
-  if (step.think) {
-    html += `<div class="ta-think">${escapeHtml(step.think.substring(0, 300))}${step.think.length > 300 ? '...' : ''}</div>`;
+  // Interleaved timeline: See / Think / Action
+  const hasTa = step.see || step.think || step.trying;
+  if (hasTa) {
+    html += `<div class="ta-timeline">`;
+    if (step.see) {
+      html += `<div class="ta-timeline-row"><span class="ta-timeline-dot ta-timeline-dot-see"></span><span class="ta-timeline-label ta-timeline-label-see">See</span><span class="ta-timeline-text">${escapeHtml(step.see.substring(0, 400))}${step.see.length > 400 ? '...' : ''}</span></div>`;
+    }
+    if (step.think) {
+      html += `<div class="ta-timeline-row"><span class="ta-timeline-dot ta-timeline-dot-think"></span><span class="ta-timeline-label ta-timeline-label-think">Think</span><span class="ta-timeline-text">${escapeHtml(step.think.substring(0, 400))}${step.think.length > 400 ? '...' : ''}</span></div>`;
+    }
+    if (step.trying) {
+      html += `<div class="ta-timeline-row"><span class="ta-timeline-dot ta-timeline-dot-action"></span><span class="ta-timeline-label ta-timeline-label-action">Action</span><span class="ta-timeline-text">${escapeHtml(step.trying.substring(0, 400))}${step.trying.length > 400 ? '...' : ''}</span></div>`;
+    }
+    html += `</div>`;
   }
 
   html += `<div style="display:flex;gap:1rem;align-items:center;margin-top:0.35rem">`;

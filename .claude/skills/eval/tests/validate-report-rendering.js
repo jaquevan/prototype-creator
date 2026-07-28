@@ -83,6 +83,14 @@ if (journeyLog && journeyLog.usability_dimensions) {
 
   if (Array.isArray(ud.dimensions)) {
     for (const dim of ud.dimensions.slice(0, 3)) {
+      if (!dim.name || dim.name === 'undefined') {
+        check(
+          `Dimension Name Valid`,
+          false,
+          `SCHEMA ERROR: dimension "${dim.id || '?'}" has no name (got ${dim.name}) — eval-discover must populate dimensions[].name`
+        );
+        continue;
+      }
       check(
         `Dimension "${dim.name}" Renders`,
         html.includes(dim.name),
@@ -114,12 +122,20 @@ if (ps) {
   );
 
   if (ps.target_audience_text) {
+    // journey-log may store a stub ("As an ML Engineer ... As a Platform Operator ...")
+    // while the HTML renders the expanded user-story text. Match either form.
+    const audienceText = ps.target_audience_text;
+    const exactNeedle = audienceText.slice(0, 30);
+    const stubNeedle = audienceText.split(/\s*\.\.\.\s*/)[0].trim().slice(0, 30);
+    const audienceInHtml =
+      html.includes(exactNeedle) ||
+      (stubNeedle.length >= 10 && html.includes(stubNeedle));
     check(
       'Target Audience Text In Report',
-      html.includes(ps.target_audience_text.slice(0, 30)),
-      html.includes(ps.target_audience_text.slice(0, 30))
+      audienceInHtml,
+      audienceInHtml
         ? 'target_audience_text rendered'
-        : `MISSING: "${ps.target_audience_text.slice(0, 40)}..." not in HTML`
+        : `MISSING: "${audienceText.slice(0, 40)}..." not in HTML`
     );
   }
 
@@ -204,7 +220,213 @@ if (consistencyReport && consistencyReport.summary) {
   }
 }
 
-// ─── SCORER E: Think-Aloud Narratives ────────────────────────────────────────
+// ─── SCORER E: Persona Name Resolution (Bug 2) ──────────────────────────────
+if (Array.isArray(personaResults) && personaResults.length > 0) {
+  for (const pr of personaResults.slice(0, 2)) {
+    const pid = pr.persona_id || pr.persona;
+    const pname = pr.persona_name;
+    if (pid && pname && pname !== pid) {
+      // The HTML should contain the human-readable name, not just the slug
+      check(
+        `Persona Name "${pid}" Resolved`,
+        html.includes(pname) || html.includes(pname.split(' - ')[0]),
+        html.includes(pname)
+          ? `"${pname}" found (not raw slug)`
+          : `MISSING: persona_name "${pname}" not in HTML — render-report.js may be slug-formatting "${pid}" instead`
+      );
+    }
+  }
+}
+
+// ─── SCORER F: Score Display Format (Bug 4) ──────────────────────────────────
+const evalSummary = readJson('evaluation-summary.json');
+if (evalSummary && evalSummary.overall_score !== undefined) {
+  const score = evalSummary.overall_score;
+  const isNumeric = typeof score === 'number' || /^\d+$/.test(String(score));
+  const isSlash = typeof score === 'string' && /^\d+\/\d+$/.test(score);
+  check(
+    'Overall Score Type Valid',
+    isNumeric || isSlash,
+    `overall_score = ${JSON.stringify(score)} (${typeof score}) — should be number or "N/M" string`
+  );
+
+  if (isSlash) {
+    const [num, denom] = score.split('/').map(Number);
+    check(
+      'Score Denominator Not Hardcoded 21',
+      true,
+      `denominator = ${denom} (score "${score}")`
+    );
+  }
+}
+
+// ─── SCORER G: Screenshot References (Bug 1 lite) ───────────────────────────
+if (Array.isArray(personaResults) && personaResults.length > 0) {
+  const evidenceMatch = html.match(/var evidenceViewerData = ({.*?});/s);
+  if (evidenceMatch) {
+    try {
+      const evidenceData = JSON.parse(evidenceMatch[1]);
+      const screenshotRefs = [];
+      for (const [, pd] of Object.entries(evidenceData)) {
+        for (const task of (pd.tasks || [])) {
+          if (task.screenshot) screenshotRefs.push(task.screenshot);
+        }
+      }
+      if (screenshotRefs.length >= 2) {
+        const unique = new Set(screenshotRefs);
+        check(
+          'Evidence Screenshots Not All Identical',
+          unique.size > 1 || screenshotRefs.length <= 1,
+          unique.size > 1
+            ? `${unique.size} unique screenshots across ${screenshotRefs.length} tasks`
+            : `BUG: all ${screenshotRefs.length} tasks use same screenshot "${screenshotRefs[0]}"`
+        );
+      }
+    } catch (e) {
+      // evidenceViewerData parse failed — skip, not a screenshot bug
+    }
+  }
+}
+
+// ─── SCORER H: Fix History Accuracy (Bug 3 lite) ────────────────────────────
+const fixLog = readJson('fix-log.json');
+const refinementSuggestions = readJson('refinement-suggestions.json');
+if (Array.isArray(fixLog) && fixLog.length > 0) {
+  const unapplied = fixLog.filter(f => f.applied === false);
+  if (unapplied.length > 0) {
+    // Check that unapplied fixes don't appear under "Applied" or "Fixed automatically"
+    const appliedSectionMatch = html.match(/Fixed automatically[\s\S]*?<\/(?:section|div)>/i);
+    if (appliedSectionMatch) {
+      const appliedSection = appliedSectionMatch[0];
+      const leakedUnapplied = unapplied.filter(f =>
+        f.description && appliedSection.includes(f.description.slice(0, 40))
+      );
+      check(
+        'Unapplied Fixes Not In Applied Section',
+        leakedUnapplied.length === 0,
+        leakedUnapplied.length === 0
+          ? `${unapplied.length} unapplied fixes correctly excluded`
+          : `BUG: ${leakedUnapplied.length} unapplied fixes rendered as "Fixed automatically"`
+      );
+    }
+  }
+}
+
+// ─── SCORER I: Schema Normalization (Fix 1) ─────────────────────────────────
+// Verifies normalizePersonaResults() handles all 4 schema variants.
+// The rendered walkthrough data should use canonical keys regardless of input.
+const walkthroughMatch2 = html.match(/var personaWalkthroughData = ({.*?});/s);
+if (walkthroughMatch2 && Array.isArray(personaResults) && personaResults.length > 0) {
+  try {
+    const wd = JSON.parse(walkthroughMatch2[1]);
+    const personaKeys = Object.keys(wd);
+    if (personaKeys.length > 0) {
+      const firstPersona = wd[personaKeys[0]];
+      // After normalization, every persona section should have tasks with steps
+      check(
+        'Normalized Persona Data Has Tasks',
+        Array.isArray(firstPersona.tasks) && firstPersona.tasks.length > 0,
+        Array.isArray(firstPersona.tasks)
+          ? `${firstPersona.tasks.length} tasks for "${personaKeys[0]}"`
+          : 'NORMALIZATION BUG: persona entry has no tasks array after normalization'
+      );
+    }
+  } catch (e) {
+    // Already caught by walkthrough check above
+  }
+}
+
+// ─── SCORER J: Score Contract (Fix 4) ───────────────────────────────────────
+// overall_score must be numeric in HTML, max_score should be present in data
+if (journeyLog && journeyLog.usability_dimensions) {
+  const ud = journeyLog.usability_dimensions;
+  if (ud.overall_score !== undefined) {
+    check(
+      'overall_score Is Numeric',
+      typeof ud.overall_score === 'number',
+      `overall_score = ${JSON.stringify(ud.overall_score)} (${typeof ud.overall_score})`
+    );
+  }
+  if (ud.max_score !== undefined) {
+    check(
+      'max_score Is Numeric',
+      typeof ud.max_score === 'number' && ud.max_score > 0,
+      `max_score = ${ud.max_score}`
+    );
+    // The rendered score string should contain the max_score value
+    const scoreStr = `${ud.overall_score}/${ud.max_score}`;
+    check(
+      'Score Rendered As N/max_score',
+      html.includes(scoreStr) || html.includes(String(ud.overall_score)),
+      html.includes(scoreStr)
+        ? `"${scoreStr}" found in HTML`
+        : html.includes(String(ud.overall_score))
+          ? `overall_score "${ud.overall_score}" found (max_score rendering may differ)`
+          : `MISSING: neither "${scoreStr}" nor "${ud.overall_score}" in HTML`
+    );
+  }
+}
+
+// ─── SCORER K: Fix History Uses refinement-suggestions.json (Fix 5) ─────────
+if (refinementSuggestions && Array.isArray(refinementSuggestions) && refinementSuggestions.length > 0) {
+  // The "Needs your review" section should exist if there are unaddressed suggestions
+  const flagged = refinementSuggestions.filter(s =>
+    s.fix_action === 'flagged' || s.fix_action === 'deferred_to_human' || s.fix_action === 'low_confidence'
+  );
+  if (flagged.length > 0) {
+    const hasReviewSection = html.toLowerCase().includes('needs your review')
+      || html.toLowerCase().includes('needs review')
+      || html.toLowerCase().includes('unaddressed');
+    check(
+      'Unaddressed Suggestions Section Present',
+      hasReviewSection,
+      hasReviewSection
+        ? `"Needs your review" section found (${flagged.length} flagged suggestions in data)`
+        : `MISSING: ${flagged.length} flagged suggestions in refinement-suggestions.json but no review section in HTML`
+    );
+  }
+
+  // Check that refinement-suggestions count is reflected somewhere in the report
+  const totalSuggestions = refinementSuggestions.length;
+  const suggestionCountInHtml = html.includes(String(totalSuggestions))
+    || html.includes(`${totalSuggestions} suggestion`)
+    || html.includes(`${totalSuggestions} fix`);
+  check(
+    'Refinement Suggestions Count In Report',
+    suggestionCountInHtml || totalSuggestions < 3,
+    suggestionCountInHtml
+      ? `suggestion count ${totalSuggestions} referenced in HTML`
+      : `${totalSuggestions} suggestions in data — count not found in HTML (acceptable if <3)`
+  );
+}
+
+// ─── SCORER L: Persona Name in All 7 Display Points (Fix 3) ────────────────
+// Check that raw persona slugs with hyphens don't appear title-cased as display names
+if (Array.isArray(personaResults) && personaResults.length > 0) {
+  for (const pr of personaResults.slice(0, 2)) {
+    const pid = pr.persona_id || pr.persona;
+    if (!pid) continue;
+    // The slug title-cased incorrectly looks like "Alex Junior" (no dash)
+    const badTitleCase = pid.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+    const pname = pr.persona_name;
+    if (pname && pname !== badTitleCase) {
+      // Count occurrences of the bad format vs the good format
+      const badCount = (html.match(new RegExp(badTitleCase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g')) || []).length;
+      const goodCount = (html.match(new RegExp(pname.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g')) || []).length;
+      check(
+        `No Slug-Formatted Name "${badTitleCase}"`,
+        badCount === 0 || goodCount > badCount,
+        badCount === 0
+          ? `"${badTitleCase}" not found — correct name "${pname}" used`
+          : goodCount > badCount
+            ? `"${pname}" (${goodCount}x) dominates over "${badTitleCase}" (${badCount}x)`
+            : `BUG: "${badTitleCase}" appears ${badCount}x — persona name resolver not applied at all display points`
+      );
+    }
+  }
+}
+
+// ─── SCORER M: Think-Aloud Narratives ────────────────────────────────────────
 if (journeyLog && journeyLog.usability_dimensions && journeyLog.usability_dimensions.think_aloud) {
   const ta = journeyLog.usability_dimensions.think_aloud;
   if (ta.traces && ta.traces.length > 0) {

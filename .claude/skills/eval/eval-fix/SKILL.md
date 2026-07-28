@@ -104,42 +104,47 @@ For each `type: "usability"` suggestion with `confidence != "low"`:
 
 After writing the fix-log, update `refinement-suggestions.json` to mark each successfully applied suggestion so it is not re-attempted on subsequent iterations:
 
-For each entry in the `"applied"` array of fix-log.json, find the matching suggestion in `refinement-suggestions.json` (match by `criterion_id` or `guideline_id` + `type`) and set:
+For each entry in fix-log.json where `applied == true`, find the matching suggestion in `refinement-suggestions.json` (match by `criterion_id` or `guideline_id` + `type`) and set:
 ```json
 { "applied": true, "applied_in_iteration": <current iteration number> }
 ```
 
-fix-log.json format:
+fix-log.json format — a flat array where each entry includes BOTH the semantic
+fields (type, criterion_id, file, change) AND the scorer-required fields
+(description, applied, timestamp). The MLflow scorer `Fix Log Entry Schema`
+validates that each entry has `description`, `applied`, and `timestamp` — without
+them the scorer fails even though the fix data is present.
 
 ```json
-{
-  "key": "<KEY>",
-  "iteration": "<current iteration number>",
-  "fixed_at": "<ISO timestamp>",
-  "applied": [
-    {
-      "type": "consistency",
-      "guideline_id": "icon-style-consistency",
-      "file": "src/pages/AgentCatalog/AgentCatalog.tsx",
-      "change": "Replaced FolderIcon with OutlinedFolderIcon"
-    }
-  ],
-  "skipped": [
-    {
-      "type": "ac_failure",
-      "criterion_id": "AC-7",
-      "reason": "Conflicts with Decision 4"
-    }
-  ],
-  "deferred_to_human": [
-    {
-      "type": "usability",
-      "dimension": "technical_abstraction",
-      "reason": "Low confidence — needs design review"
-    }
-  ]
-}
+[
+  {
+    "type": "consistency",
+    "criterion_id": "icon-style-consistency",
+    "file": "src/pages/AgentCatalog/AgentCatalog.tsx",
+    "change": "Replaced FolderIcon with OutlinedFolderIcon",
+    "confidence": "high",
+    "description": "Replaced FolderIcon with OutlinedFolderIcon for icon-style-consistency",
+    "applied": true,
+    "timestamp": "2026-07-01T15:00:00.000Z"
+  },
+  {
+    "type": "ac_failure",
+    "criterion_id": "AC-7",
+    "file": null,
+    "change": null,
+    "confidence": "low",
+    "description": "AC-7: Conflicts with Decision 4 — skipped",
+    "applied": false,
+    "timestamp": "2026-07-01T15:00:00.000Z"
+  }
+]
 ```
+
+Key rules for each entry:
+- `description`: human-readable summary of what was done (or why it was skipped)
+- `applied`: boolean — `true` if the fix was applied, `false` if skipped/deferred
+- `timestamp`: ISO 8601 string when the fix was applied or skipped
+- `type`, `criterion_id`, `file`, `change`, `confidence`: the semantic detail fields
 
 ### Step 7: PatternFly compliance validation (static checks only)
 

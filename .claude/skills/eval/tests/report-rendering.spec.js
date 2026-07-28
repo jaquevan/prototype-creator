@@ -614,3 +614,189 @@ test.describe('Accessibility Baseline', () => {
     expect(isAccessible).toBe(true);
   });
 });
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Section 14: Regression — Data Flow Fixes
+// Guards against 8 bugs fixed in render-report.js (Jul 2026):
+//   task_index 0-vs-1, empty think-aloud, missing screenshots, dead journey
+//   blocks, wrong compliance paths, persona fallback, dim.scores null guard,
+//   consistency findings path.
+// ═══════════════════════════════════════════════════════════════════════════
+
+test.describe('Regression: Data Flow Fixes', () => {
+
+  // Fix 2 — journey blocks were built but never injected into the template
+  test('journey blocks render inside journeys tab', async ({ page }) => {
+    await page.evaluate(() => {
+      if (typeof switchAppendixTab === 'function') switchAppendixTab('journeys');
+    });
+    const tab = page.locator('#appendix-journeys');
+    if (!(await tab.isVisible())) test.skip();
+    const dividers = page.locator('#appendix-journeys .journey-divider');
+    const headings = page.locator('#appendix-journeys h3[style*="border-left"]');
+    const divCount = await dividers.count();
+    const headCount = await headings.count();
+    expect(divCount + headCount, 'Journey blocks should render with dividers or styled headings').toBeGreaterThanOrEqual(1);
+  });
+
+  // Fix 3 — compliance count read from wrong JSON path (source_mode.guidelines_checked)
+  test('compliance count matches summary.total_guidelines_checked', async ({ page }) => {
+    if (!consistencyReport?.summary?.total_guidelines_checked) test.skip();
+    const expected = consistencyReport.summary.total_guidelines_checked;
+    await page.evaluate(() => {
+      if (typeof switchAppendixTab === 'function') switchAppendixTab('design-compliance');
+    });
+    const statEl = page.locator('.consistency-stat-n').first();
+    if (!(await statEl.isVisible())) test.skip();
+    const rendered = parseInt(await statEl.textContent(), 10);
+    expect(rendered).toBe(expected);
+  });
+
+  // Consistency findings path — violations lived at source_mode.violations but
+  // actual data is at top-level findings[]
+  test('consistency findings render from top-level findings array', async ({ page }) => {
+    const findings = consistencyReport?.findings || consistencyReport?.source_mode?.violations;
+    if (!findings || findings.length === 0) test.skip();
+    await page.evaluate(() => {
+      if (typeof switchAppendixTab === 'function') switchAppendixTab('design-compliance');
+    });
+    const section = page.locator('#appendix-design-compliance');
+    const text = await section.textContent();
+    const first = findings[0];
+    const hasContent = text.includes(first.guideline_id || '')
+      || text.includes(first.guideline_title || '')
+      || text.includes(first.description?.slice(0, 30) || '')
+      || text.includes('Quick Fixes')
+      || text.includes('By Page');
+    expect(hasContent, 'Consistency findings from findings[] or source_mode.violations should appear in DOM').toBe(true);
+  });
+
+  // Fix 4 — normalizeJourneyLog didn't handle flat steps_completed → NaN in table
+  test('journey table has numeric step counts, not NaN', async ({ page }) => {
+    await page.evaluate(() => {
+      if (typeof switchAppendixTab === 'function') switchAppendixTab('usability');
+    });
+    const table = page.locator('#appendix-usability table.tbl');
+    const count = await table.count();
+    if (count === 0) test.skip();
+    const text = await table.first().textContent();
+    expect(text).not.toContain('NaN');
+  });
+
+  // Fix 5 — "criteriona" typo in two render-report.js locations
+  test('no "criteriona" typo in rendered HTML', async ({ page }) => {
+    const html = await page.content();
+    expect(html).not.toContain('criteriona');
+  });
+
+  // Fix 8 — personas_evaluated missing from journey-log; renderer should
+  // derive persona list from persona-results.json
+  test('evidence viewer personas match persona-results.json', async ({ page }) => {
+    if (!personaResults || !Array.isArray(personaResults) || personaResults.length === 0) test.skip();
+    const expectedPids = [...new Set(personaResults.map(r => r.persona_id || r.persona))];
+    const evPersonas = await page.evaluate(() => {
+      return typeof evidenceViewerData !== 'undefined' && evidenceViewerData.personas
+        ? Object.keys(evidenceViewerData.personas) : [];
+    });
+    expect(evPersonas.length, 'Evidence viewer should have personas even without journey-log.personas_evaluated').toBeGreaterThanOrEqual(1);
+    for (const pid of expectedPids) {
+      expect(evPersonas, `Persona ${pid} from persona-results.json should be in evidence viewer`).toContain(pid);
+    }
+  });
+
+  // Fix 7 — think-aloud text: trace.description was not mapped to what_i_see
+  test('evidence viewer steps have descriptions', async ({ page }) => {
+    const result = await page.evaluate(() => {
+      if (typeof evidenceViewerData === 'undefined' || !evidenceViewerData.personas) return null;
+      const stats = { total: 0, withDesc: 0 };
+      for (const p of Object.values(evidenceViewerData.personas)) {
+        for (const t of p.tasks || []) {
+          for (const s of t.steps || []) {
+            stats.total++;
+            if (s.what_i_see || s.action) stats.withDesc++;
+          }
+        }
+      }
+      return stats;
+    });
+    if (!result || result.total === 0) test.skip();
+    const ratio = result.withDesc / result.total;
+    expect(ratio, `At least 50% of evidence steps should have descriptions (got ${result.withDesc}/${result.total})`).toBeGreaterThanOrEqual(0.5);
+  });
+
+  // Fix 7 — screenshots: task-N.png filenames weren't matched; 0-based task_index
+  // caused wrong screenshot assignment
+  test('evidence viewer steps have screenshots', async ({ page }) => {
+    const result = await page.evaluate(() => {
+      if (typeof evidenceViewerData === 'undefined' || !evidenceViewerData.personas) return null;
+      const stats = { tasks: 0, tasksWithSs: 0 };
+      for (const p of Object.values(evidenceViewerData.personas)) {
+        for (const t of p.tasks || []) {
+          stats.tasks++;
+          const hasSs = (t.steps || []).some(s => s.screenshot && s.screenshot.startsWith('data:image'));
+          if (hasSs) stats.tasksWithSs++;
+        }
+      }
+      return stats;
+    });
+    if (!result || result.tasks === 0) test.skip();
+    expect(result.tasksWithSs, `Each task should have at least 1 screenshot (got ${result.tasksWithSs}/${result.tasks})`).toBe(result.tasks);
+  });
+
+  // Fix 7 — multi-step traces: previously only 1 step per task was produced
+  test('evidence viewer has multi-step traces per task', async ({ page }) => {
+    const result = await page.evaluate(() => {
+      if (typeof evidenceViewerData === 'undefined' || !evidenceViewerData.personas) return null;
+      const stepCounts = [];
+      for (const p of Object.values(evidenceViewerData.personas)) {
+        for (const t of p.tasks || []) {
+          stepCounts.push((t.steps || []).length);
+        }
+      }
+      return stepCounts;
+    });
+    if (!result || result.length === 0) test.skip();
+    for (let i = 0; i < result.length; i++) {
+      expect(result[i], `Task ${i + 1} should have >= 2 steps (got ${result[i]})`).toBeGreaterThanOrEqual(2);
+    }
+  });
+
+  // Fix 7 — modal screenshot visibility: "No screenshot" was shown for every step
+  test('modal shows actual image, not "No screenshot"', async ({ page }) => {
+    const stepWithSs = await page.evaluate(() => {
+      if (typeof evidenceViewerData === 'undefined' || !evidenceViewerData.personas) return null;
+      for (const [pid, p] of Object.entries(evidenceViewerData.personas)) {
+        for (let ti = 0; ti < (p.tasks || []).length; ti++) {
+          for (let si = 0; si < (p.tasks[ti].steps || []).length; si++) {
+            if (p.tasks[ti].steps[si].screenshot) {
+              return { persona: pid, task: ti, step: si };
+            }
+          }
+        }
+      }
+      return null;
+    });
+    if (!stepWithSs) test.skip();
+
+    // openEvidenceViewer makes the overlay visible; selectStep renders content
+    await page.evaluate(() => {
+      if (typeof openEvidenceViewer === 'function') openEvidenceViewer();
+    });
+    await page.waitForTimeout(300);
+
+    await page.evaluate((s) => {
+      if (typeof selectStep === 'function') selectStep(s.persona, s.task, s.step);
+    }, stepWithSs);
+    await page.waitForTimeout(300);
+
+    const modal = page.locator('#evidence-viewer-modal');
+    if (!(await modal.isVisible())) test.skip();
+
+    const img = page.locator('#ev-screenshot img');
+    const imgCount = await img.count();
+    expect(imgCount, 'Screenshot area should contain an <img> element').toBeGreaterThanOrEqual(1);
+
+    const src = await img.first().getAttribute('src');
+    expect(src, 'Screenshot src should be a data URI').toMatch(/^data:image/);
+  });
+});

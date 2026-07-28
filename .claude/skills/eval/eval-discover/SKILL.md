@@ -516,16 +516,20 @@ Scale: 0=Broken, 1=Fragmented, 2=Functional, 3=Seamless.
 - Use strictest interpretation (expected path, not alternate paths)
 - Journey count must be deterministic (from extract-state.json)
 
-**DIMENSION 2 CONTEXT RULE (Cross-Persona Handoffs):**
-If ALL of the following are true:
-  - extract-state.json has only 1 persona type in journey_definitions (e.g., only "data scientist" variants)
-  - No AC mentions "handoff", "collaboration", "share", "another user", or "another role"
-  - The feature is inherently single-user (creation, viewing, configuration — not admin→user workflows)
-Then: Score Dimension 2 as **N/A**. Compute overall_score from 6 dimensions (out of 18 max).
-Write `"score": "N/A"` in the CSV usability section and note "single-user feature" in evidence.
+**N/A SCORING RULES:**
+Any dimension may be scored N/A when the prototype context makes it inapplicable.
+When `composite_score` is null or `"N/A"`, you MUST populate `note` with a brief reason.
 
-If the feature involves ANY cross-role interaction (e.g., admin creates policy, user consumes it):
-Score normally using the full rubric criteria.
+Common N/A scenarios:
+- **Dimension 2 (Cross-Persona Handoffs):** Single-user feature with no cross-role interaction. Check: extract-state.json has only 1 persona type, no AC mentions "handoff"/"collaboration"/"share"/"another user".
+- **Dimension 3 (Error Recovery):** Feature has no error states to test (pure read-only view).
+- **Dimension 4 (Efficiency of Use):** Feature is a first-time wizard with no repeat-use path.
+- **Dimension 7 (Help & Documentation):** Feature has no help content and none is expected.
+
+When scoring N/A, set `composite_score: null` and `note: "<reason>"` in the dimension object.
+Compute overall_score from only the scored dimensions (e.g., 6 scored dims → max 18).
+
+If the feature involves ANY interaction relevant to the dimension, score normally.
 
 ### Step 4: Append Section 2 to CSV
 
@@ -789,11 +793,57 @@ Also in Step 6 (`persona-results.json`): output MUST be an **array** of objects,
 
 - `persona_overlays` MUST always be populated (one entry per persona **per task** — NOT collapsed across tasks)
 - `confusion_events[].step` MUST be a NUMBER matching `journey.steps[].step` (e.g., `2`, not `"journey-1 step 2"`)
-- `dimensions[].id` MUST use the 7 standard IDs (workflow_continuity, cross_persona_handoffs, etc.)
+- `dimensions[].id` MUST use the 7 standard IDs (workflow_continuity, cross_persona_handoffs, etc.) — NOT `dimension_id`, which breaks the MLflow scorer
+- `dimensions[].name` MUST be present (e.g., "Workflow Continuity & Integrity") — the scorer checks for this key
 - `dimensions[].scores` MUST be keyed by persona ID with `{score, confidence, finding}`
 - `think_aloud.traces` MUST be populated when `--usability=deep` — this is what renders the persona insights in the report
 - `think_aloud.traces[].task_index` MUST be present — one trace entry per persona per task, NOT one per persona
 - `think_aloud.traces[].patience_end` MUST be the per-task value from `persona-results.json`, NOT the persona-level aggregate
 - `think_aloud.traces[].confusion_events` scalar MUST equal the count for THAT SPECIFIC TASK, pulled from the matching `persona-results.json` entry
 - `think_aloud.traces[].narration_summary` appears in the Personas tab as the think-aloud narrative
+- `persona_overlays[].task_index` MUST be present — without it the MLflow scorer fails
 - `overall_score` MUST be a string in "X/21" format
+
+#### POST-WRITE VALIDATION (BLOCKING)
+
+After writing `usability_dimensions` to `journey-log.json`, run this validation
+immediately — do NOT proceed to the report step if it fails. These checks catch
+the exact schema drift patterns that break MLflow scorers and render-report.js:
+
+```python
+import json
+jl = json.loads(open('.artifacts/<KEY>/journey-log.json').read())
+ud = jl.get('usability_dimensions', {})
+errors = []
+
+# 1. persona_selection must exist at top level
+if 'persona_selection' not in jl:
+    errors.append('MISSING: persona_selection not in journey-log.json top level')
+
+# 2. dimensions must use "id" not "dimension_id", and must have "name"
+for i, d in enumerate(ud.get('dimensions', [])):
+    if 'dimension_id' in d and 'id' not in d:
+        errors.append(f'dimensions[{i}]: uses "dimension_id" instead of "id"')
+    if 'id' not in d:
+        errors.append(f'dimensions[{i}]: missing "id"')
+    if 'name' not in d:
+        errors.append(f'dimensions[{i}]: missing "name"')
+    if 'composite_score' not in d:
+        errors.append(f'dimensions[{i}]: missing "composite_score"')
+    if d.get('composite_score') is None and not d.get('note'):
+        errors.append(f'dimensions[{i}]: composite_score is null but "note" is missing (required for N/A dimensions)')
+
+# 3. persona_overlays must have task_index
+for i, o in enumerate(ud.get('persona_overlays', [])):
+    if 'task_index' not in o:
+        errors.append(f'persona_overlays[{i}]: missing "task_index"')
+
+if errors:
+    print('SCHEMA ERRORS (fix before continuing):')
+    for e in errors:
+        print(f'  - {e}')
+else:
+    print('Schema validation passed')
+```
+
+If errors are found, fix the journey-log.json in place before continuing.

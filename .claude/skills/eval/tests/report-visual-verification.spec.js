@@ -81,15 +81,11 @@ test.beforeEach(async ({ page }) => {
   const reportPath = join(ARTIFACTS_DIR, 'evaluation-report.html');
   await page.goto(`file://${reportPath}`);
   await page.waitForLoadState('domcontentloaded');
-  // Dismiss welcome modal if present (some report versions show a tour prompt)
-  const welcomeModal = page.locator('#welcomeModal.active');
-  if (await welcomeModal.isVisible({ timeout: 500 }).catch(() => false)) {
-    const skipBtn = page.locator('#welcomeModal button', { hasText: /skip/i });
-    if (await skipBtn.isVisible({ timeout: 500 }).catch(() => false)) {
-      await skipBtn.click();
-      await page.waitForTimeout(300);
-    }
-  }
+  // Welcome modal no longer auto-pops, but guard against stale renders
+  await page.evaluate(() => {
+    var m = document.getElementById('welcomeModal');
+    if (m) m.classList.remove('active');
+  });
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -496,10 +492,9 @@ test.describe('Cross-Section Visual Consistency', () => {
   });
 
   test('capture AC table for cross-reference', async ({ page }) => {
-    const table = page.locator('[data-tour="ac-table"]').first();
+    const table = page.locator('#ac-table-jira');
     await expect(table).toBeVisible();
 
-    // Scroll to make the full table visible
     await table.scrollIntoViewIfNeeded();
     const file = 'ac-table.png';
     await table.screenshot({ path: join(SCREENSHOT_DIR, file) });

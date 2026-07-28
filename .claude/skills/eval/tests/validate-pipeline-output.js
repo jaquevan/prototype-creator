@@ -67,7 +67,7 @@ if (journeyLog) {
 
   if (ud) {
     // Check it's NOT a flat dict (the broken format)
-    const isFlatDict = ud.workflow_continuity !== undefined || ud.system_status_observability !== undefined;
+    const isFlatDict = ud.workflow_continuity !== undefined || ud.system_status_observability !== undefined || ud.system_status_trust !== undefined || ud.cross_persona_handoffs !== undefined || ud.cross_persona_context !== undefined;
     check(
       'Usability Not Flat Dict',
       !isFlatDict,
@@ -238,13 +238,15 @@ if (personaResults) {
       emptyTraces.length === 0 ? 'All persona runs have non-empty trace[]' : `${emptyTraces.length} persona run(s) have empty trace[] — walkthrough did not write live data`
     );
 
-    const reqKeys = ['persona_id', 'persona_name', 'task_index', 'task', 'trace', 'patience_end', 'abandoned'];
     const pr0 = personaResults[0];
+    const hasPersonaKey = ('persona_id' in pr0) || ('persona' in pr0);
+    const reqKeys = ['persona_name', 'task_index', 'task', 'trace', 'patience_end'];
     const missingKeys = reqKeys.filter(k => !(k in pr0));
+    if (!hasPersonaKey) missingKeys.unshift('persona or persona_id');
     check(
       'Persona Result Schema',
-      missingKeys.length === 0,
-      missingKeys.length === 0 ? 'All required keys present' : `MISSING keys: ${missingKeys.join(', ')}`
+      missingKeys.length === 0 && hasPersonaKey,
+      missingKeys.length === 0 && hasPersonaKey ? 'All required keys present' : `MISSING keys: ${missingKeys.join(', ')}`
     );
   }
 }

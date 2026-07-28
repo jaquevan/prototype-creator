@@ -200,6 +200,7 @@ To review results from a previous run:
 | `eval-consistency` | PatternFly design guideline compliance check |
 | `eval-report` | Renders the HTML report from artifacts |
 | `eval-review` | Conversational entry point for reviewing results |
+| `eval-optimize-mlflow` | Reads MLflow quality failures and fixes responsible skills |
 
 ## Prerequisites
 
@@ -216,6 +217,14 @@ bash .claude/skills/eval/scripts/bootstrap-consistency-checker.sh  # PatternFly 
 |-----------|--------|--------------|
 | `.context/usability-testing/` | automated-usability-testing | Phase B scoring |
 | `.context/consistency-checker/` | consistency-checker | Design violations |
+
+## Model Defaults
+
+Each sub-skill delegates to a specific Claude model optimized for cost vs quality. See the **Model Defaults Per Sub-Skill** table in `eval-iterate/SKILL.md` for current assignments and rationale. Override any default with `--model=<model>` on the `/eval-iterate` invocation.
+
+## Quality Optimization
+
+When model comparison runs show quality failures, `/eval-optimize-mlflow` reads the failing checks, maps them to the responsible SKILL.md, and guides you through evidence-based fixes. See [eval-optimize-mlflow](https://github.com/jaquevan/eval-optimize-mlflow) for standalone usage.
 
 ## Two Modes
 

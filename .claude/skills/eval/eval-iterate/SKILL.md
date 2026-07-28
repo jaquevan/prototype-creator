@@ -446,7 +446,40 @@ LOOP:
     # Dev server with HMR — changes visible after recompile
     sleep 5
 
+  # ═══════════════════════════════════════════════════════════════════
+  # MANDATORY LOOP CONTINUATION — DO NOT SKIP THIS
+  # ═══════════════════════════════════════════════════════════════════
+  # After eval-fix completes and the workspace rebuilds, you MUST
+  # return to LOOP (above) to re-run eval-verify on the fixed code.
+  # Without re-verification, fixes are unconfirmed — the CSV still
+  # shows pre-fix verdicts, total_criteria_fixed stays 0, and the
+  # report renders stale FAIL results for criteria that were actually fixed.
+  #
+  # CHECKPOINT: Before continuing, verify:
+  #   1. iteration < max_iterations (otherwise you'd have exited above)
+  #   2. fix-log.json has applied entries (eval-fix did something)
+  # If both are true, GOTO LOOP. Do NOT proceed to Phase B.
+  # ═══════════════════════════════════════════════════════════════════
+
   GOTO LOOP
+
+# ═══════════════════════════════════════════════════════════════════
+# LOOP INTEGRITY CHECK — catches "fixes applied but never re-verified"
+# ═══════════════════════════════════════════════════════════════════
+# If fix-log.json has applied entries AND iteration == 1, the loop
+# failed to continue. This means fixes were written to source files
+# but never re-verified by eval-verify. The CSV still shows pre-fix
+# verdicts and total_criteria_fixed will be 0.
+# This is a pipeline bug — log a warning for the report.
+
+if iteration == 1:
+  Read .artifacts/<KEY>/fix-log.json
+  if fix-log has applied entries (action == "applied"):
+    echo "WARNING: Fixes were applied in iteration 1 but never re-verified."
+    echo "The fix loop should have continued to iteration 2 for re-verification."
+    echo "Setting exit_reason to 'fix_not_reverified' for accurate reporting."
+    python3 .claude/skills/eval/scripts/eval_state.py set .artifacts/<KEY>/eval-state.yaml \
+      exit_reason=fix_not_reverified
 
 # ═══════════════════════════════════════════════════════════════════
 # FINAL-STATE CAPTURE (N+1 pass — only when fix loop actually ran)
@@ -615,6 +648,59 @@ if il.exists():
     il.write_text(json.dumps(log, indent=2))
     print(f'iteration-log.json exit_reason set to: {exit_reason}')
 "
+
+# ═══════════════════════════════════════════════════════════════════
+# ARTIFACT READINESS GATE (prevents race condition with report)
+# ═══════════════════════════════════════════════════════════════════
+# render-report.js reads journey-log.json, persona-results.json, and
+# consistency-report.json at startup. If any Phase B or Pre-Phase-B
+# background task is still writing these files, the report renders
+# with empty/partial data (empty persona tab, "0 guidelines checked",
+# no journey screenshots). This gate blocks until all files are ready.
+#
+# WAIT for ALL background Phase B and Pre-Phase-B tasks to complete
+# before proceeding. Do NOT invoke eval-report while any background
+# task is still running.
+
+python3 << 'PYEOF'
+import json, time, os
+ad = '.artifacts/<KEY>/'
+required = {
+    'persona-results.json': lambda d: isinstance(d, list) and len(d) > 0,
+    'journey-log.json': lambda d: 'usability_dimensions' in d,
+    'consistency-report.json': lambda d: d is not None,
+}
+for attempt in range(6):
+    missing = []
+    for f, check in required.items():
+        fp = os.path.join(ad, f)
+        if not os.path.exists(fp):
+            missing.append(f'{f} (not found)')
+            continue
+        try:
+            data = json.loads(open(fp).read())
+            if not check(data):
+                missing.append(f'{f} (incomplete)')
+        except:
+            missing.append(f'{f} (unreadable)')
+    if not missing:
+        print('All artifacts ready for report generation')
+        break
+    if attempt < 5:
+        print(f'Waiting for artifacts: {", ".join(missing)}')
+        time.sleep(5)
+    else:
+        print(f'WARNING: Proceeding with incomplete artifacts: {", ".join(missing)}')
+PYEOF
+
+# ═══════════════════════════════════════════════════════════════════
+# SCHEMA VALIDATION (catches drift before report renders broken output)
+# ═══════════════════════════════════════════════════════════════════
+
+node .claude/skills/eval/scripts/validate-artifact-schemas.js .artifacts/<KEY>/
+# If failures: fix the artifacts in-place (usually missing keys in journey-log.json
+# or persona-results.json). Then re-run the validator to confirm.
+# Proceeding with schema errors will produce a broken report and fail MLflow scorers.
 
 # ═══════════════════════════════════════════════════════════════════
 # REPORT (runs unless --no-report is set)

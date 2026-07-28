@@ -5,6 +5,9 @@ description = "Takes RFE user stories and produces rapid prototypes with human-i
 readme = "README.md"
 license = { text = "Apache-2.0" }
 requires-python = ">=3.11"
+dependencies = [
+    "mlflow[kubernetes]>=3.11",
+]
 
 [build-system]
 requires = ["hatchling"]

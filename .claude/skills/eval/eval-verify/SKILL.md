@@ -371,6 +371,25 @@ main().catch(console.error);
 3. Captures a screenshot AFTER the interaction
 4. Records the verdict
 
+**SCREENSHOT DIFFERENTIATION REQUIREMENT:** Each journey's screenshot MUST visually
+differ from the baseline and from other journey screenshots. If a journey only checks
+text content without changing the page state (no hover, no expand, no scroll, no
+navigation), the screenshot will be identical to the baseline — this defeats the
+purpose of visual evidence. Every journey MUST include at least one state-changing
+interaction before calling `screenshot()`:
+- Hover journeys: call `hoverElement()` then screenshot while tooltip is visible
+- Expand journeys: call `expandRow()` then screenshot with expanded content
+- Navigation journeys: call `navigateTo()` with a different route
+- Absence journeys: still navigate to the relevant page section (scroll to area)
+If no unique interaction is possible (pure text check), call `screenshot()` but
+add `// SCREENSHOT_STATIC: text-only check, no visual differentiation` as a comment.
+
+**POST-GENERATION VALIDATION:** After generating `journey-test.mjs`, scan the script
+for screenshot calls. If all `screenshot()` calls share the same page state (no
+`hoverElement`, `expandRow`, `navigateTo`, `click`, or `scrollIntoView` between
+baseline and any journey screenshot), the script will produce identical screenshots.
+Regenerate with actual interactions.
+
 Do NOT rewrite the utilities. Do NOT change the browser/context setup. Only fill in the journey functions.
 
 #### Journey Step Relevance Rule

@@ -39,10 +39,9 @@ htmlcov/
 *.swp
 *.swo
 
-# Test fixtures — oversized files (>20MB) excluded from git
-.claude/skills/eval/tests/fixtures/images/oversized-test.png
-
-# Eval harness integration (local testing only, not pushed)
+# Test fixtures and eval harness (development-only, not shipped)
+.claude/skills/eval/tests/fixtures/
+.claude/skills/eval/evals/
 .claude/skills/eval/eval-harness/
 .claude/skills/eval/eval-optimize-mlflow/
 
@@ -56,17 +55,45 @@ htmlcov/
 # Run metrics (generated per-run, not source)
 .artifacts/**/run-metrics.json
 
-# MLflow local tracking (may be created at project root or eval-harness root)
-mlflow.db
+# MLflow (development — cluster is canonical; see deploy/openshift/)
+mlflow.db*
+*.db.bak*
+*.db.old*
 mlruns/
+.claude/skills/eval/test-results/
+.claude/skills/eval/scripts/mlflow-compare-models.py
+.claude/skills/eval/scripts/mlflow-trace-eval.py
+.claude/skills/eval/scripts/mlflow-trace-pipeline.py
 
 # Eval harness run outputs (created by /eval-run)
 eval/runs/
 
+# Claude settings (personal env vars, cluster URIs)
+.claude/settings.json
+
+# OpenShift deploy manifests (development, cluster-specific)
+deploy/
+
 # Ad-hoc scripts and planning docs (local-only, not pipeline code)
 .claude/skills/eval/PLAN-*.md
 .claude/skills/eval/scripts/query-model-costs.py
-.claude/skills/eval/scripts/mlflow-trace-eval.py
+.claude/skills/eval/scripts/judge_report_interactive.py
+
+# Root scripts/ ad-hoc dev scripts (not pipeline code)
+scripts/__init__.py
+scripts/__pycache__/
+scripts/generate-report-fixtures.py
+scripts/run-persona-walkthrough.sh
+scripts/test-report-judges.py
+scripts/run-eval-extract.py
+scripts/judge_report_interactive.py
+
+# Project state snapshots (local working docs, not tracked)
+project_state.md
+mlflow-harness-state.md
+mlflow-audit-roadmap.md
+mlflow-openshift-runbook.md
+mlflow-run-cheatsheet.md
 
 # Cursor workspace state
 .cursor/
