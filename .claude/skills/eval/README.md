@@ -21,32 +21,123 @@ make context
 # 2. Start your prototype locally
 cd ~/Desktop/rhoai-prototypes && npm start
 
-# 3. Run the eval
+# 3. Run the eval (either method works)
 /eval-iterate RHAISTRAT-1536 http://localhost:3000 --workspace=~/Desktop/rhoai-prototypes
 ```
 
 The pipeline runs, opens the report when done, and presents a summary with suggested actions.
 
+### Invocation Methods
+
+Both methods are fully supported — use whichever works in your environment:
+
+| Method | When to use |
+|--------|-------------|
+| **Slash command:** `/eval-iterate RHAISTRAT-1536 ...` | Default. Works when the IDE has indexed `.claude/skills/`. |
+| **Natural language:** "Read `.claude/skills/eval/eval-iterate/SKILL.md` and run it against RHAISTRAT-1536 at http://localhost:3000 with workspace ~/Desktop/rhoai-prototypes" | Fallback when the slash command doesn't appear, or in VS Code / Claude Code where skill indexing may not trigger automatically. |
+
+### Troubleshooting
+
+**Slash command not appearing?**
+- Restart your IDE (Cursor or VS Code) to re-index the skills directory
+- If it still doesn't appear, use the natural-language method above — same pipeline, same results
+- In Claude Code (terminal), skills are always invoked via natural language
+
+**`ERR_MODULE_NOT_FOUND: Cannot find package 'playwright'`?**
+- Playwright is installed in `.claude/skills/eval/node_modules/`, not the project root
+- ESM `import` resolves modules by walking up from the **script file's** directory, not from `cwd` or `NODE_PATH`
+- A committed symlink at the project root (`node_modules -> .claude/skills/eval/node_modules`) handles this — it should exist after clone
+- If missing (e.g. OS didn't preserve symlinks during checkout), recreate it: `ln -s .claude/skills/eval/node_modules node_modules`
+
+### Claude Code Users (VS Code)
+
+The eval pipeline runs ~20 shell commands (`node`, `npm`, `git`) that each require individual approval in Claude Code. Use `--auto-run` to reduce this to 5 checkpoints:
+
+```
+/eval-iterate RHAISTRAT-1536 http://localhost:3000 --workspace=~/Desktop/rhoai-prototypes --auto-run
+```
+
+Or permanently allow the pipeline's commands by adding these patterns to your `~/.claude/settings.json`:
+
+```json
+{
+  "permissions": {
+    "allow": [
+      "Bash(node .claude/skills/eval/scripts/*)",
+      "Bash(node .artifacts/*)",
+      "Bash(npm run build)",
+      "Bash(git log *)",
+      "Bash(git status *)"
+    ]
+  }
+}
+```
+
+### Evaluating Existing Prototypes
+
+You don't need an RFE to run an eval. If a team member already has a prototype running, point the pipeline at the STRAT key and the running server:
+
+```bash
+/eval-iterate RHAISTRAT-432 http://localhost:8080 --workspace=~/Desktop/rhoai-prototypes
+```
+
+The pipeline pulls ACs from the Jira ticket and evaluates the prototype as-is. For prototypes without a Jira ticket, place an `rfe-snapshot.md` with ACs in `.artifacts/<KEY>/` and the pipeline will use those instead of fetching from Jira.
+
+### No-Report Mode
+
+For fast iteration without the full HTML report (~14MB, ~2 min to render):
+
+```bash
+/eval-iterate RHAISTRAT-1536 http://localhost:3000 --workspace=~/Desktop/rhoai-prototypes --no-report
+```
+
+This prints a compact summary in chat with pass/fail counts, key screenshots, and refinement suggestions. Run `/generate-report` later when you want the full HTML report.
+
 ## What It Does
 
-The pipeline has two phases:
+The pipeline has three stages:
 
 **Phase A — AC Validation (X-Ray)**
-An x-ray evaluator with full source access verifies each acceptance criterion from the Jira ticket using Playwright. If criteria fail, it applies fixes and re-runs (up to N iterations) until all pass or max iterations are reached.
+An x-ray evaluator with full source access verifies each acceptance criterion from the Jira ticket using Playwright. Before generating scripts, it writes a `component-map.json` that maps AC concepts to actual DOM elements (column headers, tooltips, expandable rows, feature flags). Each AC gets a unique screenshot showing a different visual state (hover, expand, scroll — not just the default table view). If criteria fail, it applies fixes and re-runs (up to N iterations) until all pass.
+
+**Post-A Bridge (Parallel)**
+Three deferred skills run simultaneously: visual consistency checks (using journey screenshots), context enrichment (Outcome ticket, breadcrumb, persona tasks), and navigation context extraction (routes + nav hierarchy for persona fallback).
 
 **Phase B — Usability Testing (Discovery)**
-Per-persona Playwright walkthroughs where simulated users navigate the prototype at their own competence level. Produces think-aloud traces and scores 7 usability dimensions.
+Per-persona Playwright walkthroughs where simulated users navigate the prototype at their own competence level. Produces think-aloud traces and scores 7 usability dimensions. Before/after comparison only shows when eval-fix actually changed the prototype.
 
 ```
-Phase A: eval-extract (core) → eval-consistency (source) → eval-classify → eval-journey (informed)
+Phase A: eval-extract (core) → eval-consistency (source) → eval-classify → eval-verify (x-ray)
                                                                              ↓
-                                                                     All PASS? → Phase B
+                                                                     All PASS? → Post-A
                                                                      FAIL? → eval-fix → loop
 
-Post-A:  eval-consistency (visual) → eval-extract (enrichment) → eval-hint
+Post-A:  eval-consistency (visual) + eval-extract (enrichment) + eval-nav-context  [ALL PARALLEL]
 
-Phase B: eval-usability (per-persona Playwright) → eval-report → open + summarize
+Phase B: eval-discover (per-persona Playwright) → eval-report → open + summarize
 ```
+
+## Key Design Decisions
+
+- **CSV is the single source of truth** for verdicts. The report reads the CSV, not the journey-log. Both files must have identical verdicts — enforced by `validate-verdicts.js` (bidirectional check).
+- **T1 is the default tier.** Any AC with an observable UI effect is T1, even if the AC text mentions backend concepts. T5 (hardware) was removed. Only T4 (subjective) produces FLAGGEDs.
+- **Component map drives script generation.** eval-verify reads workspace source files and writes `component-map.json` before generating Playwright scripts. The script uses actual column indices and selectors from the map, never guessing from AC text.
+- **Visual differentiation required.** Each journey screenshot must show a unique visual state (hover, expand, scroll). Multiple journeys screenshotting the same default table view is invalid.
+- **PF6 script template.** eval-verify provides tested Playwright utilities (`navigateTo`, `expandRow`, `hoverElement`, `getTooltipText`, `checkNoErrors`) so the agent fills in AC-specific logic without writing boilerplate from scratch.
+- **1440x900 viewport.** All Playwright contexts use this size. The default 800x600 truncates PatternFly tables.
+
+## Tier System
+
+ACs are classified into tiers that determine how to evaluate them:
+
+| Tier | What it means | Verdict |
+|------|---------------|---------|
+| **T1** | Verifiable from prototype UI (default) | PASS or FAIL |
+| **T2** | Needs external reference to compare | PASS, FAIL, or FLAGGED |
+| **T3** | Backend-only, no UI surface | Auto-PASS at classify time |
+| **T4** | Subjective — needs human judgment | FLAGGED with evidence |
+
+T1 is the default. Any AC with an observable UI effect is T1, even if the AC text mentions backend concepts. T5 (hardware/headed browser) has been removed — those cases auto-PASS with a note.
 
 ## Flags
 
@@ -63,17 +154,25 @@ Phase B: eval-usability (per-persona Playwright) → eval-report → open + summ
 
 All output goes to `.artifacts/<KEY>/` (gitignored):
 
-| File | Description |
-|------|-------------|
-| `evaluation-report.html` | Self-contained HTML report with narrative summary |
-| `evaluation-report.csv` | Machine-readable AC verdicts + usability scores |
-| `journey-log.json` | Playwright step log, screenshots, usability overlays |
-| `extract-state.json` | Jira context, personas, MR delta |
-| `refinement-suggestions.json` | Suggested fixes for failed criteria |
-| `screenshots/` | Step-by-step and persona walkthrough screenshots |
-| `usability-thinkaloud-<persona>.md` | Per-persona think-aloud traces |
-| `consistency-report.json` | PatternFly design guideline violations |
-| `iteration-log.json` | Per-iteration pass/fail counts |
+| File | Producer | Description |
+|------|----------|-------------|
+| `extract-state.json` | eval-extract | ACs, journeys, personas, feature context, cached ticket data |
+| `mr-delta.json` | eval-extract | Git diff analysis (changed files, categories) |
+| `component-map.json` | eval-verify | AC-to-DOM element mapping (columns, tooltips, flags, selectors) |
+| `consistency-report.json` | eval-consistency | PatternFly source + visual guideline findings |
+| `evaluation-report.csv` | eval-classify → eval-verify | AC verdicts (source of truth), usability dimensions |
+| `journey-log.json` | eval-verify → eval-discover | Playwright steps, verdicts, usability dimensions |
+| `refinement-suggestions.json` | eval-verify + eval-consistency | Suggested fixes for failed criteria |
+| `fix-log.json` | eval-fix | Record of fixes applied (when fix loop ran) |
+| `outcome-context.json` | eval-extract (enrichment) | Parent Outcome ticket context |
+| `navigation-hints.json` | eval-nav-context | Routes + nav hierarchy for persona fallback |
+| `persona-results.json` | eval-discover | Structured trace data for persona walkthroughs |
+| `iteration-log.json` | eval-iterate | Per-iteration pass/fail counts (from CSV) |
+| `eval-state.yaml` | eval-iterate | Pipeline state, per-skill timing |
+| `evaluation-report.html` | eval-report | Self-contained HTML report with embedded screenshots |
+| `evaluation-summary.json` | eval-report | Agent-readable summary: AC verdicts, usability scores, counts, iteration state |
+| `usability-thinkaloud-*.md` | eval-discover | Per-persona per-task think-aloud traces |
+| `screenshots/` | eval-verify + eval-discover | Journey finals, persona walkthroughs, baselines |
 
 ## Designer Workflow
 
@@ -94,13 +193,14 @@ To review results from a previous run:
 | `eval-iterate` | Orchestrator — runs the full pipeline |
 | `eval-extract` | Pulls Jira context, ACs, personas, MR delta |
 | `eval-classify` | Classifies ACs into evaluation tiers |
-| `eval-hint` | Extracts navigation hints from workspace source |
-| `eval-journey` | Runs Playwright walkthroughs (x-ray mode for Phase A) |
+| `eval-nav-context` | Extracts navigation context (routes, nav hierarchy) from workspace source |
+| `eval-verify` | Runs Playwright walkthroughs (x-ray mode for Phase A) |
 | `eval-fix` | Applies fixes from refinement-suggestions.json |
-| `eval-usability` | Phase B persona walkthroughs + 7-dimension scoring |
+| `eval-discover` | Phase B persona walkthroughs + 7-dimension scoring |
 | `eval-consistency` | PatternFly design guideline compliance check |
 | `eval-report` | Renders the HTML report from artifacts |
 | `eval-review` | Conversational entry point for reviewing results |
+| `eval-optimize-mlflow` | Reads MLflow quality failures and fixes responsible skills |
 
 ## Prerequisites
 
@@ -117,6 +217,14 @@ bash .claude/skills/eval/scripts/bootstrap-consistency-checker.sh  # PatternFly 
 |-----------|--------|--------------|
 | `.context/usability-testing/` | automated-usability-testing | Phase B scoring |
 | `.context/consistency-checker/` | consistency-checker | Design violations |
+
+## Model Defaults
+
+Each sub-skill delegates to a specific Claude model optimized for cost vs quality. See the **Model Defaults Per Sub-Skill** table in `eval-iterate/SKILL.md` for current assignments and rationale. Override any default with `--model=<model>` on the `/eval-iterate` invocation.
+
+## Quality Optimization
+
+When model comparison runs show quality failures, `/eval-optimize-mlflow` reads the failing checks, maps them to the responsible SKILL.md, and guides you through evidence-based fixes. See [eval-optimize-mlflow](https://github.com/jaquevan/eval-optimize-mlflow) for standalone usage.
 
 ## Two Modes
 

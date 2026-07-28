@@ -45,6 +45,16 @@ Load the AC list, criterion-to-reference map, and `feature_context` from `.artif
 
 If `feature_context.ui_enhancements` exists, use it as supplementary signal for tier decisions -- it describes what the prototype is supposed to visually demonstrate.
 
+### Step 1b: Run T3 misclassification guard
+
+```bash
+node .claude/skills/eval/scripts/classify-ac-tier.js .artifacts/<KEY>/
+```
+
+This produces `.artifacts/<KEY>/tier-overrides.json` — a list of ACs that have backend keywords but confirmed UI surfaces. Any AC listed there is locked to the specified tier (typically T1) and MUST NOT be overridden to T3 in Step 2.
+
+If `tier-overrides.json` exists, read it before classifying. For each override entry, set that AC's tier to `forced_tier` and note the `reason` in the rationale column.
+
 ### Step 2: Classify each criterion
 
 For each AC in the list, determine its tier. **Default to T1 unless there is a strong reason not to.** These are functional prototypes -- if it's about UI, it's testable.
@@ -93,14 +103,14 @@ AC-3,jira,T3,"BFF validates request body size",,Backend-only -- no UI component 
 AC-4,jira,T4,"User-friendly terminology for scheduling states",,,,,,Assess whether status labels use appropriate plain language
 ```
 
-All 10 columns are required per `config/csv-schema.yaml`. Leave `verdict`, `rationale`, `evidence`, `fix_action`, `fix_file`, `human_action` empty for T1 and T2 — eval-journey fills those in. For T3 (backend-only), set verdict to PASS immediately with a rationale note. For T4, leave verdict empty but populate `human_action` with what the designer should assess.
+All 10 columns are required per `config/csv-schema.yaml`. Leave `verdict`, `rationale`, `evidence`, `fix_action`, `fix_file`, `human_action` empty for T1 and T2 — eval-verify fills those in. For T3 (backend-only), set verdict to PASS immediately with a rationale note. For T4, leave verdict empty but populate `human_action` with what the designer should assess.
 
 ## Rules
 
 - Classification is deterministic given the same inputs. Same AC text + same references + same feature_context = same tier.
 - **Default to T1.** Only use T2/T3/T4 when there is a clear, specific reason the AC cannot be evaluated from the prototype UI.
 - T3 ACs get their verdict assigned at classification time (PASS with note). They do NOT enter the journey loop.
-- T4 ACs get FLAGGED after eval-journey provides evidence. They are the only tier expected to produce FLAGGEDs.
+- T4 ACs get FLAGGED after eval-verify provides evidence. They are the only tier expected to produce FLAGGEDs.
 - Never generate journey steps for T3 ACs (backend-only, no UI to test).
 - Every criterion gets a tier. No criterion is skipped.
 - The CSV schema is strict — all 10 columns must be present, even if empty.

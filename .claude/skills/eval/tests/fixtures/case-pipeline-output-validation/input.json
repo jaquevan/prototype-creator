@@ -1,0 +1,15 @@
+{
+  "_doc": "Test case: Validates that a completed pipeline run produces all required output artifacts with correct schemas. Uses RHAISTRAT-1433 as reference.",
+  "artifacts_dir": ".artifacts/RHAISTRAT-1433",
+  "expected_artifacts": [
+    "journey-log.json",
+    "evaluation-report.csv",
+    "evaluation-report.html",
+    "evaluation-summary.json",
+    "extract-state.json",
+    "consistency-report.json",
+    "persona-results.json",
+    "iteration-log.json",
+    "component-map.json"
+  ]
+}

@@ -1,13 +1,13 @@
 ---
-name: eval-hint
-description: Scan workspace source files from the MR delta to extract navigation hints — routes, CSS selectors, page structure, and nav hierarchy. Produces navigation-hints.json for eval-journey.
+name: eval-nav-context
+description: Scan workspace source files from the MR delta to extract navigation hints — routes, CSS selectors, page structure, and nav hierarchy. Produces navigation-hints.json for eval-discover.
 user-invocable: false
 allowed-tools: Read, Write, Bash, Glob, Grep
 ---
 
-# eval-hint
+# eval-nav-context
 
-Pre-journey intelligence gathering. Reads the workspace source files listed in `mr-delta.json` and extracts concrete information that helps eval-journey generate precise Playwright scripts. This skill is the "hinter" — it has full code access. The persona walker (eval-usability) discovers paths on its own.
+Pre-journey intelligence gathering. Reads the workspace source files listed in `mr-delta.json` and extracts concrete information that helps eval-discover generate precise Playwright scripts. This skill is the "hinter" — it has full code access. The persona walker (eval-discover) discovers paths on its own.
 
 ## Inputs
 
@@ -25,7 +25,7 @@ Pre-journey intelligence gathering. Reads the workspace source files listed in `
 
 ## What the hints are used for (and what they are NOT)
 
-**Used for (by eval-usability in Phase B):**
+**Used for (by eval-discover in Phase B):**
 - Diagnostic fallback URLs after click-first fails (to distinguish orphaned from missing)
 - Nav section hierarchy (which parent button to expand for which child link)
 
@@ -33,7 +33,7 @@ Pre-journey intelligence gathering. Reads the workspace source files listed in `
 - Telling the persona where to click (defeats usability test)
 - Auto-navigating to pages (hides discoverability issues)
 - Scoring or verdicts (those come from what the walker actually experiences)
-- Phase A eval-journey (x-ray mode reads source directly, does not consume hints)
+- Phase A eval-verify (x-ray mode reads source directly, does not consume hints)
 
 **NOT produced (removed — unused downstream):**
 - CSS selectors for specific elements (discovery personas should not have these)
@@ -84,7 +84,7 @@ cd <workspace>
 cat src/app/AppLayout/AppLayout.tsx | grep -A 2 "NavItem\|nav__link\|expandable" | head -50
 ```
 
-Build the nav section map: which parent button expands to reveal which child links. This directly tells eval-journey which section to expand for each target page.
+Build the nav section map: which parent button expands to reveal which child links. This directly tells eval-discover which section to expand for each target page.
 
 ### Step 4: Write navigation-hints.json
 

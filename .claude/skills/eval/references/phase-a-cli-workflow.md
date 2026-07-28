@@ -11,7 +11,7 @@ flowchart TD
         START([Designer makes prototype changes]) --> TRIGGER["eval-iterate --phase-a-only\n(or: /eval-check)"]
         TRIGGER --> EXTRACT[eval-extract\nPull ACs from Jira]
         EXTRACT --> CLASSIFY[eval-classify\nTier ACs: T1 visual, T3 backend, T4 subjective]
-        CLASSIFY --> JOURNEY[eval-journey\nX-ray AC verification]
+        CLASSIFY --> JOURNEY[eval-verify\nX-ray AC verification]
         JOURNEY --> VERDICTS{Verdicts}
         
         VERDICTS -->|All PASS| REPORT_PASS["✓ AC Report Card\n+ screenshots as evidence\n+ suggestions for polish"]
@@ -153,7 +153,7 @@ Eval check complete: RHAISTRAT-1742 — Deploy agent images
 
 ## Separation of Concerns
 
-| | Phase A CLI (eval-check) | Phase B (eval-usability) |
+| | Phase A CLI (eval-check) | Phase B (eval-discover) |
 |---|---|---|
 | **Who runs it** | Designer, self-service | Designer or CI, when ready |
 | **How often** | Many times per session | Once when feature-complete |

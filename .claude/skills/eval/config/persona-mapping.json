@@ -1,0 +1,37 @@
+{
+  "_doc": "Canonical persona-to-audience mapping. Read by eval-extract (Step 9) and eval-discover (Step 1a). IDs must match filenames in .context/usability-testing/personas/<id>.yaml.",
+  "mappings": [
+    {
+      "audience_keywords": ["data scientist", "ml practitioner"],
+      "personas": ["deena-junior", "deena-senior"]
+    },
+    {
+      "audience_keywords": ["ai/ml engineer", "ai engineer", "ml engineer", "developer"],
+      "personas": ["alex-junior", "alex-senior"]
+    },
+    {
+      "audience_keywords": ["mlops", "platform operator"],
+      "personas": ["maude-experienced", "maude-junior"]
+    },
+    {
+      "audience_keywords": ["platform admin", "infrastructure"],
+      "personas": ["paula-platform-engineer"]
+    },
+    {
+      "audience_keywords": ["accessibility"],
+      "personas": ["sam-accessibility"]
+    },
+    {
+      "audience_keywords": ["regulated", "air-gapped"],
+      "personas": ["raj-regulated"]
+    }
+  ],
+  "valid_ids": [
+    "alex-junior", "alex-senior",
+    "deena-junior", "deena-senior",
+    "maude-experienced", "maude-junior", "maude-incident",
+    "paula-platform-engineer",
+    "sam-accessibility",
+    "raj-regulated"
+  ]
+}

@@ -1,0 +1,57 @@
+{
+  "_doc": "Expected structure for all pipeline output artifacts. These checks prevent the three failure modes observed on RHAISTRAT-1433 (2026-07-22): 1) usability_dimensions wrong schema, 2) consistency checker not run, 3) persona data not propagating to report.",
+  
+  "journey_log_schema": {
+    "required_top_level_keys": ["depth", "prototype_url", "evaluated_at", "journeys", "usability_dimensions", "persona_selection"],
+    "usability_dimensions_required_keys": ["overall_score", "dimensions", "persona_overlays", "personas_evaluated"],
+    "usability_dimensions_type_checks": {
+      "overall_score": "number",
+      "dimensions": "array_of_objects",
+      "persona_overlays": "array_of_objects",
+      "personas_evaluated": "array_of_strings"
+    },
+    "dimension_object_required_keys": ["id", "name", "composite_score", "confidence"],
+    "persona_overlay_required_keys": ["persona", "task_index", "patience_start", "patience_end", "abandoned"],
+    "min_dimensions": 7,
+    "min_persona_overlays": 1,
+    "persona_selection_required_keys": ["method", "target_audience_source", "reasoning", "selected", "considered_but_rejected"],
+    "persona_selection_reasoning_min_length": 30
+  },
+
+  "fix_log_schema": {
+    "must_be_array_when_present": true,
+    "item_required_keys": ["description", "applied", "timestamp"],
+    "type_field_recommended": true,
+    "valid_types": ["ac-fix", "consistency", "pipeline-infrastructure", "flagged-fix"]
+  },
+
+  "evaluation_summary_schema": {
+    "usability_must_not_be_null": true,
+    "usability_required_keys": ["overall_score", "personas_evaluated", "dimensions"],
+    "overall_score_must_be_number": true,
+    "personas_evaluated_must_be_nonempty": true,
+    "dimensions_must_be_nonempty": true
+  },
+
+  "consistency_report_schema": {
+    "required_top_level_keys": ["summary", "source_mode"],
+    "summary_required_keys": ["total_guidelines_checked", "violations", "passes"],
+    "source_mode_required_keys": ["ran", "violations"],
+    "source_mode_ran_must_be_true": true,
+    "violations_array_item_keys": ["guideline_id", "guideline_title", "severity", "file"]
+  },
+
+  "persona_results_schema": {
+    "must_be_array": true,
+    "min_items": 1,
+    "item_required_keys": ["persona_id", "persona_name", "task_index", "task", "trace", "patience_end", "abandoned"],
+    "trace_must_be_nonempty_array": true
+  },
+
+  "iteration_log_schema": {
+    "required_keys": ["key", "exit_reason", "iterations"],
+    "exit_reason_must_not_be_pending": true,
+    "phase_b_required_when_usability_context_exists": true,
+    "phase_b_required_keys": ["usability_score", "personas_evaluated", "dimension_scores"]
+  }
+}

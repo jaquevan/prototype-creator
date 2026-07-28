@@ -1,0 +1,11 @@
+{
+  "_doc": "Expected tier overrides",
+  "overrides": [
+    {"criterion_id": "AC-1", "forced_tier": "T1", "_reason": "has 'error message' + ui_enhancements + component-map"},
+    {"criterion_id": "AC-3", "forced_tier": "T1", "_reason": "has 'disabled' + ui_enhancements"}
+  ],
+  "no_override": [
+    {"criterion_id": "AC-2", "_reason": "AC-2 has 'rate limit' (backend) but 'response' alone isn't a UI keyword"},
+    {"criterion_id": "AC-4", "_reason": "purely backend with no UI keywords"}
+  ]
+}

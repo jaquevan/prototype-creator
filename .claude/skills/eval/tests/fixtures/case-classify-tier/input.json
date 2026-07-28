@@ -1,0 +1,16 @@
+{
+  "_doc": "Test case: Backend ACs with UI surfaces should be forced to T1, not T3",
+  "extract_state": {
+    "ac_list": [
+      {"criterion_id": "AC-1", "text": "BFF validates request body and shows error message to user"},
+      {"criterion_id": "AC-2", "text": "API returns rate limit response"},
+      {"criterion_id": "AC-3", "text": "RBAC prevents access and button is disabled"},
+      {"criterion_id": "AC-4", "text": "Catalog YAML schema validates server-side with no UI effect"}
+    ],
+    "feature_context": {"ui_enhancements": "Error banner, validation messages, disabled states"}
+  },
+  "component_map": {
+    "target_page": "/settings",
+    "ac_column_mapping": {"AC-1": {"column": "Errors", "index": 3}}
+  }
+}

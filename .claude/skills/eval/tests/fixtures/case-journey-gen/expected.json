@@ -1,0 +1,23 @@
+{
+  "_doc": "Structural expectations for generated journey-test.mjs",
+  "verify_mode": {
+    "journey_count": 2,
+    "required_functions": ["journey_1", "journey_2"],
+    "required_patterns": [
+      "CACHE_HASH:",
+      "chromium.launch",
+      "viewport.*1920.*900",
+      "addInitScript",
+      "navigateTo",
+      "AC-1.*navigate\\+verify",
+      "AC-2.*hover\\+assert",
+      "getColumnHeaders",
+      "hoverElement",
+      "getTooltipText"
+    ],
+    "forbidden_patterns": [
+      "800.*600",
+      "firefox"
+    ]
+  }
+}

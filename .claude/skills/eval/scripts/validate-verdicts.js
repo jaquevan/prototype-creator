@@ -73,19 +73,28 @@ const journeys = journeyLog.journeys || [];
 const violations = [];
 
 for (const journey of journeys) {
-  if (journey.verdict !== 'FAIL') continue;
-
   const acIds = journey.ac_ids || [];
   for (const acId of acIds) {
-    const csvVerdict = csvVerdicts[acId];
-    if (csvVerdict === 'PASS') {
+    const csvVerdict = (csvVerdicts[acId] || '').toUpperCase();
+    const jVerdict = (journey.verdict || '').toUpperCase();
+
+    if (jVerdict === 'FAIL' && csvVerdict === 'PASS') {
       violations.push({
         ac_id: acId,
         journey_id: journey.id,
-        journey_title: journey.title || '',
         journey_verdict: 'FAIL',
         csv_verdict: 'PASS',
         issue: 'Journey FAIL contradicts CSV PASS — CSV must be FAIL or FLAGGED'
+      });
+    }
+
+    if (jVerdict === 'PASS' && csvVerdict === 'FAIL') {
+      violations.push({
+        ac_id: acId,
+        journey_id: journey.id,
+        journey_verdict: 'PASS',
+        csv_verdict: 'FAIL',
+        issue: 'Journey PASS contradicts CSV FAIL — CSV must be updated to PASS (CSV is source of truth for report)'
       });
     }
   }

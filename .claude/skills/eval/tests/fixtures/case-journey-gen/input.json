@@ -1,0 +1,30 @@
+{
+  "_doc": "Test case: generate-journey-script.js should produce a valid .mjs with correct structure",
+  "extract_state": {
+    "key": "TEST-GEN",
+    "ac_list": [
+      {"criterion_id": "AC-1", "source": "jira", "text": "Status column displays scheduling state"},
+      {"criterion_id": "AC-2", "source": "jira", "text": "Tooltip shows resource allocation on hover"}
+    ],
+    "journey_definitions": [
+      {"id": "journey-1", "title": "View status", "ac_ids": ["AC-1"], "persona": "operator"},
+      {"id": "journey-2", "title": "Check tooltip", "ac_ids": ["AC-2"], "persona": "operator"}
+    ],
+    "persona_selection": {"selected": ["maude-experienced"], "target_audience_text": "MLOps"},
+    "tasks_to_be_done": [
+      {"task": "Check deployment status", "covers_acs": ["AC-1"]}
+    ]
+  },
+  "component_map": {
+    "target_page": "/deployments",
+    "table_columns": ["Name", "Status", "Scheduling"],
+    "ac_column_mapping": {
+      "AC-1": {"column": "Scheduling", "index": 2},
+      "AC-2": {"interaction": "hover", "target": ".scheduling-label"}
+    },
+    "interactive_elements": {
+      "tooltips": [{"wraps": "Scheduling label"}],
+      "expandable_rows": []
+    }
+  }
+}

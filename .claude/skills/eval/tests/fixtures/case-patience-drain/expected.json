@@ -1,0 +1,19 @@
+{
+  "_doc": "Expected outputs after compute-patience-drain.js runs",
+  "results": [
+    {
+      "persona": "maude-junior",
+      "task_index": 1,
+      "patience_end": 70,
+      "confusion_events": 3,
+      "_formula": "100 - (3 * 10 confusion) = 70 (Medium patience, no recovery)"
+    },
+    {
+      "persona": "maude-junior",
+      "task_index": 2,
+      "patience_end": 75,
+      "confusion_events": 1,
+      "_formula": "100 - (1 * 10 confusion) - (1 * 20 dead_end) + (1 * 5 recovery) = 75 (Medium patience)"
+    }
+  ]
+}
